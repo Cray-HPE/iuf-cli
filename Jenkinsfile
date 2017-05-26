@@ -1,5 +1,3 @@
-stages {
-
 def tasks = [:]
 
 tasks["SMW_iso"] = {
@@ -27,4 +25,3 @@ tasks["SLEUpdates_iso"] = {
 }
 
 parallel tasks
-}
