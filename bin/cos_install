@@ -1,0 +1,67 @@
+#!/usr/bin/env python3
+
+# Copyright 2022 Hewlett Packard Enterprise Development LP
+
+import argparse
+import os
+import sys
+
+import utils.InstallerUtils as utils
+import utils.ShastaUpdate as main_ctrl
+
+# imports for debugging
+from pprint import pprint
+
+
+def main():
+
+    parser = argparse.ArgumentParser(description=
+        """
+        this is the cos installer.  put useful instructions here.
+        """
+    )
+
+    all_functions = {
+        "hello": main_ctrl.hello,
+        "get_binaries": main_ctrl.get_binaries,
+        "install": main_ctrl.install,
+        "check_pods": main_ctrl.check_pods,
+        "merge_cos_integration": main_ctrl.merge_cos_integration,
+        "ncn_personalization": main_ctrl.ncn_personalization,
+        "unload_dvs_and_lnet": main_ctrl.unload_dvs_and_lnet,
+        "check_services": main_ctrl.check_services,
+        "build_cos_compute_image": main_ctrl.build_cos_compute_image,
+        "boot_cos": main_ctrl.boot_cos,
+        "run_hello_world": main_ctrl.run_hello_world,
+        "all": None
+    }
+
+    parser.add_argument("functions", nargs='*',
+                        help="""functions to execute.
+                        Should be one of: {} or "all" to execute all functions.
+                        """.format(",".join(all_functions)))
+
+    args = parser.parse_args()
+
+    if args.functions[0] == 'all':
+        for func in all_functions:
+            all_functions[func](args)
+    else:
+        # Go through all functions and execute a function if it was
+        # specified.  It's done this way to preserve order, incase a
+        # function was specified out of order; for example, if boot_cos was
+        # accidentally specified before build_cos_compute_image.
+
+        # Check that all the arguments passed are members of all_functions
+        for func in args.functions:
+            if func not in all_functions:
+                print("WARNING: Unknown function '{}' will not be run".format(func))
+
+        for func in all_functions:
+            if func in args.functions:
+                all_functions[func](args)
+
+
+if __name__ == "__main__":
+    main()
+
