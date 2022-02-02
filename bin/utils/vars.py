@@ -25,6 +25,10 @@ class TestFailure(Exception):
     """A wrapper for raising a TestFailure exception."""
     pass
 
+class SyntaxError(Exception):
+    """A wrapper for raising yaml or json syntax errors."""
+    pass
+
 try:
     CRAY_RELEASE_DIR
 except NameError:

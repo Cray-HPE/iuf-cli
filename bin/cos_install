@@ -2,67 +2,260 @@
 
 # Copyright 2022 Hewlett Packard Enterprise Development LP
 
+"""The COS Installer"""
+
 import argparse
 from collections import OrderedDict
+import json
 import os
 import sys
+import yaml
 
-import utils.InstallerUtils as utils
 import utils.ShastaUpdate as main_ctrl
 
-# imports for debugging
-from pprint import pprint
+# pylint: disable=consider-using-f-string
+
+STAGES = OrderedDict({
+    "hello": main_ctrl.hello,
+    "get_binaries": main_ctrl.get_binaries,
+    "install": main_ctrl.install,
+    "check_pods": main_ctrl.check_pods,
+    "merge_cos_integration": main_ctrl.merge_cos_integration,
+    "ncn_personalization": main_ctrl.ncn_personalization,
+    "unload_dvs_and_lnet": main_ctrl.unload_dvs_and_lnet,
+    "check_services": main_ctrl.check_services,
+    "build_cos_compute_image": main_ctrl.build_cos_compute_image,
+    "boot_cos": main_ctrl.boot_cos,
+    "run_hello_world": main_ctrl.run_hello_world,
+})
+
+
+def format_tabbed_list(alist):
+    """Format a list into text that's easier to read.  This is useful when
+    a list needs to be displayed to a user."""
+    retstr = ""
+    for elt in alist:
+        retstr += "  {}\n".format(elt)
+
+    return retstr
+
+
+def is_option(option, cmdline_args):
+    """Check if an option passed in via the input deck is a valid option."""
+
+    return option in cmdline_args.keys()
+
+
+def get_input_deck(cmdline_args):
+    """Process the input deck.  The keys need to be converted to the
+    argparse naming convention (i.e, replace '-' with '_')."""
+
+    args_dict = {}
+
+    if not cmdline_args["format"]:
+        format_type = "json"
+    elif cmdline_args["format"] not in ["json", "yaml"]:
+        print("The '-f/--format' argument needs to be either json or yaml", file=sys.stderr)
+        sys.exit(1)
+    else:
+        format_type = cmdline_args["format"]
+
+    in_arg = cmdline_args["input_file"]
+    if in_arg and not os.path.exists(in_arg):
+        print("Input file {} does not exist".format(in_arg), file=sys.stderr)
+        sys.exit(1)
+    elif in_arg:
+        with open(in_arg, 'r', encoding='UTF-8') as fhandle:
+            try:
+                if format_type == 'yaml':
+                    args_dict = yaml.load(fhandle, yaml.SafeLoader)
+                else:
+                    args_dict = json.load(fhandle)
+            except (json.decoder.JSONDecodeError, yaml.scanner.ScannerError) as synerr:
+                raise SyntaxError("Encountered an error loading {}: {}".format(in_arg, synerr)) from None
+
+    return_dict = {}
+    for arg in args_dict:
+        new_key = arg.replace('-', '_')
+        if not is_option(new_key, cmdline_args):
+            print("WARNING: {} is not a valid key.  It will be ignored!".format(arg), file=sys.stderr)
+        else:
+            return_dict[new_key] = args_dict[arg]
+
+    return return_dict
+
+
+def process_install(cmdline_args):
+    """Process the arguments to the install subparser.  This function
+    merges the commandline arguments with the arguments passed via the input
+    file ('--input-file').  The arguments passed in via the commandline override
+    those of the input file.  For example, if the input file has a
+    begin-stage that differs from the one passed in via the commandline,
+    the commandline option will be used."""
+
+    # Override the input deck (if specified) with the arguments specified on the commandline.
+    args_dict = {}
+    used_args = {}
+    for arg in cmdline_args:
+        if cmdline_args[arg] is not None:
+            used_args[arg] = cmdline_args[arg]
+
+    if cmdline_args["input_file"]:
+        args_dict = get_input_deck(cmdline_args)
+
+    args_dict.update(used_args)
+
+    # Do some error-handling with the stage-related args
+    stages_list = list(STAGES.keys())
+    begin_stage = stages_list[0]
+    end_stage = stages_list[-1]
+    skip_stages = args_dict['skip_stages'] if 'skip_stages' in args_dict else []
+
+    stages_formatted = format_tabbed_list(stages_list)
+    print("begin_stage={}, end_stage={}, STAGES={}".format(args_dict["begin_stage"], args_dict["end_stage"], STAGES))
+    if args_dict['begin_stage'] not in stages_list:
+        print("begin_stage ({}) must be one of the following:\n{}".format(args_dict['begin_stage'], stages_formatted, file=sys.stderr))
+        sys.exit(1)
+    elif args_dict['end_stage'] not in stages_list:
+        print("end_stage ({}) must be one of the following:\n{}".format(args_dict['end_stage'], stages_formatted, file=sys.stderr))
+        sys.exit(1)
+
+    if 'run_stages' in args_dict:
+        for stage in args_dict['run_stages']:
+            if stage not in stages_list:
+                print("invalid stage ({}) found in '--run-stages' argument".format(stage))
+                sys.exit(1)
+
+    begin_stage = args_dict.get('begin_stage', begin_stage)
+    end_stage = args_dict.get('end_stage', end_stage)
+
+    # Let args_dict['run_stages'] override begin_stage and end_stage; that is,
+    # if all three were passed in, run_stages wins.  Loop against stages_list
+    # to preserve the execution order.
+    if 'run_stages' in args_dict:
+        print("got run_stages ...")
+        got_first_stage = False
+        for stage in stages_list:
+            if stage in args_dict['run_stages'] and not got_first_stage:
+                begin_stage = stage
+                got_first_stage = True
+            elif stage in args_dict['run_stages']:
+                end_stage = stage
+
+    print("(after checking run_stages)begin_stage={}, end_stage={}".format(begin_stage, end_stage))
+    bad_skip = False
+    for sstage in skip_stages:
+        if sstage not in stages_list:
+            print("WARNING: Stage {} is not a valid stage".format(sstage))
+            bad_skip = True
+    if bad_skip:
+        sys.exit(1)
+
+    begin_idx = stages_list.index(begin_stage)
+    end_idx = stages_list.index(end_stage)
+    print("begin_idx={}, end_idx={}, len(stages_list)={}".format(begin_idx, end_idx, len(stages_list)))
+    stages = [stages_list[i] for i in range(begin_idx, end_idx + 1) if stages_list[i] not in skip_stages]
+    print("stages={}".format(stages))
+    print("(begin,end)_idx = ({},{})".format(begin_idx, end_idx))
+
+    if 'media_dir' in args_dict:
+        if not os.path.exists(args_dict['media_dir']):
+            print("media-dir {} does not exist.".format(args_dict['media_dir']))
+            sys.exit(1)
+
+    for stage in stages_list:
+        if stage in stages:
+            print("Would exec {}".format(stage))
+            #STAGES[stage](args_dict)
+
+def process_branch_update(args):
+    """Process the arguments to the branch subparser"""
+    print("process_branch_update, args={} ", args)
+
+def process_list(args): #pylint: disable=unused-argument
+    """Process the arguments to the list subparser"""
+    stages = format_tabbed_list(STAGES)
+    print(stages)
 
 
 def main():
+    """Main entry point."""
 
     parser = argparse.ArgumentParser(description=
         """
-        this is the cos installer.  put useful instructions here.
+       The COS installer.
         """
     )
 
-    all_functions = OrderedDict({
-        "hello": main_ctrl.hello,
-        "get_binaries": main_ctrl.get_binaries,
-        "install": main_ctrl.install,
-        "check_pods": main_ctrl.check_pods,
-        "merge_cos_integration": main_ctrl.merge_cos_integration,
-        "ncn_personalization": main_ctrl.ncn_personalization,
-        "unload_dvs_and_lnet": main_ctrl.unload_dvs_and_lnet,
-        "check_services": main_ctrl.check_services,
-        "build_cos_compute_image": main_ctrl.build_cos_compute_image,
-        "boot_cos": main_ctrl.boot_cos,
-        "run_hello_world": main_ctrl.run_hello_world,
-        "all": None
-    })
+    parser.add_argument("-i", "--input-file", action="store", help="""Input
+        file used to control the install.   Command line arguments will
+        override what is in the file.
 
-    parser.add_argument("functions", nargs='*',
-                        help="""functions to execute.
-                        Should be one of: {} or "all" to execute all functions.
-                        """.format(",".join(all_functions)))
+        By default, the input file is assumed to be json.  Use this option in
+        conjunction with '--format yaml' to use a yaml input""")
+
+    parser.add_argument("-f", "--format", action="store",
+        help="format on input ('-i' or '--input-file').  Accepts json or yaml")
+
+    parser.add_argument("-s", "--state-dir", action="store",
+        help="A directory used to store the current state of stages.  Defaults to $PWD")
+
+    parser.add_argument("-m", "--media-dir", action="store",
+        help="Location of installation media")
+
+    parser.add_argument("-d", "--dry-run", action="store_true",
+        help="Run without making any changes to the system to see what would happen")
+
+
+    # TODO: The stage-dir usage could use more verbiage. We might want to add
+    # this to the install docs.  Describing it in detail in the help section
+    # might be inappropriate.  Essentially, we need it because not all the stages
+    # are fully independent; for example, we have an unpack stage, and an
+    # install stage.  The install stage needs to install what was unpacked.
+
+    subparsers = parser.add_subparsers(title="subcommands")
+
+    install_sp = subparsers.add_parser("install")
+
+    install_sp.add_argument("-b", "--begin-stage", action="store",
+        help="The first stage to execute")
+
+    install_sp.add_argument("-e", "--end-stage", action="store",
+        help="The last stage to execute")
+
+    install_sp.add_argument("-r", "--run-stages", nargs="+", action="store",
+        help="Run only the specified stages")
+
+    install_sp.add_argument("-s", "--skip-stages", nargs="+", action="store",
+        help="Skip the execution of the specified stages.")
+
+    install_sp.add_argument("-t", "--source-bos-template", action="store",
+        help="BOS template to start from when booting COS")
+
+    install_sp.set_defaults(func=process_install)
+
+    bu_sp = subparsers.add_parser("branch-update", aliases=["bu"])
+    bu_sp.add_argument("branches", nargs="+", action="store", default=["integration"],
+        help="Branches to update.")
+    bu_sp.set_defaults(func=process_branch_update)
+
+    list_sp = subparsers.add_parser("list-stages", aliases=["ls"])
+    list_sp.set_defaults(func=process_list)
 
     args = parser.parse_args()
 
-    if args.functions[0] == 'all':
-        for func in all_functions:
-            all_functions[func](args)
-    else:
-        # Go through all functions and execute a function if it was
-        # specified.  It's done this way to preserve order, incase a
-        # function was specified out of order; for example, if boot_cos was
-        # accidentally specified before build_cos_compute_image.
+    # Convert the args to a dict, and use that rather than the argparse
+    # object.  This is so that we have a dictionary of all options, so that
+    # we can more easily determine which values can be passed via an input
+    # deck.
+    args_dict = vars(args)
 
-        # Check that all the arguments passed are members of all_functions
-        for func in args.functions:
-            if func not in all_functions:
-                print("WARNING: Unknown function '{}' will not be run".format(func))
+    if len(sys.argv) < 2:
+        print("{} requires at least 1 argument".format(sys.argv[0]), file=sys.stderr)
+        parser.print_help(sys.stderr)
+        sys.exit(1)
 
-        for func in all_functions:
-            if func in args.functions:
-                all_functions[func](args)
-
+    args.func(args_dict)
 
 if __name__ == "__main__":
     main()
-
