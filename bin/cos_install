@@ -3,6 +3,7 @@
 # Copyright 2022 Hewlett Packard Enterprise Development LP
 
 import argparse
+from collections import OrderedDict
 import os
 import sys
 
@@ -21,7 +22,7 @@ def main():
         """
     )
 
-    all_functions = {
+    all_functions = OrderedDict({
         "hello": main_ctrl.hello,
         "get_binaries": main_ctrl.get_binaries,
         "install": main_ctrl.install,
@@ -34,7 +35,7 @@ def main():
         "boot_cos": main_ctrl.boot_cos,
         "run_hello_world": main_ctrl.run_hello_world,
         "all": None
-    }
+    })
 
     parser.add_argument("functions", nargs='*',
                         help="""functions to execute.
