@@ -382,10 +382,10 @@ def get_products(
             "work_dir": "/admin/johnn/media2/cos-2.3.31-20220131164722/cos-2.3.31-20220131164722",
                                                  # absolute path to the contents of the archive.
                                                  # the contents will always be nested inside a
-                                                 # directory named after the key in order to 
+                                                 # directory named after the key in order to
                                                  # support archive files that contain directory
                                                  # names that are not unique
-            "md5": null,                 # if an md5 file is provided, we will refuse to extract 
+            "md5": null,                 # if an md5 file is provided, we will refuse to extract
                                          # the archive if it doesn't match
             "out": null,                 # contains filename of 'out' file, if it exists
             "archive_check": null        # only set when archive is extracted
@@ -482,7 +482,7 @@ def get_products(
                 if item_name not in products:
                     logit('debug', 'creating new product entry {}'.format(item_name))
                     products[item_name] = new_product.copy()
- 
+
                 products[item_name]['archive'] = item
 
         # item is a directory
@@ -576,7 +576,7 @@ def get_products(
                             logit('info', 'sum validates {}'.format(checked_sum))
 
                             # extract tarfile
-                            logit('info', 'extracting {}'.format(archive))  
+                            logit('info', 'extracting {}'.format(archive))
 
                             cmd = 'tar x{}af {} --directory {}'.format(extra_tar_flags, archive, work_dir)
                             logit('debug', 'performing: {}'.format(cmd))
@@ -621,7 +621,7 @@ def get_products(
                     else:
 
                         # extract tarfile
-                        logit('info', 'extracting {}'.format(archive))  
+                        logit('info', 'extracting {}'.format(archive))
                         cmd = 'tar x{}af {} --directory {}'.format(extra_tar_flags, archive, work_dir)
                         logit('debug', 'performing: {}'.format(cmd))
                         rc, _, msg = run_command(cmd)
@@ -654,7 +654,7 @@ def get_products(
                     if work_dir_contents:
                         products[product]['work_dir'] = os.path.join(media_dir, product, work_dir_contents[0])
                     logit('debug', 'found previously extracted work_dir {}'.format(product))
-                    
+
             else:
                 logit('warn', 'skipping {}'.format(product))
 
