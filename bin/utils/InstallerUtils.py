@@ -276,15 +276,17 @@ def wait_for_ncn_personalization(connection, xnames, timeout=600, sleep_time=10)
 class VMConnectionException(Exception):
     """A pass-through class."""
 
+
+def logit(severity, message):
+    """fake logger should make the move to a real logger easier"""
+    print(severity.upper(), message)
+
+
 def run_command(cmd):
     """Run a system command."""
 
-    # log calls
-    working_data['calls'].append(cmd)
-
-    # print calls if user asks for them
-    if working_data['args']['--calls']:
-        output_message('  >> {}'.format(cmd))
+    # log commands to debug channel
+    logit('debug', '  >> {}'.format(cmd))
 
     result = subprocess.run(cmd.split(), stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE, shell=False,
@@ -302,7 +304,7 @@ def run_command(cmd):
                     'stderr': result.stderr,
                     'stdout': result.stdout,
                     'returncode': result.returncode }
-        working_data['failures'].append(failure)
+        logit('warn', failure)
 
     return result.returncode, structured_data, result
 
@@ -336,4 +338,333 @@ class CmdInterface:
         """
         shutil.copyfile(source, target)
 
+
+def get_products( media_dir = '.',
+                  extract_archives = True,
+                  products = None,
+                  prefixes = None,
+                  suffixes = None,
+                  new_product = None ):
+
+    """
+    Extract product archives and return product information.
+
+    When called, will extract any product archives found and
+    return a dict of product dictionaries:
+
+    {
+        "cos-2.3.31-20220131164722": {   # key is the archive name without suffix or directory name
+            "archive_type": "tgz",       # type of archive (tar, tgz)
+            "product": "cos",            # derived shot product name
+            "archive": "cos-2.3.31-20220131164722.tar.gz",  # filename of product archive
+            "media_dir": "/admin/johnn/media2",  # path where all products are located.  if not
+                                                 # specified, pwd will be used
+            "work_dir": "/admin/johnn/media2/cos-2.3.31-20220131164722/cos-2.3.31-20220131164722",
+                                                 # absolute path to the contents of the archive.
+                                                 # the contents will always be nested inside a
+                                                 # directory named after the key in order to
+                                                 # support archive files that contain directory
+                                                 # names that are not unique
+            "md5": null,                 # if an md5 file is provided, we will refuse to extract
+                                         # the archive if it doesn't match
+            "out": null,                 # contains filename of 'out' file, if it exists
+            "archive_check": null        # only set when archive is extracted
+        }
+    }
+
+    Caller should place conditionals on 'product' and 'work_dir'
+    as the former indicates the entry has been identified as a
+    product, and the latter indicates a valid, extracted product
+    has been staged.
+
+    eg:
+        for product in products:
+        if products[product]['product']:
+            work_dir = products[product]['work_dir']
+            if work_dir:
+                installer = os.path.join(work_dir, 'install.sh')
+
+    """
+
+    if not products:
+        products = {}
+
+    if not prefixes:
+        prefixes = { 'cos': 'cos',
+                     'cpe': 'cpe',
+                     'sles': 'SUSE',
+                     'shs': 'slingshot-host-software',
+                     'analytics': 'analytics' }
+
+    if not suffixes:
+        suffixes = { 'md5': '.tar.gz.MD5.TXT',
+                     'tgz': '.tar.gz',
+                     'tar': '.tar',
+                     'out': '.tar.gz.OUT.TXT' }
+
+    if not new_product:
+        new_product = { 'archive_type': None,
+                        'product': None,
+                        'archive': None,
+                        'media_dir': None,
+                        'work_dir': None,
+                        'md5': None,
+                        'out': None,
+                        'archive_check': None
+                      }
+
+
+    # convert to absolute to avoid ambiguity
+    media_dir = os.path.abspath(media_dir)
+
+    # let user know what we are working on
+    logit('info', 'processing media_dir {}'.format(media_dir))
+
+    # get contents of our media directory
+    directory_listing = os.listdir(media_dir)
+
+    logit('debug', 'dir contents: {}'.format(directory_listing))
+
+    # process each item in the directory
+    for item in directory_listing:
+
+        logit('debug', 'processing {}'.format(item))
+
+        item_name = None
+
+        # logic to handle item if it is a file
+        if os.path.isfile(os.path.join(media_dir, item)):
+
+            # we process suffix first because we want to determine a
+            # key name that does not include a suffix so all related
+            # files such as md5 files can be stored in the same record
+
+            for suffix in suffixes:
+
+                logit('debug', 'suffix {}'.format(suffix))
+
+                if item.endswith(suffixes[suffix]):
+
+                    logit('debug', 'suffix match {}'.format(suffix))
+                    item_name = item.split(suffixes[suffix])[0]
+                    logit('debug', 'item_name is {}'.format(item_name))
+
+                    # create a product entry if one doesn't already exist
+                    if item_name not in products:
+                        logit('debug', 'creating new product entry {}'.format(item_name))
+                        products[item_name] = new_product.copy()
+
+                    # handle archive and non-archive entries differently
+                    if suffix in ['md5', 'out']:
+                        logit('debug', 'item is not an archive')
+                        logit('debug', 'adding {}, {}'.format(suffix, item))
+
+                        # read md5 file, parse out and save the md5 sum
+                        if suffix == 'md5':
+                            logit('debug', 'reading md5 file {}'.format(item))
+                            # TODO: exception handling, please
+                            with open(os.path.join(media_dir, item)) as md5_file:
+                                md5_contents = md5_file.readlines()
+                                # TODO: improve this logic
+                                md5 = md5_contents[0].split()[0]
+                            products[item_name][suffix] = md5
+                        else:
+                            products[item_name][suffix] = item
+                    else:
+                        # record archive information
+                        logit('debug', 'adding archive_type {}'.format(suffix))
+                        logit('debug', 'adding archive {}'.format(item))
+                        products[item_name]['archive_type'] = suffix
+                        products[item_name]['archive'] = item
+
+            # if there is no suffix, then just use the item name
+            if not item_name:
+
+                logit('debug', 'no suffix handling')
+                logit('debug', 'setting item_name to {}'.format(item))
+                item_name = item
+                logit('debug', 'creating new product {}'.format(item_name))
+                logit('debug', 'setting archive to {}'.format(item))
+
+                # create entry in dict if it doesn't exist
+                if item_name not in products:
+                    logit('debug', 'creating new product entry {}'.format(item_name))
+                    products[item_name] = new_product.copy()
+
+                products[item_name]['archive'] = item
+
+        # item is a directory
+        elif os.path.isdir(os.path.join(media_dir, item)):
+
+            item_name = item
+            # create entry in dict if it doesn't exist
+            if item_name not in products:
+                logit('debug', 'creating new product entry {}'.format(item_name))
+                products[item_name] = new_product.copy()
+
+            # find the directory created by the tar file and update the work_dir
+            work_dir_prefix = os.path.join(media_dir, item_name)
+            work_dir_contents = os.listdir(work_dir_prefix)
+
+            # we expect only one directory in the work_dir
+            if len(work_dir_contents) == 1:
+                products[item_name]['work_dir'] = os.path.join(media_dir, item_name, work_dir_contents[0])
+            else:
+                logit('warn', 'work_dir contents of {} unexpected'.format(item))
+
+            logit('debug', 'found previously extracted work_dir {}'.format(item))
+            logit('debug', 'processing directory {}'.format(item))
+            logit('debug', 'new product {}'.format(item_name))
+            logit('debug', 'setting work_dir to'.format(item_name))
+
+        # file is of a type that isn't relevant for us
+        else:
+            item_name = item
+            if item_name not in products:
+                logit('debug', 'creating new product entry {}'.format(item_name))
+                products[item_name] = new_product.copy()
+            products[item_name]['archive'] = item
+            logit('debug', 'item is not a file or directory')
+            logit('debug', 'new product {}'.format(item_name))
+            logit('debug', 'setting archive to {}'.format(item))
+
+        for prefix in prefixes:
+            if item.startswith(prefixes[prefix]):
+                product_type = prefix
+                products[item_name]['product'] = product_type
+                logit('debug', 'prefix match found {}'.format(prefix))
+
+        products[item_name]['media_dir'] = media_dir
+
+    if extract_archives:
+
+        for product in products:
+
+            logit('debug', 'checking to see if {} needs to be unpacked'.format(product))
+            logit('debug', 'products[product]["product"] is "{}"'.format(products[product]['product']))
+
+            # only process items that are identified products
+            # don't bother trying to extract something with no archive
+            if products[product]['product'] and products[product]['archive']:
+
+                logit('debug', 'inside product test')
+
+                # only process items that have no work_dir (haven't been extracted yet)
+                if not products[product]['work_dir']:
+
+                    logit('debug', 'needs workdir')
+                    work_dir = os.path.join(products[product]['media_dir'], product)
+
+                    # make dir
+                    cmd = 'mkdir -p {}'.format(work_dir)
+                    logit('debug', 'performing: {}'.format(cmd))
+                    rc, _, msg = run_command(cmd)
+                    logit('debug', 'rc {}, msg={}'.format(rc, msg))
+
+                    archive = os.path.join(products[product]['media_dir'], products[product]['archive'])
+
+                    # accomidate compressed archives
+                    extra_tar_flags = ''
+                    if products[product]['archive_type'] == 'tgz':
+                        extra_tar_flags += 'z'
+
+                    # handle md5 sums, if provided
+                    dist_sum = products[product]['md5']
+
+                    if dist_sum:
+
+                        # check archive md5
+                        cmd = 'md5sum {}'.format(archive)
+                        logit('info', 'checking the md5sum of {}'.format(archive))
+                        rc, _, msg = run_command(cmd)
+                        checked_sum = msg.stdout.split()[0]
+
+                        if dist_sum == checked_sum:
+
+                            logit('info', 'sum validates {}'.format(checked_sum))
+
+                            # extract tarfile
+                            logit('info', 'extracting {}'.format(archive))
+
+                            cmd = 'tar x{}af {} --directory {}'.format(extra_tar_flags, archive, work_dir)
+                            logit('debug', 'performing: {}'.format(cmd))
+                            rc, _, msg = run_command(cmd)
+                            logit('debug', 'rc {}, msg={}'.format(rc, msg))
+
+                            # if tar fails, remove work dir
+                            if rc != 0:
+
+                                logit('warn', 'unable to process {}'.format(product))
+                                # remove dir to avoid thinking this is a valid workdir
+                                cmd = 'rm -Rf {}'.format(work_dir)
+                                logit('debug', 'performing: {}'.format(cmd))
+                                rc, _, msg = run_command(cmd)
+                                logit('debug', 'rc {}, msg={}'.format(rc, msg))
+
+                                products[product]['work_dir'] = None
+
+                            else:
+
+                                # find the directory created by the tar file and update the work_dir
+                                work_dir_prefix = os.path.join(products[product]['media_dir'], product)
+                                work_dir_contents = os.listdir(work_dir_prefix)
+
+                                if work_dir_contents:
+                                    products[product]['work_dir'] = os.path.join(media_dir, product, work_dir_contents[0])
+
+                            # take note that the md5 sum matched
+                            products[product]['archive_check'] = 'passed'
+
+                        else:
+
+                            # there is a problem with the archive or sum
+                            logit('error', "distribution sum doesn't match archive sum!")
+                            logit('error', 'distribution {}'.format(dist_sum))
+                            logit('error', 'archive_sum {}'.format(checked_sum))
+                            logit('error', 'skipping extraction of {}'.format(archive))
+
+                            # take note that the md5 sum did NOT match
+                            products[product]['archive_check'] = 'failed'
+
+                    else:
+
+                        # extract tarfile
+                        logit('info', 'extracting {}'.format(archive))
+                        cmd = 'tar x{}af {} --directory {}'.format(extra_tar_flags, archive, work_dir)
+                        logit('debug', 'performing: {}'.format(cmd))
+                        rc, _, msg = run_command(cmd)
+                        logit('debug', 'rc {}, msg={}'.format(rc, msg))
+
+                        # if tar fails, remove work dir so we don't leave invalid
+                        # working directories around
+                        if rc != 0:
+
+                            logit('warn', 'skipping {}'.format(product))
+                            # remove dir to avoid thinking this is a valid workdir
+                            cmd = 'rm -Rf {}'.format(work_dir)
+                            logit('debug', 'performing: {}'.format(cmd))
+                            rc, _, msg = run_command(cmd)
+                            logit('debug', 'rc {}, msg={}'.format(rc, msg))
+
+                        else:
+
+                            # find the directory created by the tar file and update the work_dir
+                            work_dir_prefix = os.path.join(products[product]['media_dir'], product)
+                            work_dir_contents = os.listdir(work_dir_prefix)
+                            if work_dir_contents:
+                                products[product]['work_dir'] = os.path.join(media_dir, product, work_dir_contents[0])
+
+                else:
+                    # find the directory created by the tar file and update the work_dir
+                    work_dir_prefix = os.path.join(products[product]['media_dir'], product)
+                    work_dir_contents = os.listdir(work_dir_prefix)
+
+                    if work_dir_contents:
+                        products[product]['work_dir'] = os.path.join(media_dir, product, work_dir_contents[0])
+                    logit('debug', 'found previously extracted work_dir {}'.format(product))
+
+            else:
+                logit('warn', 'skipping {}'.format(product))
+
+    return products
 
