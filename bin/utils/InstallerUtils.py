@@ -442,7 +442,7 @@ def get_products(
                     logit('debug', 'item_name is {}'.format(item_name))
 
                     # create a product entry if one doesn't already exist
-                    if not item_name in dict.keys(products):
+                    if item_name not in products:
                         logit('debug', 'creating new product entry {}'.format(item_name))
                         products[item_name] = new_product.copy()
 
@@ -479,7 +479,7 @@ def get_products(
                 logit('debug', 'setting archive to {}'.format(item))
 
                 # create entry in dict if it doesn't exist
-                if not item_name in dict.keys(products):
+                if item_name not in products:
                     logit('debug', 'creating new product entry {}'.format(item_name))
                     products[item_name] = new_product.copy()
  
@@ -490,7 +490,7 @@ def get_products(
 
             item_name = item
             # create entry in dict if it doesn't exist
-            if not item_name in dict.keys(products):
+            if item_name not in products:
                 logit('debug', 'creating new product entry {}'.format(item_name))
                 products[item_name] = new_product.copy()
 
@@ -512,7 +512,7 @@ def get_products(
         # file is of a type that isn't relevant for us
         else:
             item_name = item
-            if not item_name in dict.keys(products):
+            if item_name not in products:
                 logit('debug', 'creating new product entry {}'.format(item_name))
                 products[item_name] = new_product.copy()
             products[item_name]['archive'] = item
