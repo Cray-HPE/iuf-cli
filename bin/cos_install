@@ -52,15 +52,15 @@ def get_input_deck(cmdline_args):
 
     args_dict = {}
 
-    if not cmdline_args["format"]:
+    format_type = cmdline_args.get("format", "json")
+    if format_type is None:
         format_type = "json"
-    elif cmdline_args["format"] not in ["json", "yaml"]:
+
+    if format_type not in ["json", "yaml"]:
         print("The '-f/--format' argument needs to be either json or yaml", file=sys.stderr)
         sys.exit(1)
-    else:
-        format_type = cmdline_args["format"]
 
-    in_arg = cmdline_args["input_file"]
+    in_arg = cmdline_args.get("input_file")
     if in_arg and not os.path.exists(in_arg):
         print("Input file {} does not exist".format(in_arg), file=sys.stderr)
         sys.exit(1)
