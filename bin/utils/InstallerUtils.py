@@ -339,32 +339,12 @@ class CmdInterface:
         shutil.copyfile(source, target)
 
 
-def get_products(
-        media_dir='.',
-        extract_archives = True,
-        products = {},
-        prefixes = { 'cos': 'cos',
-                     'cpe': 'cpe',
-                     'sles': 'SUSE',
-                     'shs': 'slingshot-host-software',
-                     'analytics': 'analytics'
-                   },
-        suffixes = { 'md5': '.tar.gz.MD5.TXT',
-                     'tgz': '.tar.gz',
-                     'tar': '.tar',
-                     'out': '.tar.gz.OUT.TXT'
-                   },
-        new_product = {
-            'archive_type': None,
-            'product': None,
-            'archive': None,
-            'media_dir': None,
-            'work_dir': None,
-            'md5': None,
-            'out': None,
-            'archive_check': None
-                      }
-            ):
+def get_products( media_dir = '.',
+                  extract_archives = True,
+                  products = None,
+                  prefixes = None,
+                  suffixes = None,
+                  new_product = None ):
 
     """
     Extract product archives and return product information.
@@ -405,6 +385,34 @@ def get_products(
                 installer = os.path.join(work_dir, 'install.sh')
 
     """
+
+    if not products:
+        products = {}
+
+    if not prefixes:
+        prefixes = { 'cos': 'cos',
+                     'cpe': 'cpe',
+                     'sles': 'SUSE',
+                     'shs': 'slingshot-host-software',
+                     'analytics': 'analytics' }
+
+    if not suffixes:
+        suffixes = { 'md5': '.tar.gz.MD5.TXT',
+                     'tgz': '.tar.gz',
+                     'tar': '.tar',
+                     'out': '.tar.gz.OUT.TXT' }
+
+    if not new_product:
+        new_product = { 'archive_type': None,
+                        'product': None,
+                        'archive': None,
+                        'media_dir': None,
+                        'work_dir': None,
+                        'md5': None,
+                        'out': None,
+                        'archive_check': None
+                      }
+
 
     # convert to absolute to avoid ambiguity
     media_dir = os.path.abspath(media_dir)
