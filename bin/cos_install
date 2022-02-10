@@ -112,11 +112,10 @@ def process_install(cmdline_args):
     skip_stages = args_dict['skip_stages'] if 'skip_stages' in args_dict else []
 
     stages_formatted = format_tabbed_list(stages_list)
-    print("begin_stage={}, end_stage={}, STAGES={}".format(args_dict["begin_stage"], args_dict["end_stage"], STAGES))
-    if args_dict['begin_stage'] not in stages_list:
+    if "begin_stage" in args_dict and args_dict['begin_stage'] not in stages_list:
         print("begin_stage ({}) must be one of the following:\n{}".format(args_dict['begin_stage'], stages_formatted, file=sys.stderr))
         sys.exit(1)
-    elif args_dict['end_stage'] not in stages_list:
+    elif 'end_stage' in args_dict and args_dict['end_stage'] not in stages_list:
         print("end_stage ({}) must be one of the following:\n{}".format(args_dict['end_stage'], stages_formatted, file=sys.stderr))
         sys.exit(1)
 
