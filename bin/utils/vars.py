@@ -2,8 +2,8 @@
 
 import datetime
 import os
+import logging
 
-from utils.InstallerUtils import getenv
 
 class InstallError(Exception):
     """A wrapper for raising an InstallError exception."""
@@ -52,3 +52,17 @@ BOS_INFO_FILE = os.path.join(LOCAL_WORKSPACE_TMP, 'bos-info.json')
 
 BOOT_POLL_SECS = 60
 BOOT_TIMOUT_SECS = 3600
+
+LOG_DEFAULT_CONSOLE_LEVEL = logging.INFO
+LOG_DEFAULT_FILE_LEVEL = logging.DEBUG
+LOG_DEFAULT_FILENAME = "cos_install.log"
+LOG_DEFAULT_FILE_FORMAT = '%(asctime)s %(levelname)s %(message)s'
+LOG_DEFAULT_CONSOLE_FORMAT = '%(levelname)s %(message)s'
+LOG_DEFAULT_NAME = "cos_install"
+LOG_LEVELS = {
+        "CRITICAL": logging.CRITICAL,
+        "ERROR": logging.ERROR,
+        "WARNING": logging.WARNING,
+        "INFO": logging.INFO,
+        "DEBUG": logging.DEBUG
+}

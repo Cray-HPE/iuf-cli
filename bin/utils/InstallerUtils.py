@@ -13,6 +13,9 @@ import subprocess
 import sys
 import time
 import urllib
+from utils.InstallLogger import get_install_logger
+
+install_logger = get_install_logger(__name__)
 
 # pylint: disable=consider-using-f-string
 
@@ -277,16 +280,11 @@ class VMConnectionException(Exception):
     """A pass-through class."""
 
 
-def logit(severity, message):
-    """fake logger should make the move to a real logger easier"""
-    print(severity.upper(), message)
-
-
 def run_command(cmd):
     """Run a system command."""
 
     # log commands to debug channel
-    logit('debug', '  >> {}'.format(cmd))
+    install_logger.debug('  >> {}'.format(cmd))
 
     result = subprocess.run(cmd.split(), stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE, shell=False,
@@ -304,7 +302,7 @@ def run_command(cmd):
                     'stderr': result.stderr,
                     'stdout': result.stdout,
                     'returncode': result.returncode }
-        logit('warn', failure)
+        install_logger.warning(failure)
 
     return result.returncode, structured_data, result
 
@@ -418,17 +416,17 @@ def get_products( media_dir = '.',
     media_dir = os.path.abspath(media_dir)
 
     # let user know what we are working on
-    logit('info', 'processing media_dir {}'.format(media_dir))
+    install_logger.info('processing media_dir {}'.format(media_dir))
 
     # get contents of our media directory
     directory_listing = os.listdir(media_dir)
 
-    logit('debug', 'dir contents: {}'.format(directory_listing))
+    install_logger.debug('dir contents: {}'.format(directory_listing))
 
     # process each item in the directory
     for item in directory_listing:
 
-        logit('debug', 'processing {}'.format(item))
+        install_logger.debug('processing {}'.format(item))
 
         item_name = None
 
@@ -441,27 +439,27 @@ def get_products( media_dir = '.',
 
             for suffix in suffixes:
 
-                logit('debug', 'suffix {}'.format(suffix))
+                install_logger.debug('suffix {}'.format(suffix))
 
                 if item.endswith(suffixes[suffix]):
 
-                    logit('debug', 'suffix match {}'.format(suffix))
+                    install_logger.debug('suffix match {}'.format(suffix))
                     item_name = item.split(suffixes[suffix])[0]
-                    logit('debug', 'item_name is {}'.format(item_name))
+                    install_logger.debug('item_name is {}'.format(item_name))
 
                     # create a product entry if one doesn't already exist
                     if item_name not in products:
-                        logit('debug', 'creating new product entry {}'.format(item_name))
+                        install_logger.debug('creating new product entry {}'.format(item_name))
                         products[item_name] = new_product.copy()
 
                     # handle archive and non-archive entries differently
                     if suffix in ['md5', 'out']:
-                        logit('debug', 'item is not an archive')
-                        logit('debug', 'adding {}, {}'.format(suffix, item))
+                        install_logger.debug('item is not an archive')
+                        install_logger.debug('adding {}, {}'.format(suffix, item))
 
                         # read md5 file, parse out and save the md5 sum
                         if suffix == 'md5':
-                            logit('debug', 'reading md5 file {}'.format(item))
+                            install_logger.debug('reading md5 file {}'.format(item))
                             # TODO: exception handling, please
                             with open(os.path.join(media_dir, item)) as md5_file:
                                 md5_contents = md5_file.readlines()
@@ -472,23 +470,23 @@ def get_products( media_dir = '.',
                             products[item_name][suffix] = item
                     else:
                         # record archive information
-                        logit('debug', 'adding archive_type {}'.format(suffix))
-                        logit('debug', 'adding archive {}'.format(item))
+                        install_logger.debug('adding archive_type {}'.format(suffix))
+                        install_logger.debug('adding archive {}'.format(item))
                         products[item_name]['archive_type'] = suffix
                         products[item_name]['archive'] = item
 
             # if there is no suffix, then just use the item name
             if not item_name:
 
-                logit('debug', 'no suffix handling')
-                logit('debug', 'setting item_name to {}'.format(item))
+                install_logger.debug('no suffix handling')
+                install_logger.debug('setting item_name to {}'.format(item))
                 item_name = item
-                logit('debug', 'creating new product {}'.format(item_name))
-                logit('debug', 'setting archive to {}'.format(item))
+                install_logger.debug('creating new product {}'.format(item_name))
+                install_logger.debug('setting archive to {}'.format(item))
 
                 # create entry in dict if it doesn't exist
                 if item_name not in products:
-                    logit('debug', 'creating new product entry {}'.format(item_name))
+                    install_logger.debug('creating new product entry {}'.format(item_name))
                     products[item_name] = new_product.copy()
 
                 products[item_name]['archive'] = item
@@ -499,7 +497,7 @@ def get_products( media_dir = '.',
             item_name = item
             # create entry in dict if it doesn't exist
             if item_name not in products:
-                logit('debug', 'creating new product entry {}'.format(item_name))
+                install_logger.debug('creating new product entry {}'.format(item_name))
                 products[item_name] = new_product.copy()
 
             # find the directory created by the tar file and update the work_dir
@@ -510,29 +508,29 @@ def get_products( media_dir = '.',
             if len(work_dir_contents) == 1:
                 products[item_name]['work_dir'] = os.path.join(media_dir, item_name, work_dir_contents[0])
             else:
-                logit('warn', 'work_dir contents of {} unexpected'.format(item))
+                install_logger.warning('work_dir contents of {} unexpected'.format(item))
 
-            logit('debug', 'found previously extracted work_dir {}'.format(item))
-            logit('debug', 'processing directory {}'.format(item))
-            logit('debug', 'new product {}'.format(item_name))
-            logit('debug', 'setting work_dir to'.format(item_name))
+            install_logger.debug('found previously extracted work_dir {}'.format(item))
+            install_logger.debug('processing directory {}'.format(item))
+            install_logger.debug('new product {}'.format(item_name))
+            install_logger.debug('setting work_dir to'.format(item_name))
 
         # file is of a type that isn't relevant for us
         else:
             item_name = item
             if item_name not in products:
-                logit('debug', 'creating new product entry {}'.format(item_name))
+                install_logger.debug('creating new product entry {}'.format(item_name))
                 products[item_name] = new_product.copy()
             products[item_name]['archive'] = item
-            logit('debug', 'item is not a file or directory')
-            logit('debug', 'new product {}'.format(item_name))
-            logit('debug', 'setting archive to {}'.format(item))
+            install_logger.debug('item is not a file or directory')
+            install_logger.debug('new product {}'.format(item_name))
+            install_logger.debug('setting archive to {}'.format(item))
 
         for prefix in prefixes:
             if item.startswith(prefixes[prefix]):
                 product_type = prefix
                 products[item_name]['product'] = product_type
-                logit('debug', 'prefix match found {}'.format(prefix))
+                install_logger.debug('prefix match found {}'.format(prefix))
 
         products[item_name]['media_dir'] = media_dir
 
@@ -540,26 +538,26 @@ def get_products( media_dir = '.',
 
         for product in products:
 
-            logit('debug', 'checking to see if {} needs to be unpacked'.format(product))
-            logit('debug', 'products[product]["product"] is "{}"'.format(products[product]['product']))
+            install_logger.debug('checking to see if {} needs to be unpacked'.format(product))
+            install_logger.debug('products[product]["product"] is "{}"'.format(products[product]['product']))
 
             # only process items that are identified products
             # don't bother trying to extract something with no archive
             if products[product]['product'] and products[product]['archive']:
 
-                logit('debug', 'inside product test')
+                install_logger.debug('inside product test')
 
                 # only process items that have no work_dir (haven't been extracted yet)
                 if not products[product]['work_dir']:
 
-                    logit('debug', 'needs workdir')
+                    install_logger.debug('needs workdir')
                     work_dir = os.path.join(products[product]['media_dir'], product)
 
                     # make dir
                     cmd = 'mkdir -p {}'.format(work_dir)
-                    logit('debug', 'performing: {}'.format(cmd))
+                    install_logger.debug('performing: {}'.format(cmd))
                     rc, _, msg = run_command(cmd)
-                    logit('debug', 'rc {}, msg={}'.format(rc, msg))
+                    install_logger.debug('rc {}, msg={}'.format(rc, msg))
 
                     archive = os.path.join(products[product]['media_dir'], products[product]['archive'])
 
@@ -575,31 +573,31 @@ def get_products( media_dir = '.',
 
                         # check archive md5
                         cmd = 'md5sum {}'.format(archive)
-                        logit('info', 'checking the md5sum of {}'.format(archive))
+                        install_logger.info('checking the md5sum of {}'.format(archive))
                         rc, _, msg = run_command(cmd)
                         checked_sum = msg.stdout.split()[0]
 
                         if dist_sum == checked_sum:
 
-                            logit('info', 'sum validates {}'.format(checked_sum))
+                            install_logger.info('sum validates {}'.format(checked_sum))
 
                             # extract tarfile
-                            logit('info', 'extracting {}'.format(archive))
+                            install_logger.info('extracting {}'.format(archive))
 
                             cmd = 'tar x{}af {} --directory {}'.format(extra_tar_flags, archive, work_dir)
-                            logit('debug', 'performing: {}'.format(cmd))
+                            install_logger.debug('performing: {}'.format(cmd))
                             rc, _, msg = run_command(cmd)
-                            logit('debug', 'rc {}, msg={}'.format(rc, msg))
+                            install_logger.debug('rc {}, msg={}'.format(rc, msg))
 
                             # if tar fails, remove work dir
                             if rc != 0:
 
-                                logit('warn', 'unable to process {}'.format(product))
+                                install_logger.warning('unable to process {}'.format(product))
                                 # remove dir to avoid thinking this is a valid workdir
                                 cmd = 'rm -Rf {}'.format(work_dir)
-                                logit('debug', 'performing: {}'.format(cmd))
+                                install_logger.debug('performing: {}'.format(cmd))
                                 rc, _, msg = run_command(cmd)
-                                logit('debug', 'rc {}, msg={}'.format(rc, msg))
+                                install_logger.debug('rc {}, msg={}'.format(rc, msg))
 
                                 products[product]['work_dir'] = None
 
@@ -618,10 +616,10 @@ def get_products( media_dir = '.',
                         else:
 
                             # there is a problem with the archive or sum
-                            logit('error', "distribution sum doesn't match archive sum!")
-                            logit('error', 'distribution {}'.format(dist_sum))
-                            logit('error', 'archive_sum {}'.format(checked_sum))
-                            logit('error', 'skipping extraction of {}'.format(archive))
+                            install_logger.error("distribution sum doesn't match archive sum!")
+                            install_logger.error('distribution {}'.format(dist_sum))
+                            install_logger.error('archive_sum {}'.format(checked_sum))
+                            install_logger.error('skipping extraction of {}'.format(archive))
 
                             # take note that the md5 sum did NOT match
                             products[product]['archive_check'] = 'failed'
@@ -629,22 +627,22 @@ def get_products( media_dir = '.',
                     else:
 
                         # extract tarfile
-                        logit('info', 'extracting {}'.format(archive))
+                        install_logger.info('extracting {}'.format(archive))
                         cmd = 'tar x{}af {} --directory {}'.format(extra_tar_flags, archive, work_dir)
-                        logit('debug', 'performing: {}'.format(cmd))
+                        install_logger.debug('performing: {}'.format(cmd))
                         rc, _, msg = run_command(cmd)
-                        logit('debug', 'rc {}, msg={}'.format(rc, msg))
+                        install_logger.debug('rc {}, msg={}'.format(rc, msg))
 
                         # if tar fails, remove work dir so we don't leave invalid
                         # working directories around
                         if rc != 0:
 
-                            logit('warn', 'skipping {}'.format(product))
+                            install_logger.warning('skipping {}'.format(product))
                             # remove dir to avoid thinking this is a valid workdir
                             cmd = 'rm -Rf {}'.format(work_dir)
-                            logit('debug', 'performing: {}'.format(cmd))
+                            install_logger.debug('performing: {}'.format(cmd))
                             rc, _, msg = run_command(cmd)
-                            logit('debug', 'rc {}, msg={}'.format(rc, msg))
+                            install_logger.debug('rc {}, msg={}'.format(rc, msg))
 
                         else:
 
@@ -661,10 +659,9 @@ def get_products( media_dir = '.',
 
                     if work_dir_contents:
                         products[product]['work_dir'] = os.path.join(media_dir, product, work_dir_contents[0])
-                    logit('debug', 'found previously extracted work_dir {}'.format(product))
+                    install_logger.debug('found previously extracted work_dir {}'.format(product))
 
             else:
-                logit('warn', 'skipping {}'.format(product))
+                install_logger.warning('skipping {}'.format(product))
 
     return products
-
