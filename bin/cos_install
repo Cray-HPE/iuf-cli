@@ -23,7 +23,7 @@ install_logger = install_logger_file_init()
 
 STAGES = OrderedDict({
     "hello": main_ctrl.hello,
-    "get_binaries": main_ctrl.get_binaries,
+    "get_products": main_ctrl.get_prods,
     "install": main_ctrl.install,
     "check_pods": main_ctrl.check_pods,
     "merge_cos_integration": main_ctrl.merge_cos_integration,
@@ -143,6 +143,7 @@ def process_install(cmdline_args):
         for stage in stages_list:
             if stage in args_dict['run_stages'] and not got_first_stage:
                 begin_stage = stage
+                end_stage = stage
                 got_first_stage = True
             elif stage in args_dict['run_stages']:
                 end_stage = stage
@@ -170,8 +171,7 @@ def process_install(cmdline_args):
 
     for stage in stages_list:
         if stage in stages:
-            install_logger.info("Would exec {}".format(stage))
-            #STAGES[stage](args_dict)
+            STAGES[stage](args_dict)
 
 def process_branch_update(args):
     """Process the arguments to the branch subparser"""

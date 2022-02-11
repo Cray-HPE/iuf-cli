@@ -14,10 +14,14 @@ import argparse
 import datetime
 import json
 import os
+from packaging import version as vers_mod
 import sys
 import textwrap
 import time
 import re
+
+from pprint import pprint
+from utils.InstallLogger import get_install_logger
 
 import yaml #pylint: disable=import-error
 
@@ -29,8 +33,9 @@ from utils.InstallerUtils import getenv,flushprint #pylint: disable=wrong-import
 
 # pylint: disable=consider-using-f-string
 
-host = getenv('NCN_NAME')
+host = "lemondrop-ncn-m001"
 connection = utils.CmdInterface(host)
+install_logger = get_install_logger(__name__)
 
 def get_binaries(args):
     """Get the cos, sle, and slingshot-host packages."""
@@ -53,7 +58,7 @@ def get_binaries(args):
                                         whereto=BUILD_DIR,
                                         onepackage=onepackage)
     packages_dict = {"packages": packages}
-    outfile = os.path.join(LOCAL_WORKSPACE_TMP,
+    outfile = os.path.join(get_dirs(args, "state"),
                            "{}-packages.yaml".format(product))
 
     print("dumping {} to {}".format(packages_dict, outfile))
@@ -61,58 +66,43 @@ def get_binaries(args):
     with open(outfile, 'w', encoding='UTF-8') as fhandle:
         yaml.dump(packages_dict, fhandle)
 
+def get_dirs(args,which=None):
+        media_dir = args.get("media_dir", os.getcwd())
+        state_dir = args.get("state_dir", os.getcwd())
+        if which == "state":
+            return state_dir
+        elif which == "media":
+            return media_dir
+        else:
+            return media_dir, state_dir
+
+
+def get_prods(args):
+    """A passthrough function to InstallerUtils.get_products."""
+
+    media_dir, state_dir = get_dirs(args)
+
+    location_dict = utils.get_products(media_dir)
+    filepath = os.path.join(state_dir, "location_dict.yaml")
+    with open(filepath, "w", encoding="UTF-8") as fhandle:
+        yaml.dump(location_dict, fhandle)
+
 
 def install(args):
     """Install COS, Slingshot-host, or SLE"""
 
-    product = args.product
-    if product not in ['cos', 'slingshot_host', 'sle']:
-        raise InstallError("WARNING: Undefined product: {}".format(product))
+    media_dir, state_dir = get_dirs(args)
 
-    with open(os.path.join(LOCAL_WORKSPACE_TMP,
-                           "{}-packages.yaml".format(product)),
-            encoding='UTF-8') as fhandle:
+    with open(os.path.join(state_dir, LOCATION_DICT), 'r',
+              encoding='UTF-8') as fhandle:
         location_dict = yaml.full_load(fhandle)
 
-    if product in ['cos', 'slingshot_host']:
-        file_name = location_dict['packages'][0]
-        flushprint("(first)tar cmd: tar --exclude='*/*' -tzf {}".format(file_name).strip())
-        product_base_dir = connection.sudo("tar --exclude='*/*' -tzf {}".format(file_name)).stdout.replace('/', '').strip()
-        product_dir = os.path.join(os.path.dirname(file_name), product_base_dir)
+    print("location_dict=")
+    pprint(location_dict)
 
-        # Extract and install the tarball.
-        basedir_name = os.path.dirname(file_name)
-        connection.sudo("bash -c 'cd {} && tar xfz {}'".format(basedir_name, file_name))
-
-        connection.sudo('bash -c "cd {} && KUBECONFIG=/etc/kubernetes/admin.conf ./install.sh"'.format(product_dir), warn=True)
-        connection.sudo("rm -r {}".format(product_dir))
-
-        is_ok, expected_repo, found_repos = utils.check_repos(connection, product, file_name)
-
-        if not is_ok:
-            msg = textwrap.dedent("""
-                WARNING: There seems to be a problem installing {}.  There
-                should be a repo matching {}, but the found repos were {}""".format(
-                product, expected_repo, found_repos))
-            raise InstallError(msg)
-
-        return
-
-    # For the SLE isos, the order they are installed shouldn't matter; so
-    # just loop through and install them.
-    for package in location_dict['packages']:
-        product_base_dir = connection.sudo(
-            "tar --exclude='*/*' -tzf {}".format(
-                package
-            ), timeout=1200, warn=True).stdout.replace('/', '').strip()
-        product_dir = os.path.join(os.path.dirname(package), product_base_dir)
-
-        # basedir_name should be BUILD_DIR; this might be safer.
-        basedir_name = os.path.dirname(package)
-        connection.sudo("bash -c 'cd {} && tar xfz {}'".format(basedir_name, package),
-                        timeout=1200, warn=True)
-        connection.sudo('bash -c "cd {} && KUBECONFIG=/etc/kubernetes/admin.conf ./install.sh"'.format(product_dir), warn=True)
-        connection.sudo("rm -r {}".format(product_dir))
+    for prod in location_dict:
+        loc = location_dict[prod]["work_dir"]
+        connection.sudo("./install.sh", cwd=loc)
 
 
 def is_ready(ready):
@@ -144,12 +134,10 @@ def check_pods(args): #pylint: disable=unused-argument
 
     while keep_waiting:
 
-        jobs_list = connection.sudo("KUBECONFIG=/etc/kubernetes/admin.conf kubectl get jobs -A",
-            hide=True).stdout.splitlines()
+        jobs_list = connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf get jobs -A").stdout.splitlines()
         jobs_list = [job for job in jobs_list if 'cos' in job]
 
-        pods_list = connection.sudo("KUBECONFIG=/etc/kubernetes/admin.conf kubectl get pods -A",
-            hide=True).stdout.splitlines()
+        pods_list = connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods -A").stdout.splitlines()
         pods_list = [pod for pod in pods_list if 'cos' in pod]
 
         if not (jobs_list or pods_list):
@@ -171,11 +159,11 @@ def check_pods(args): #pylint: disable=unused-argument
             pod_name = fields[1]
             if 'cos-config' in pod_name or 'cos-image' in pod_name:
                 if not 'completed' in fields[3].lower():
-                    print("found the following pod --not-- running:{}".format(fields))
+                    install_logger.debug("found the following pod --not-- running:{}".format(fields))
                     not_running.append(pod_name)
 
         if not_running:
-            print("not_running={} ==> sleep".format(not_running))
+            install_logger.debug("not_running={} ==> sleep".format(not_running))
             total_time += sleep_time
             time.sleep(sleep_time)
         else:
@@ -192,7 +180,7 @@ def check_pods(args): #pylint: disable=unused-argument
 
 def check_services(args): #pylint: disable=unused-argument
     """Check the cps and nmd services.  Also check dvs and lnet"""
-    services = connection.sudo('KUBECONFIG=/etc/kubernetes/admin.conf kubectl get pods -A').stdout.splitlines()
+    services = connection.sudo('kubectl  --kubeconfig=/etc/kubernetes/admin.conf get pods -A').stdout.splitlines()
     services = [s for s in services if 'nmd' in s or 'cray-cps' in s]
 
     for service in services:
@@ -226,6 +214,7 @@ def check_services(args): #pylint: disable=unused-argument
         if not found_lnet:
             print("WARNING: lnet not found in kernel modules on node {}!".format(node))
 
+
 def sync_ci_tools():
     """Sync any tools the CI process might need to a temp dir on the NCN"""
 
@@ -249,15 +238,16 @@ def setup_git_config():
     connection.sudo("HOME={} git config --global credential.https://api-gw-service-nmn.local.username crayvcs".format(BUILD_DIR))
     connection.sudo("HOME={} git config --global url.https://api-gw-service-nmn.local.insteadof https://vcs.{}.dev.cray.com".format(BUILD_DIR, host_shortname))
 
+
 def backup_config_repos():
     """Backup the configuration repositories in git"""
-    host_shortname = getenv('NCN_NAME').split("-")[0]
+    host_shortname = host.split("-")[0]
 
     backup_dir = BUILD_DIR + "/" + CI_DATE
 
     connection.sudo("mkdir -p {}".format(backup_dir))
 
-    config_repos = connection.sudo("KUBECONFIG=/etc/kubernetes/admin.conf kubectl get cm -n services cray-product-catalog -o custom-columns=DATA:.data | grep clone_url | cut -d: -f2- | sort -u").stdout.splitlines()
+    config_repos = connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf get cm -n services cray-product-catalog -o custom-columns=DATA:.data | grep clone_url | cut -d: -f2- | sort -u").stdout.splitlines()
 
     for repo in config_repos:
         # yeah, yeah
@@ -289,20 +279,21 @@ def backup_config_repos():
         connection.sudo("git -C {} config credential.https://api-gw-service-nmn.local.username crayvcs".format(clonedir))
         connection.sudo("git -C {} config url.https://api-gw-service-nmn.local.insteadof https://vcs.{}.dev.cray.com".format(clonedir,host_shortname))
 
+
 def merge_cos_integration(args):
     """Merge the product git branch to the working config"""
 
     # first things first, get a copy of all the config repos
     print("Cloning all of the configuration repositories...")
-    git_checkout_dir = BUILD_DIR + "/" + CI_DATE
+    git_checkout_dir = get_dirs(args, "state")
     cos_checkout_dir = git_checkout_dir + "/cos-config-management"
 
     # second, see what branches we want to work with
-    _, integration_branch = curr_cos_branch()
+    _, integration_branch = curr_cos_branch(args)
     import_branch = None
 
     cos_version = getenv("COS_VERSION")
-    import_branch_cmd = "KUBECONFIG=/etc/kubernetes/admin.conf kubectl get cm -n services cray-product-catalog -o custom-columns=DATA:.data.cos | grep {} | grep import_branch | tail -1 | cut -d: -f2-".format(cos_version)
+    import_branch_cmd = "kubectl --kubeconfig=/etc/kubernetes/admin.conf get cm -n services cray-product-catalog -o custom-columns=DATA:.data.cos | grep {} | grep import_branch | tail -1 | cut -d: -f2-".format(cos_version)
     import_branch_result = connection.sudo(import_branch_cmd).stdout.splitlines()
 
     for line in import_branch_result:
@@ -359,6 +350,7 @@ def merge_cos_integration(args):
         print("Checkout of {} failed!".format(integration_branch))
         return False
 
+
 def ncn_personalization(args): #pylint: disable=unused-argument
     """Do the NCN personalization as described in HPE Cray EX System
     Installation and Configuration Guide (1.4.2_S-8000 RevA)"""
@@ -369,7 +361,7 @@ def ncn_personalization(args): #pylint: disable=unused-argument
         "sat":"sat-config-management"
     }
 
-    pzation_base_file = "ncn-personalization.{}.{}.json".format(host, get_cos_version())
+    pzation_base_file = "ncn-personalization.{}.{}.json".format(host, get_cos_version(args))
 
     # Get a list of all worker and manaagement ncns. We need to skip the
     # ncn-s00* nodes for now.  So use the m_ncn_tuples + w_ncn_tuples and
@@ -378,7 +370,8 @@ def ncn_personalization(args): #pylint: disable=unused-argument
     w_ncn_tuples = utils.get_hosts(connection, "w0")
     all_ncn_tuples = w_ncn_tuples + m_ncn_tuples
 
-    with open(os.path.join('src/templates', pzation_base_file), 'r', encoding='UTF-8') as fhandle:
+    install_logger.debug("ncn_personalization, working here: {}".format(os.getcwd()))
+    with open(os.path.join('../src/templates', pzation_base_file), 'r', encoding='UTF-8') as fhandle:
         pzation_template = json.load(fhandle)
     layers = pzation_template["layers"]
 
@@ -398,11 +391,11 @@ def ncn_personalization(args): #pylint: disable=unused-argument
         layer_i = find_substr(repo)
         pzation_template["layers"][layer_i]["commit"] = commit
 
-    pzation_file = os.path.join(LOCAL_WORKSPACE_TMP, pzation_base_file)
+    pzation_file = os.path.join(get_dirs(args, "state"), pzation_base_file)
     remote_pzation_file = os.path.join('/root', pzation_base_file)
     with open(pzation_file, 'w', encoding='UTF-8') as fhandle:
         json.dump(pzation_template, fhandle)
-    connection.put(pzation_file, '/root')
+    connection.put(pzation_file, remote_pzation_file)
 
     ncn_list_xnames = [n[0] for n in all_ncn_tuples]
 
@@ -420,10 +413,10 @@ def ncn_personalization(args): #pylint: disable=unused-argument
     utils.wait_for_ncn_personalization(connection, ncn_list_xnames)
 
 
-def curr_cos_branch():
+def curr_cos_branch(args):
     """Find the integration branch corresponding to the current COS version"""
 
-    maj_min_v = get_cos_version()
+    maj_min_v = get_cos_version(args)
     branches = utils.ls_remote(connection, "cos-config-management").splitlines()
     found_branch = None
 
@@ -456,20 +449,42 @@ def curr_cos_branch():
     return None, None
 
 
-def get_cos_version(short=True):
+def get_cos_version(args, short=True):
     """Get the COS version."""
-    full_cos_version = getenv("COS_VERSION").replace('cos-', '')
-    cos_version_list = full_cos_version.split('.')
+
+    # Use static variables so the yaml doesn't need to be loaded every time.
+    if hasattr(get_cos_version, "full_version") and hasattr(get_cos_version, "short_version"):
+        if short:
+            return get_cos_version.short_version
+        else:
+            return get_cos_version.full_version
+
+    # If we haven't returned, full_version and short_version do not exist.
+    # read the yaml and set them.
+    state_dir = get_dirs(args, "state")
+    with open(os.path.join(state_dir, LOCATION_DICT), "r",
+              encoding='UTF-8') as fhandle:
+        locs_dict = yaml.load(fhandle, yaml.SafeLoader)
+
+    cos_versions = [ld.replace('cos-', '') for ld in locs_dict.keys() if 'cos' in ld]
+    sorted_vers = sorted(cos_versions, key=vers_mod.Version)
+    highest_vers = sorted_vers[-1]
+
+    version_list = highest_vers.split('.')
+    short_vers = "{}.{}".format(version_list[0], version_list[1])
+
+    get_cos_version.short_version = short_vers
+    get_cos_version.full_version = highest_vers
     if short:
-        return "{}.{}".format(cos_version_list[0], cos_version_list[1])
+        return short_vers
     else:
-        return full_cos_version
+        return highest_vers
 
 
 def wait_for_pod(job_id):
     """Wait for the COS after creating an image"""
 
-    out = connection.sudo("KUBECONFIG=/etc/kubernetes/admin.conf kubectl -n ims describe job {}".format(job_id)).stdout.splitlines()
+    out = connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf -n ims describe job {}".format(job_id)).stdout.splitlines()
     created_line = None
     for line in out:
         if 'created pod' in line.lower():
@@ -498,10 +513,10 @@ def wait_for_pod(job_id):
     return pod_name, resultant_image_id, etag
 
 
-def customize_cos_compute_image(image_info):
+def customize_cos_compute_image(args, image_info):
     """Customize a COS compute image."""
 
-    cos_version = get_cos_version()
+    cos_version = get_cos_version(args)
     date = datetime.datetime.today().strftime("%Y%m%d")
     #configuration_name = "cos-config-{}-ci-{}".format(cos_version, date))
     existing_sessions = connection.sudo("cray cfs sessions list --format json |jq '.[].name'").stdout.splitlines()
@@ -574,16 +589,16 @@ def build_cos_compute_image(args): #pylint: disable=unused-argument
     for COS.
     """
 
-    commit, name = curr_cos_branch()
+    commit, name = curr_cos_branch(args)
 
     if commit is None:
         raise COSProblem("WARNING: Could not determine COS branch, so cannot build a compute image")
 
     # Update the configuration.
 
-    cos_version = get_cos_version()
+    cos_version = get_cos_version(args)
     config_file = "cos-config-{}-nogpu-integration.json".format(cos_version)
-    local_config_path = os.path.join(LOCAL_WORKSPACE_TMP, config_file)
+    local_config_path = os.path.join(get_dirs(args, "state"), config_file)
 
     # Retrieve And Modify An Existing Configuration For COS.
     errout = connection.sudo("cray cfs configurations describe {} --format json".format(name),
@@ -655,7 +670,7 @@ def build_cos_compute_image(args): #pylint: disable=unused-argument
     image_info['resultant_image_id'] = resultant_image_id
     image_info['etag'] = etag
     image_info['pod_name'] = pod_name
-    customize_cos_compute_image(image_info)
+    customize_cos_compute_image(args, image_info)
 
 
 def check_analytics_mount(node):
@@ -689,8 +704,7 @@ def unload_dvs_and_lnet(args):
     connection.sudo("scp ncn-w001:/opt/cray/dvs/default/sbin/dvs_reload_ncn /tmp")
 
     flushprint("get all pods ...")
-    all_pods = connection.sudo("KUBECONFIG=/etc/kubernetes/admin.conf kubectl get pods -Ao wide",
-                               hide=True).stdout.splitlines()
+    all_pods = connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods -Ao wide").stdout.splitlines()
 
     # Clone the analytics repo.  It will be used to unmount analytics on the worker.
     analytics_dir = os.path.join(BUILD_DIR, 'analytics-config-management')
@@ -736,7 +750,7 @@ def unload_dvs_and_lnet(args):
         for uai in uais:
             fields = uai.split()
             uai_name = fields[1]
-            connection.sudo("KUBECONFIG=/etc/kubernetes/admin.conf kubectl delete pod -n user {}".format(uai_name))
+            connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf delete pod -n user {}".format(uai_name))
 
         # Unmount PE
         # Run the following sudo commands with 'warn=True' incase PE isn't installed.
@@ -756,7 +770,7 @@ def unload_dvs_and_lnet(args):
         connection.sudo("cray cps deployment update --nodes {}".format(w_node))
 
         # Make sure the reference count for dvs is 0.
-        lsmods = connection.sudo("ssh {} 'lsmod'".format(w_node), hide=True).stdout.splitlines()
+        lsmods = connection.sudo("ssh {} 'lsmod'".format(w_node)).stdout.splitlines()
         skip_reload = False
         try:
             dvs_mod = [m for m in lsmods if m.startswith('dvs ')][0]
@@ -799,7 +813,7 @@ def unload_dvs_and_lnet(args):
         # Note the 'for' loop below is only for record-keeping.  The dvs,
         # lustre, and craytrace rpms need to be uninstalled in a specific
         # order because of dependencies.
-        rpms = connection.sudo("ssh {} 'rpm -qa'".format(w_node), hide=True).stdout.splitlines()
+        rpms = connection.sudo("ssh {} 'rpm -qa'".format(w_node)).stdout.splitlines()
         old_rpms = []
         for rpm in rpms:
             if any(name in rpm for name in ['dvs', 'craytrace', 'lustre']):
@@ -831,7 +845,7 @@ def unload_dvs_and_lnet(args):
         # wait for ncn-personalization to finish.
         utils.wait_for_ncn_personalization(connection, [w_xname])
 
-        rpms = connection.sudo("ssh {} 'rpm -qa'".format(w_node), hide=True).stdout.splitlines()
+        rpms = connection.sudo("ssh {} 'rpm -qa'".format(w_node)).stdout.splitlines()
         new_rpms = []
         for rpm in rpms:
             if any(name in rpm for name in ['dvs', 'craytrace', 'lustre']):
@@ -845,11 +859,13 @@ def unload_dvs_and_lnet(args):
     # Add the UAIs back to the worker.  Note this is done earlier in the guide
     # (at https://stash.us.cray.com/projects/SHASTA-OS/repos/cos-docs/browse/portal/developer-portal/install/Upgrade_and_Configure_COS.md)
     # But since it's not done for each particular worker, it needs to be done out of order.
-    connection.sudo("KUBECONFIG=/etc/kubernetes/admin.conf kubectl label node ncn-m001 uas-")
+    connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf label node ncn-m001 uas-")
+
 
 def session_templates_sort(element):
     """A function to pass to sort."""
     return element["name"]
+
 
 def boot_cos(args):
     """Boot a COS image"""
@@ -878,14 +894,14 @@ def boot_cos(args):
         working_template["boot_sets"]["compute"]["etag"] = bos_info["etag"]
         working_template["boot_sets"]["compute"]["path"] = "s3://boot-images/{}/manifest.json".format(bos_info["image_id"])
         working_template["cfs"]["configuration"] = bos_info["configuration"]
-        local_bos_file = os.path.join(LOCAL_WORKSPACE_TMP, "bos_sessiontemplate.json")
+        local_bos_file = os.path.join(get_dirs(args, "state"), "bos_sessiontemplate.json")
         remote_bos_file = os.path.join(BUILD_DIR, "bos_sessiontemplate.json")
         with open(local_bos_file, 'w', encoding='UTF-8') as bos_fh:
             json.dump(working_template, bos_fh)
         connection.put(local_bos_file, remote_bos_file)
 
         date = datetime.datetime.today().strftime("%Y%m%d")
-        sessiontemplate_name = "cos-sessiontemplate-{}-{}".format(get_cos_version(), date)
+        sessiontemplate_name = "cos-sessiontemplate-{}-{}".format(get_cos_version(args), date)
 
         connection.sudo("cray bos sessiontemplate create --file {} --name {} ".format(
             remote_bos_file, sessiontemplate_name))
@@ -898,7 +914,7 @@ def boot_cos(args):
     # Wait for the BOS session to"complete" or the BOS pod to be in a "Completed" state
     while True:
         in_progress, complete = json.loads(connection.sudo("cray bos session describe {} --format json | jq -r '[.in_progress, .complete]'".format(boot_session_job_id[4:])).stdout)
-        pod_status = connection.sudo("KUBECONFIG=/etc/kubernetes/admin.conf kubectl get pods -n services | grep {} | awk '{{print $3}}'".format(boot_session_job_id)).stdout.replace("\n", "")
+        pod_status = connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods -n services | grep {} | awk '{{print $3}}'".format(boot_session_job_id)).stdout.replace("\n", "")
         elapsed = (datetime.datetime.now() - boot_start_time).seconds
         flushprint("Waited {} of {} seconds".format(elapsed, BOOT_TIMOUT_SECS))
         if (complete and not in_progress) or "Completed" in pod_status:
@@ -995,6 +1011,10 @@ def main():
     get_binaries_sp.add_argument("product", action="store",
         help="product to fetch; one of cos, sle, or slingshot_host")
     get_binaries_sp.set_defaults(func=get_binaries)
+
+    get_prods_sp = subparsers.add_parser("get_prods")
+    get_prods_sp.add_argument("args")
+    get_prods_sp.set_defaults(func=get_prods)
 
     cleanup_sp = subparsers.add_parser("cleanup")
     cleanup_sp.set_defaults(func=cleanup)

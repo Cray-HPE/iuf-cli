@@ -29,26 +29,8 @@ class SyntaxError(Exception):
     """A wrapper for raising yaml or json syntax errors."""
     pass
 
-try:
-    CRAY_RELEASE_DIR
-except NameError:
-    CRAY_RELEASE_DIR =  "/admin/cray/release"
 
-try:
-    REMOTE_PROJECT_DIR
-except NameError:
-    REMOTE_PROJECT_DIR = os.path.join(CRAY_RELEASE_DIR, 'project')
-try:
-    REMOTE_PROJECT_OLDJOBS_DIR
-except NameError:
-    REMOTE_PROJECT_OLDJOBS_DIR = os.path.join(REMOTE_PROJECT_DIR, 'oldjobs')
-
-BUILD_ID = datetime.datetime.today().strftime("%Y%m%d-%H%M%S")
-BUILD_DIR = os.path.join(REMOTE_PROJECT_DIR, BUILD_ID)
-CI_DATE = BUILD_ID
-
-LOCAL_WORKSPACE_TMP = os.path.join(CRAY_RELEASE_DIR, BUILD_ID, "tmp")
-BOS_INFO_FILE = os.path.join(LOCAL_WORKSPACE_TMP, 'bos-info.json')
+LOCATION_DICT = "location_dict.yaml"
 
 BOOT_POLL_SECS = 60
 BOOT_TIMOUT_SECS = 3600
