@@ -148,14 +148,14 @@ def wait_for_pod(connection, pod_name, timeout=1200, delete=False):
                 fields = pod.split()
                 running = fields[3]
         if found and delete is False:
-            print("found running and delete == False ...")
+            install_logger.debug("found running and delete == False ...")
             if 'running' in running.lower() or 'completed' in running.lower():
                 keep_waiting = False
             elif running.lower() =='imagepullbackoff':
-                print("WARNING: pod {} in error state: {}".format(pod_name, running))
+                install_logger.warning("WARNING: pod {} in error state: {}".format(pod_name, running))
                 keep_waiting = False
             else:
-                print("(else) running={} ... no action performed".format(running))
+                install_logger.debug("(else) running={} ... no action performed".format(running))
         elif not found and delete is True:
             # The pod has been deleted, so quit waiting.
             keep_waiting = False
@@ -163,7 +163,7 @@ def wait_for_pod(connection, pod_name, timeout=1200, delete=False):
         time_waited += sleep_time
         if time_waited >= timeout:
             action_str = "delete" if delete else "complete"
-            print("WARNING: Timed out waiting {} seconds for pod {} to {}".format(time_waited, pod_name, action_str))
+            install_logger.warning("WARNING: Timed out waiting {} seconds for pod {} to {}".format(time_waited, pod_name, action_str))
             keep_waiting = False
 
 
@@ -178,7 +178,7 @@ def git_clone(connection, repo, location):
     try:
         connection.sudo('bash -c "cd {} && git pull"'.format(os.path.join(location, repo)))
     except Exception as ex:
-        print("caught exception={} ==> repo doesn't exist", ex)
+        install_logger.error("caught exception={} ==> repo doesn't exist", ex)
         connection.sudo('bash -c "cd {} && git clone {}"'.format(location, url), warn=True)
 
     return os.path.join(location, repo)
@@ -233,7 +233,7 @@ def download_artifacts(connection, repo, version, release_dist=None,
     for dl_url in dl_urls:
         download_to_mgt_node(connection, dl_url, location)
         locations.append(os.path.join(location, os.path.basename(dl_url)))
-        print("downloaded {} to {}".format(dl_url, location))
+        install_logger.debug("downloaded {} to {}".format(dl_url, location))
 
     return locations
 
@@ -254,25 +254,25 @@ def wait_for_ncn_personalization(connection, xnames, timeout=600, sleep_time=10)
         for xname in xnames:
             desc = json.loads(connection.sudo("cray cfs components describe {} --format json".format(xname)).stdout)
             if desc["configurationStatus"].lower() != "configured":
-                print("waiting on {}".format(xname))
+                install_logger.debug("waiting on {}".format(xname))
                 found_pending = True
             if desc["errorCount"] != 0:
-                print("WARNING: Found error on node {} while querying the NCN personalization process".format(xname))
+                install_logger.warning("WARNING: Found error on node {} while querying the NCN personalization process".format(xname))
 
         tdiff = datetime.datetime.now() - start
         seconds_waited = tdiff.total_seconds()
         if found_pending:
             time.sleep(sleep_time)
-            print("(found_pending) seconds_waited={}".format(seconds_waited))
+            install_logger.debug("(found_pending) seconds_waited={}".format(seconds_waited))
         else:
             keep_waiting = False
 
         if seconds_waited >= timeout:
-            print("WARNING: timed out waiting for components to go from a "
+            install_logger.warning("WARNING: timed out waiting for components to go from a "
                    "pending to configured status during ncn personalization")
             keep_waiting = False
         else:
-            print("(else, bottom of loop) waited={} seconds, keep_waiting={}, found_pending={}".format(seconds_waited, keep_waiting, found_pending))
+            install_logger.debug("(else, bottom of loop) waited={} seconds, keep_waiting={}, found_pending={}".format(seconds_waited, keep_waiting, found_pending))
         sys.stdout.flush()
 
 
@@ -326,7 +326,7 @@ class CmdInterface:
         # exception; we might want to do something similar.  At least with
         # subprocess we can examine the error.
         if result.returncode != 0:
-            print('Warning: "{}" returned non-zero value {}.  stderr={}'.format(
+            install_logger.warning('Warning: "{}" returned non-zero value {}.  stderr={}'.format(
                   cmd.split(), result.returncode, result.stderr))
         return result
 
