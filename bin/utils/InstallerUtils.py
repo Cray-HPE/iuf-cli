@@ -104,7 +104,7 @@ def flushprint(txt):
 
 def format_url(connection, repo):
     """Format a git url to include the username and password"""
-    git_pw = connection.sudo("KUBECONFIG=/etc/kubernetes/admin.conf kubectl get secret -n services vcs-user-credentials --template={{.data.vcs_password}} | base64 --decode").stdout
+    git_pw = connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf get secret -n services vcs-user-credentials --template={{.data.vcs_password}} | base64 --decode").stdout
     git_user = 'crayvcs'
 
     return "https://{}:{}@api-gw-service-nmn.local/vcs/cray/{}.git".format(git_user, git_pw, repo)
@@ -140,7 +140,7 @@ def wait_for_pod(connection, pod_name, timeout=1200, delete=False):
     time_waited = 0
     sleep_time = 10
     while keep_waiting:
-        pods = connection.sudo("KUBECONFIG=/etc/kubernetes/admin.conf kubectl get pods -Ao wide", hide=True).stdout.splitlines()
+        pods = connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods -Ao wide").stdout.splitlines()
         found = False
         for pod in pods:
             if pod_name in pod:
@@ -318,15 +318,23 @@ class CmdInterface:
         """
 
         # We might need to fiddle with this some.
-        result = subprocess.run(cmd.split(), stdout=subprocess.PIPE,
-                                stderr=subprocess.PIPE, shell=False,
-                                check=False, universal_newlines=True)
+        install_logger.debug('  >> {}'.format(cmd))
+
+        if '|' in cmd:
+            install_logger.warning("found a pipe in the command.  Using `shell=True`.")
+            result = subprocess.run(cmd, stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE, shell=True,
+                                    check=False, universal_newlines=True, **kwargs)
+        else:
+            result = subprocess.run(cmd.split(), stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE, shell=False,
+                                    check=False, universal_newlines=True, **kwargs)
 
         # Check the return code.  At this point, fabric would throw an
         # exception; we might want to do something similar.  At least with
         # subprocess we can examine the error.
         if result.returncode != 0:
-            install_logger.warning('Warning: "{}" returned non-zero value {}.  stderr={}'.format(
+            install_logger.warning('"{}" returned non-zero value {}.  stderr={}'.format(
                   cmd.split(), result.returncode, result.stderr))
         return result
 
