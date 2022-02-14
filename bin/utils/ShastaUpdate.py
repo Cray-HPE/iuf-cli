@@ -25,6 +25,10 @@ from utils.InstallLogger import get_install_logger
 
 import yaml #pylint: disable=import-error
 
+from utils.InstallLogger import get_install_logger
+
+install_logger = get_install_logger(__name__)
+
 CWD = os.getcwd()
 
 from utils.vars import *
@@ -46,7 +50,7 @@ def get_binaries(args):
                     "slingshot_host": getenv("SLINGSHOT_HOST_VERSION")}
     dist = None if product != "sle" else getenv("RELEASE_DIST")
     prod_url = getenv("%s_URL" % product.upper())
-    print("Working here: {}".format(os.getcwd()))
+    install_logger.debug("Working here: {}".format(os.getcwd()))
 
     if product == "sle":
         onepackage = False
@@ -61,10 +65,11 @@ def get_binaries(args):
     outfile = os.path.join(get_dirs(args, "state"),
                            "{}-packages.yaml".format(product))
 
-    print("dumping {} to {}".format(packages_dict, outfile))
+    install_logger.debug("dumping {} to {}".format(packages_dict, outfile))
 
     with open(outfile, 'w', encoding='UTF-8') as fhandle:
         yaml.dump(packages_dict, fhandle)
+
 
 def get_dirs(args,which=None):
         media_dir = args.get("media_dir", os.getcwd())
@@ -151,7 +156,7 @@ def check_pods(args): #pylint: disable=unused-argument
             if 'cos-config' in job_name or 'cos-image' in job_name:
                 completions = fields[2]
                 if not is_ready(completions):
-                    print("found the following job --not-- running:{}".format(fields))
+                    install_logger.warning("found the following job --not-- running:{}".format(fields))
                     not_running.append(job_name)
 
         for pod in pods_list:
@@ -159,7 +164,7 @@ def check_pods(args): #pylint: disable=unused-argument
             pod_name = fields[1]
             if 'cos-config' in pod_name or 'cos-image' in pod_name:
                 if not 'completed' in fields[3].lower():
-                    install_logger.debug("found the following pod --not-- running:{}".format(fields))
+                    install_logger.warning("found the following pod --not-- running:{}".format(fields))
                     not_running.append(pod_name)
 
         if not_running:
@@ -187,7 +192,7 @@ def check_services(args): #pylint: disable=unused-argument
         service_list = service.split()
         name, status = service_list[1], service_list[3]
         if not status.lower() in ["running", "completed"]:
-            print("WARNING: service {} is not ready.  It's status is:\n\t{}".format(name, service))
+            install_logger.warning("WARNING: service {} is not ready.  It's status is:\n\t{}".format(name, service))
 
     w_ncn_tuples = utils.get_hosts(connection, 'w0')
     w_ncns = [w[1] for w in w_ncn_tuples]
@@ -209,10 +214,10 @@ def check_services(args): #pylint: disable=unused-argument
                 break
 
         if not found_dvs:
-            print("WARNING: dvs not found in kernel modules on node {}!".format(node))
+            install_logger.warning("WARNING: dvs not found in kernel modules on node {}!".format(node))
 
         if not found_lnet:
-            print("WARNING: lnet not found in kernel modules on node {}!".format(node))
+            install_logger.warning("WARNING: lnet not found in kernel modules on node {}!".format(node))
 
 
 def sync_ci_tools():
@@ -284,8 +289,13 @@ def merge_cos_integration(args):
     """Merge the product git branch to the working config"""
 
     # first things first, get a copy of all the config repos
+<<<<<<< HEAD
     print("Cloning all of the configuration repositories...")
     git_checkout_dir = get_dirs(args, "state")
+=======
+    install_logger.debug("Cloning all of the configuration repositories...")
+    git_checkout_dir = BUILD_DIR + "/" + CI_DATE
+>>>>>>> integration
     cos_checkout_dir = git_checkout_dir + "/cos-config-management"
 
     # second, see what branches we want to work with
@@ -301,14 +311,14 @@ def merge_cos_integration(args):
         break
 
     if import_branch is None:
-        print("Error: Unable to retrieve import branch")
-        print("  Command executed: {}".format(import_branch_cmd))
+        install_logger.error("Error: Unable to retrieve import branch")
+        install_logger.debug("  Command executed: {}".format(import_branch_cmd))
         return False
     else:
-        print("Importing configuration from {}".format(import_branch))
+        install_logger.debug("Importing configuration from {}".format(import_branch))
 
     # third, checkout (or create) the integration branch
-    print("Checking to see if {} already exists".format(integration_branch))
+    install_logger.debug("Checking to see if {} already exists".format(integration_branch))
     found_integration = False
     branch_list = connection.sudo("git -C {} branch".format(cos_checkout_dir)).stdout.splitlines()
 
@@ -320,12 +330,12 @@ def merge_cos_integration(args):
     checkout_ok = False
     if found_integration:
         # it exists, check it out
-        print("Using existing integration branch")
+        install_logger.debug("Using existing integration branch")
         checkout_ok = connection.sudo("git -C {} checkout {}".format(
             cos_checkout_dir,integration_branch)).ok
     else:
         # doesn't exist, create it based on the import branch
-        print("Unable to locate integration branch, creating it based on {}".format(import_branch))
+        install_logger.debug("Unable to locate integration branch, creating it based on {}".format(import_branch))
         result = connection.sudo("git -C {} checkout {}".format(cos_checkout_dir,import_branch))
         if result.ok:
             result = connection.sudo("git -C {} checkout -b {}".format(
@@ -336,18 +346,18 @@ def merge_cos_integration(args):
 
     # fourth, merge the import branch to the integration branch
     if checkout_ok:
-        print("Merge branch {} into {}".format(import_branch,integration_branch))
+        install_logger.debug("Merge branch {} into {}".format(import_branch,integration_branch))
         merge_ok = connection.sudo("git -C {} merge -m \"Merge branch '{}' into {}\" {}".format(
             cos_checkout_dir,import_branch,integration_branch,import_branch)).ok
         if merge_ok:
             push_ok = connection.sudo("git -C {} push".format(cos_checkout_dir)).ok
             if not push_ok:
-                print("Unable to push merged changes back to origin")
+                install_logger.debug("Unable to push merged changes back to origin")
         else:
-            print("Merge failed!")
+            install_logger.error("Merge failed!")
             return False
     else:
-        print("Checkout of {} failed!".format(integration_branch))
+        install_logger.error("Checkout of {} failed!".format(integration_branch))
         return False
 
 
@@ -494,11 +504,11 @@ def wait_for_pod(job_id):
         fields = created_line.split()
         event_type, event_reason = fields[0], fields[1]
         pod_name = fields[-1]
-        flushprint("type = {}, event = {}, pod_name = {}".format(event_type,
+        install_logger.debug("type = {}, event = {}, pod_name = {}".format(event_type,
             event_reason, pod_name))
         utils.wait_for_pod(connection, pod_name)
     else:
-        flushprint("WARNING: Unable to get pod for job id {}".format(job_id))
+        install_logger.warning("WARNING: Unable to get pod for job id {}".format(job_id))
         return None, None, None
 
     # Get the image id and etag
@@ -531,7 +541,7 @@ def customize_cos_compute_image(args, image_info):
             break
 
     configuration_name = "cos-{}-nogpu-integration".format(cos_version)
-    flushprint("(customize_cos_compute_image)session_name={}, cos_version={}, configuration_name={}".format(
+    install_logger.debug("(customize_cos_compute_image)session_name={}, cos_version={}, configuration_name={}".format(
         session_name, cos_version, configuration_name))
     cmd = "cray cfs sessions create --name {} --configuration-name {} \
            --target-definition image --target-group Compute {} --format json".format(
@@ -553,23 +563,23 @@ def customize_cos_compute_image(args, image_info):
         if status == "complete" and succeeded == "true":
             keep_going = False
             finished = True
-            flushprint("Finished waiting for {}".format(session_name))
+            install_logger.debug("Finished waiting for {}".format(session_name))
         elif status == "complete" and succeeded == "false":
             raise COSProblem("The image customization failed!")
         else:
-            flushprint("Still waiting for {}.  status={}, succeeded={}".format(
+            install_logger.debug("Still waiting for {}.  status={}, succeeded={}".format(
                        session_name, status, succeeded))
 
         tdiff = datetime.datetime.now() - start
         seconds_waited = tdiff.total_seconds()
         if seconds_waited > timeout:
-            print("WARNING: timed out waiting for {} to succeed; cannot customize the COS image".format(session_name))
+            install_logger.warning("WARNING: timed out waiting for {} to succeed; cannot customize the COS image".format(session_name))
             keep_going = False
         time.sleep(10)
 
     if finished:
         image_id = connection.sudo("cray cfs sessions describe {} --format json | jq -r .status.artifacts[].result_id".format(session_name)).stdout.strip()
-        flushprint('artifacts cmd="cray artifacts describe boot-images {}/manifest.json --format json"'.format(image_id))
+        install_logger.debug('artifacts cmd="cray artifacts describe boot-images {}/manifest.json --format json"'.format(image_id))
         artifacts = json.loads(connection.sudo("cray artifacts describe boot-images {}/manifest.json --format json".format(image_id)).stdout)
         etag = artifacts['artifact']['ETag'].replace("\\\"", "")
         bos_info = {
@@ -603,7 +613,7 @@ def build_cos_compute_image(args): #pylint: disable=unused-argument
     # Retrieve And Modify An Existing Configuration For COS.
     errout = connection.sudo("cray cfs configurations describe {} --format json".format(name),
                              warn=True)
-    flushprint("out={}, err={}".format(errout.stdout, errout.stderr))
+    install_logger.debug("out={}, err={}".format(errout.stdout, errout.stderr))
     curr_config = json.loads(errout.stdout)
 
     if 'name' in curr_config.keys():
@@ -631,7 +641,7 @@ def build_cos_compute_image(args): #pylint: disable=unused-argument
             """.format(cos_recipe_name))
         raise COSProblem(msg)
     elif len(recipes) != 1:
-        print("WARNING: multiple recipes found for {}.  recipes = {}.  Taking the first one".format(cos_recipe_name, recipes))
+        install_logger.warning("WARNING: multiple recipes found for {}.  recipes = {}.  Taking the first one".format(cos_recipe_name, recipes))
 
     ims_recipe_id = recipes[0]['id']
 
@@ -651,7 +661,7 @@ def build_cos_compute_image(args): #pylint: disable=unused-argument
             --enable-debug False --format json".format(
                 dist.lower(), ims_recipe_id, ims_public_key_id)
     image_result = connection.sudo(cmd)
-    print("result of image create: out={}, err={}".format(image_result.stdout, image_result.stderr))
+    install_logger.debug("result of image create: out={}, err={}".format(image_result.stdout, image_result.stderr))
 
     # Load the resulting json just so that if there is any kind of error,
     # it's caught now (because the json won't load right).
@@ -664,7 +674,7 @@ def build_cos_compute_image(args): #pylint: disable=unused-argument
     if any( x is None for x in [pod_name, resultant_image_id, etag]):
         raise COSProblem("WARNING: Cannot create the modified cos image, pod_name={}".format(pod_name))
 
-    flushprint("Built COS image with a pod named {}, resultant_image_id={}, etag={}".format(
+    install_logger.debug("Built COS image with a pod named {}, resultant_image_id={}, etag={}".format(
         pod_name, resultant_image_id, etag))
 
     image_info['resultant_image_id'] = resultant_image_id
@@ -692,7 +702,7 @@ def check_analytics_mount(node):
             keep_waiting = False
 
         if waited >= timeout:
-            print("WARNING: Could not unmount the dvs analytics mounts on {}".format(node))
+            install_logger.warning("WARNING: Could not unmount the dvs analytics mounts on {}".format(node))
             keep_waiting = False
 
 
@@ -703,8 +713,14 @@ def unload_dvs_and_lnet(args):
 
     connection.sudo("scp ncn-w001:/opt/cray/dvs/default/sbin/dvs_reload_ncn /tmp")
 
+<<<<<<< HEAD
     flushprint("get all pods ...")
     all_pods = connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods -Ao wide").stdout.splitlines()
+=======
+    install_logger.debug("get all pods ...")
+    all_pods = connection.sudo("KUBECONFIG=/etc/kubernetes/admin.conf kubectl get pods -Ao wide",
+                               hide=True).stdout.splitlines()
+>>>>>>> integration
 
     # Clone the analytics repo.  It will be used to unmount analytics on the worker.
     analytics_dir = os.path.join(BUILD_DIR, 'analytics-config-management')
@@ -712,32 +728,32 @@ def unload_dvs_and_lnet(args):
     k8s_job_line = None
     for w_xname, w_node in worker_tuples:
         # Disable cfs.
-        flushprint("disable cfs on {}".format(w_node))
+        install_logger.debug("disable cfs on {}".format(w_node))
         connection.sudo("cray cfs components update {} --enabled false".format(w_xname))
         try:
             if host == "lemondrop-ncn-m001":
-                flushprint("lemondrop has no lustre mounts ==> skip configure_fs_unload.yml play")
+                install_logger.debug("lemondrop has no lustre mounts ==> skip configure_fs_unload.yml play")
             else:
-                flushprint("call dvs_reload_ncn...configure_fs_unload.yaml...")
+                install_logger.debug("call dvs_reload_ncn...configure_fs_unload.yaml...")
                 k8s_job_line = connection.sudo("/tmp/dvs_reload_ncn -c ncn-personalization -p playbooks/configure_fs_unload.yml {}".format(w_xname),
                     timeout=120).stdout.splitlines()
         except Exception as ex:
-            flushprint("WARNING (unload_dvs_and_lnet): Caught exception {}, name={}".format(ex, ex.__class__.__name__))
-            flushprint("dvs_reload_ncn...playbooks/configure_fs_unload.yml timed out on node {}".format(w_node))
+            install_logger.warning("WARNING (unload_dvs_and_lnet): Caught exception {}, name={}".format(ex, ex.__class__.__name__))
+            install_logger.warning("dvs_reload_ncn...playbooks/configure_fs_unload.yml timed out on node {}".format(w_node))
 
         if k8s_job_line:
             k8s_job = k8s_job_line.split()[1].strip()
-            flushprint("k8sjob={}  wait for the pod...".format(k8s_job))
+            install_logger.debug("k8sjob={}  wait for the pod...".format(k8s_job))
             utils.wait_for_pod(connection, k8s_job)
         else:
-            flushprint("WARNING: Unable to get the K8S job name.")
+            install_logger.debug("WARNING: Unable to get the K8S job name.")
 
         # I think we still need to run dvs_reload_ncn to unmount the DVS mounts.
 
         # Unmount PE and Analytics on the worker.
         # Check if cps-cm-pm pod is running on the worker.  Delete it if so.
         cps_cm_pm_pods = [cps for cps in all_pods if 'cray-cps-cm-pm' in cps and w_node in cps]
-        flushprint("(unload_dvs_and_lnet)cps_cm_pods={}".format(cps_cm_pm_pods))
+        install_logger.debug("(unload_dvs_and_lnet)cps_cm_pods={}".format(cps_cm_pm_pods))
         if  cps_cm_pm_pods:
             connection.sudo("cray cps deployment delete --nodes {}".format(w_node))
             pod_line = cps_cm_pm_pods[0]
@@ -754,7 +770,7 @@ def unload_dvs_and_lnet(args):
 
         # Unmount PE
         # Run the following sudo commands with 'warn=True' incase PE isn't installed.
-        flushprint("Unmount PE ...")
+        install_logger.debug("Unmount PE ...")
         connection.sudo("ssh {} '/etc/cray-pe.d/pe_overlay.sh cleanup'".format(w_node), warn=True)
         connection.sudo("ssh {} '/var/opt/cray/pe/pe_images -maxdepth 1 -exec umount -f {{}}\;'".format(w_node), warn=True)
         connection.sudo("ssh {} '/var/opt/cray/pe -maxdepth 1 -exec umount -f {{}} \;'".format(w_node), warn=True)
@@ -784,26 +800,26 @@ def unload_dvs_and_lnet(args):
                 """WARNING: The DVS module ({}) didn't unload properly from {}.
                  Because of this, the COS Software cannot complete on this
                  worker.  fields[2]={}""".format(fields[0], w_node, fields[2]))
-                print(warning_str)
+                install_logger.warning(warning_str)
                 skip_reload = True
 
         # Unload previous COS release’s DVS and LNet services.
         try:
-            flushprint("call dvs_reload_ncn...cray_dvs_unload.yml")
+            install_logger.debug("call dvs_reload_ncn...cray_dvs_unload.yml")
             output = connection.sudo("/tmp/dvs_reload_ncn -D -c ncn-personalization -p playbooks/cray_dvs_unload.yml {}".format(w_xname),
                                      timeout=120).stdout.splitlines()
             k8s_job_line = [line for line in output if line.lower().startswith('services')][0]
         except Exception as ex:
-            flushprint("Caught exception {}, name={}".format(ex, ex.__class__.__name__))
-            flushprint("WARNING (unload_dvs_and_lnet): dvs_reload_ncn...cray_dvs_unload.yml timed out on node {}".format(w_node))
+            install_logger.warning("Caught exception {}, name={}".format(ex, ex.__class__.__name__))
+            install_logger.warning("WARNING (unload_dvs_and_lnet): dvs_reload_ncn...cray_dvs_unload.yml timed out on node {}".format(w_node))
             k8s_job_line = None
 
         if k8s_job_line:
             k8s_job = k8s_job_line.split()[1].strip()
-            flushprint("k8sjob={}.  wait for the pod...".format(k8s_job))
+            install_logger.debug("k8sjob={}.  wait for the pod...".format(k8s_job))
             utils.wait_for_pod(connection, k8s_job)
         else:
-            flushprint("WARNING: Unable to get the K8S job name.")
+            install_logger.warning("WARNING: Unable to get the K8S job name.")
 
         # TODO: We should probably continue here, but we need to make sure
         # of that, and that the check is valid.
@@ -832,10 +848,10 @@ def unload_dvs_and_lnet(args):
         for pkg in pkg_order_res:
             rpm_names = [r for r in old_rpms if re.match(pkg, r)]
             if len(rpm_names) > 1:
-                flushprint("NOTE: removing multiple rpms for package {}:".format(pkg))
-                flushprint("{}".format(rpm_names))
+                install_logger.debug("NOTE: removing multiple rpms for package {}:".format(pkg))
+                install_logger.debug("{}".format(rpm_names))
             for rpm in rpm_names:
-                flushprint("remove {} from {}".format(rpm, w_node))
+                install_logger.debug("remove {} from {}".format(rpm, w_node))
                 connection.sudo("ssh {} 'rpm -e {}'".format(w_node, rpm))
 
         # Enable and run NCN personalization on the worker.
@@ -853,8 +869,8 @@ def unload_dvs_and_lnet(args):
 
         old_rpms = sorted(old_rpms)
         new_rpms = sorted(new_rpms)
-        print("Old dvs, lustre, and craytrace rpms on {}: {}".format(w_node, ','.join(old_rpms)))
-        print("New dvs, lustre, and craytrace rpms on {}: {}".format(w_node, ','.join(new_rpms)))
+        install_logger.debug("Old dvs, lustre, and craytrace rpms on {}: {}".format(w_node, ','.join(old_rpms)))
+        install_logger.debug("New dvs, lustre, and craytrace rpms on {}: {}".format(w_node, ','.join(new_rpms)))
 
     # Add the UAIs back to the worker.  Note this is done earlier in the guide
     # (at https://stash.us.cray.com/projects/SHASTA-OS/repos/cos-docs/browse/portal/developer-portal/install/Upgrade_and_Configure_COS.md)
@@ -881,7 +897,7 @@ def boot_cos(args):
         session_templates.sort(key=session_templates_sort, reverse=True)
         working_template = session_templates[0]
         sessiontemplate_name = working_template["name"]
-        flushprint("Using Previous session template: {}".format(sessiontemplate_name))
+        install_logger.debug("Using Previous session template: {}".format(sessiontemplate_name))
     else:
         # Get the current template and update the etag, image id, and configuration name.
         with open(BOS_INFO_FILE, 'r', encoding='UTF-8') as bos_fh:
@@ -909,21 +925,21 @@ def boot_cos(args):
     boot_start_time = datetime.datetime.now()
     # Now reboot the compute nodes
     boot_session_job_id = connection.sudo("cray bos session create --template-uuid {} --operation reboot --format json | jq -r '.job'".format(sessiontemplate_name)).stdout.replace("\n", "")
-    flushprint("Boot session jobid {} created".format(boot_session_job_id))
+    install_logger.debug("Boot session jobid {} created".format(boot_session_job_id))
 
     # Wait for the BOS session to"complete" or the BOS pod to be in a "Completed" state
     while True:
         in_progress, complete = json.loads(connection.sudo("cray bos session describe {} --format json | jq -r '[.in_progress, .complete]'".format(boot_session_job_id[4:])).stdout)
         pod_status = connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods -n services | grep {} | awk '{{print $3}}'".format(boot_session_job_id)).stdout.replace("\n", "")
         elapsed = (datetime.datetime.now() - boot_start_time).seconds
-        flushprint("Waited {} of {} seconds".format(elapsed, BOOT_TIMOUT_SECS))
+        install_logger.debug("Waited {} of {} seconds".format(elapsed, BOOT_TIMOUT_SECS))
         if (complete and not in_progress) or "Completed" in pod_status:
             break
         elif elapsed > BOOT_TIMOUT_SECS:
             raise TimeOut("Timed Out: stopped waiting for session {}".format(boot_session_job_id))
         time.sleep(BOOT_POLL_SECS)
 
-    flushprint("BOS Session {} finished, complete: {}, in_progress: {}, pod status: {}, elapsed time: {}".format(
+    install_logger.info("BOS Session {} finished, complete: {}, in_progress: {}, pod status: {}, elapsed time: {}".format(
         boot_session_job_id, in_progress, complete, pod_status, elapsed))
 
 def run_hello_world(args):
@@ -944,19 +960,19 @@ def run_hello_world(args):
     if len(slurm_idle_node_lst) <= 0:
         raise UnexpectedState("There are no slurm nodes in an 'idle' state")
 
-    flushprint("Slurm 'idle' nodes: {}".format(slurm_idle_node_lst))
-    flushprint("Slurm nodes not 'idle': {}".format(slurm_down_node_lst))
+    install_logger.debug("Slurm 'idle' nodes: {}".format(slurm_idle_node_lst))
+    install_logger.debug("Slurm nodes not 'idle': {}".format(slurm_down_node_lst))
 
     if len(slurm_down_node_lst) > 0:
-        flushprint("{} of {} slurm node are not in 'idle' state".format(
+        install_logger.debug("{} of {} slurm node are not in 'idle' state".format(
             len(slurm_down_node_lst),
             len(slurm_down_node_lst)+len(slurm_idle_node_lst)))
 
     if len(node_lst) != len(slurm_idle_node_lst):
-        flushprint("WARNING: Not all 'Ready'({}) nodes are in 'idle'({}) state".format(
+        install_logger.warning("WARNING: Not all 'Ready'({}) nodes are in 'idle'({}) state".format(
             len(node_lst), len(slurm_idle_node_lst)))
 
-    flushprint("Running srun on {} nodes".format(len(slurm_idle_node_lst)))
+    install_logger.info("Running srun on {} nodes".format(len(slurm_idle_node_lst)))
 
     srun_node_list =  ",".join(slurm_idle_node_lst)
     cmd = "ssh {} srun -w {} /bin/hostname".format(head_compute_xname,srun_node_list)
@@ -970,7 +986,7 @@ def run_hello_world(args):
             raise TestFailure("unexpected srun output: {} of {}".format(
                 srun_output,slurm_idle_node_lst))
 
-    flushprint("srun hello_world test succeded")
+    install_logger.info("srun hello_world test succeded")
 
 def setup(args): # pylint: disable=unused-argument
     """ Set up directories.  Remove the old job(s) from REMOTE_PROJECT_OLDJOBS_DIR"""
@@ -996,7 +1012,7 @@ def cleanup(args): # pylint: disable=unused-argument
 def hello(args):
     print("hello")
     allout = connection.sudo("echo hello")
-    print("sudo result: stdout={}, stderr={}".format(allout.stdout, allout.stderr))
+    install_logger.debug("sudo result: stdout={}, stderr={}".format(allout.stdout, allout.stderr))
 
 def main():
     """main entry point"""
