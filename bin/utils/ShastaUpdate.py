@@ -289,13 +289,9 @@ def merge_cos_integration(args):
     """Merge the product git branch to the working config"""
 
     # first things first, get a copy of all the config repos
-<<<<<<< HEAD
-    print("Cloning all of the configuration repositories...")
-    git_checkout_dir = get_dirs(args, "state")
-=======
     install_logger.debug("Cloning all of the configuration repositories...")
-    git_checkout_dir = BUILD_DIR + "/" + CI_DATE
->>>>>>> integration
+    git_checkout_dir = get_dirs(args, "state")
+
     cos_checkout_dir = git_checkout_dir + "/cos-config-management"
 
     # second, see what branches we want to work with
@@ -713,14 +709,8 @@ def unload_dvs_and_lnet(args):
 
     connection.sudo("scp ncn-w001:/opt/cray/dvs/default/sbin/dvs_reload_ncn /tmp")
 
-<<<<<<< HEAD
-    flushprint("get all pods ...")
-    all_pods = connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods -Ao wide").stdout.splitlines()
-=======
     install_logger.debug("get all pods ...")
-    all_pods = connection.sudo("KUBECONFIG=/etc/kubernetes/admin.conf kubectl get pods -Ao wide",
-                               hide=True).stdout.splitlines()
->>>>>>> integration
+    all_pods = connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods -Ao wide").stdout.splitlines()
 
     # Clone the analytics repo.  It will be used to unmount analytics on the worker.
     analytics_dir = os.path.join(BUILD_DIR, 'analytics-config-management')
