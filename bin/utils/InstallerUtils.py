@@ -535,7 +535,7 @@ def get_products( media_dir = '.',
             install_logger.debug('setting archive to {}'.format(item))
 
         for prefix in prefixes:
-            if item.startswith(prefixes[prefix]):
+            if item.startswith(prefixes[prefix]) and item != 'cos_install':
                 product_type = prefix
                 products[item_name]['product'] = product_type
                 install_logger.debug('prefix match found {}'.format(prefix))

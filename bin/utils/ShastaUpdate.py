@@ -105,9 +105,19 @@ def install(args):
     print("location_dict=")
     pprint(location_dict)
 
+    product_count = 0
     for prod in location_dict:
-        loc = location_dict[prod]["work_dir"]
-        connection.sudo("./install.sh", cwd=loc)
+        # only look at entries that are identified as products
+        if location_dict[prod]['product']:
+            # work_dir will not be set for invalid products
+            if location_dict[prod]["work_dir"]:
+                loc = location_dict[prod]["work_dir"]
+                connection.sudo("./install.sh", cwd=loc)
+                product_count += 1
+
+    if not product_count:
+        install_logger.error('no products to install')
+        exit(1)
 
 
 def is_ready(ready):
