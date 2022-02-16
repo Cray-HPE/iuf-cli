@@ -14,14 +14,12 @@ import argparse
 import datetime
 import json
 import os
-from packaging import version as vers_mod
 import sys
 import textwrap
 import time
 import re
 
-from pprint import pprint
-from utils.InstallLogger import get_install_logger
+from packaging import version as vers_mod
 
 import yaml #pylint: disable=import-error
 
@@ -33,10 +31,11 @@ CWD = os.getcwd()
 
 from utils.vars import *
 import utils.InstallerUtils as utils #pylint: disable=wrong-import-position,import-error
-from utils.InstallerUtils import getenv,flushprint #pylint: disable=wrong-import-position,import-error
+from utils.InstallerUtils import getenv #pylint: disable=wrong-import-position,import-error
 
 # pylint: disable=consider-using-f-string
 
+# FIXME:  We need to do something about this, and where the host variable is used.
 host = "lemondrop-ncn-m001"
 connection = utils.CmdInterface(host)
 install_logger = get_install_logger(__name__)
@@ -59,7 +58,7 @@ def get_binaries(args):
 
     packages = utils.download_artifacts(connection, prod_url,
                                         prod_version[product], dist,
-                                        whereto=BUILD_DIR,
+                                        whereto=get_dirs(args, "media"),
                                         onepackage=onepackage)
     packages_dict = {"packages": packages}
     outfile = os.path.join(get_dirs(args, "state"),
@@ -72,14 +71,14 @@ def get_binaries(args):
 
 
 def get_dirs(args,which=None):
-        media_dir = args.get("media_dir", os.getcwd())
-        state_dir = args.get("state_dir", os.getcwd())
-        if which == "state":
-            return state_dir
-        elif which == "media":
-            return media_dir
-        else:
-            return media_dir, state_dir
+    media_dir = args.get("media_dir", os.getcwd())
+    state_dir = args.get("state_dir", os.getcwd())
+    if which == "state":
+        return state_dir
+    elif which == "media":
+        return media_dir
+    else:
+        return media_dir, state_dir
 
 
 def get_prods(args):
@@ -96,14 +95,26 @@ def get_prods(args):
 def install(args):
     """Install COS, Slingshot-host, or SLE"""
 
-    media_dir, state_dir = get_dirs(args)
+    state_dir = get_dirs(args, "state")
+
 
     with open(os.path.join(state_dir, LOCATION_DICT), 'r',
               encoding='UTF-8') as fhandle:
         location_dict = yaml.full_load(fhandle)
 
-    print("location_dict=")
-    pprint(location_dict)
+    # FIXME:  This is a lemondrop-specific work-around.  I don't think we
+    # want to constrain customers to a specific version.
+    lowest_v_str ="2.3.38"
+    lowest_v = vers_mod.parse(lowest_v_str)
+
+    current_v_str = get_cos_version(args, False)
+    current_v = vers_mod.parse(current_v_str)
+    if lowest_v > current_v:
+        err_msg = """ The lowest version of COS that should be installed
+        is {}.  The version ({}) will break cfs.
+        """.format(lowest_v_str, current_v_str)
+        install_logger.error(err_msg)
+        sys.exit(1)
 
     product_count = 0
     for prod in location_dict:
@@ -185,7 +196,7 @@ def check_pods(args): #pylint: disable=unused-argument
             keep_waiting = False
 
         if total_time > time_to_wait:
-            msg = textwrap.dedent("""
+            msg = utils.formatted("""
                 WARNING: the following job/pods have not completed booting: {}
                 """.format(','.join(not_running)))
             raise TimeOut(msg)
@@ -230,7 +241,7 @@ def check_services(args): #pylint: disable=unused-argument
             install_logger.warning("WARNING: lnet not found in kernel modules on node {}!".format(node))
 
 
-def sync_ci_tools():
+def sync_ci_tools(args):
     """Sync any tools the CI process might need to a temp dir on the NCN"""
 
     tools = [
@@ -239,26 +250,31 @@ def sync_ci_tools():
 
     for tool in tools:
         tool_basename = os.path.basename(tool)
-        connection.put(tool,"{}/{}".format(REMOTE_PROJECT_DIR, tool_basename))
+        connection.put(tool,"{}/{}".format(get_dirs(args, "state"), tool_basename))
 
-def setup_git_config():
+
+def setup_git_config(args):
     """Setup a .gitconfig that can be used by the rest of the CI"""
-    host_shortname = getenv('NCN_NAME').split("-")[0]
+    host_shortname = host.split("-", maxsplit=1)[0]
+    state_dir = get_dirs(args, "state")
 
-    connection.sudo("{}/get_vcspw.sh > {}/.vcspass".format(REMOTE_PROJECT_DIR, BUILD_DIR))
-    connection.sudo("echo cat {}/.vcspass > {}/get_local_vcspw.sh".format(BUILD_DIR,BUILD_DIR))
-    connection.sudo("chmod +x {}/get_local_vcspw.sh".format(BUILD_DIR))
+    connection.sudo("{}/get_vcspw.sh > {}/.vcspass".format(state_dir, state_dir))
+    connection.sudo("echo cat {}/.vcspass > {}/get_local_vcspw.sh".format(state_dir,state_dir))
+    connection.sudo("chmod +x {}/get_local_vcspw.sh".format(state_dir))
 
-    connection.sudo("HOME={} git config --global core.askPass {}/get_local_vcspw.sh".format(BUILD_DIR,BUILD_DIR))
-    connection.sudo("HOME={} git config --global credential.https://api-gw-service-nmn.local.username crayvcs".format(BUILD_DIR))
-    connection.sudo("HOME={} git config --global url.https://api-gw-service-nmn.local.insteadof https://vcs.{}.dev.cray.com".format(BUILD_DIR, host_shortname))
+    connection.sudo("HOME={} git config --global core.askPass {}/get_local_vcspw.sh".format(state_dir, state_dir))
+    connection.sudo("HOME={} git config --global credential.https://api-gw-service-nmn.local.username crayvcs".format(state_dir))
+    connection.sudo("HOME={} git config --global url.https://api-gw-service-nmn.local.insteadof https://vcs.{}.dev.cray.com".format(state_dir, host_shortname))
 
 
-def backup_config_repos():
+def backup_config_repos(args):
     """Backup the configuration repositories in git"""
-    host_shortname = host.split("-")[0]
+    host_shortname = host.split("-", maxsplit=1)[0]
 
-    backup_dir = BUILD_DIR + "/" + CI_DATE
+    state_dir = get_dirs(args, "state")
+
+    datestr = datetime.datetime.today().strftime("%Y%m%d")
+    backup_dir = os.path.join(state_dir, datestr)
 
     connection.sudo("mkdir -p {}".format(backup_dir))
 
@@ -268,9 +284,9 @@ def backup_config_repos():
         # yeah, yeah
         repodir = re.search(r"((git|ssh|http(s)?)|(git@[\w\.]+))(:(//)?)([\w\.@\:/\-~]+)(\.git)(/)?",repo).group(7).split("/")[-1]
         clonedir = backup_dir + "/" + repodir
-        connection.sudo("HOME={} git clone {} {}".format(BUILD_DIR,repo,clonedir))
+        connection.sudo("HOME={} git clone {} {}".format(state_dir,repo,clonedir))
         remotes = connection.sudo("HOME={} git -C {} branch -a".format(
-            BUILD_DIR,clonedir)).stdout.splitlines()
+            state_dir,clonedir)).stdout.splitlines()
         for raw in remotes:
             if not raw.strip().startswith("remotes"):
                 continue
@@ -284,13 +300,13 @@ def backup_config_repos():
                 continue
 
             connection.sudo("HOME={} git -C {} branch --track {} {}".format(
-                            BUILD_DIR,clonedir,branch,raw))
+                            state_dir,clonedir,branch,raw))
 
-        connection.sudo("HOME={} git -C {} fetch --all".format(BUILD_DIR,clonedir))
-        connection.sudo("HOME={} git -C {} pull --all".format(BUILD_DIR,clonedir))
+        connection.sudo("HOME={} git -C {} fetch --all".format(state_dir,clonedir))
+        connection.sudo("HOME={} git -C {} pull --all".format(state_dir,clonedir))
 
         # now set up the backed up repo to work locally
-        connection.sudo("git -C {} config core.askPass {}/get_vcspw.sh".format(clonedir,REMOTE_PROJECT_DIR))
+        connection.sudo("git -C {} config core.askPass {}/get_vcspw.sh".format(clonedir,state_dir))
         connection.sudo("git -C {} config credential.https://api-gw-service-nmn.local.username crayvcs".format(clonedir))
         connection.sudo("git -C {} config url.https://api-gw-service-nmn.local.insteadof https://vcs.{}.dev.cray.com".format(clonedir,host_shortname))
 
@@ -299,16 +315,16 @@ def merge_cos_integration(args):
     """Merge the product git branch to the working config"""
 
     # first things first, get a copy of all the config repos
-    install_logger.debug("Cloning all of the configuration repositories...")
+    print("Cloning all of the configuration repositories...")
     git_checkout_dir = get_dirs(args, "state")
 
-    cos_checkout_dir = git_checkout_dir + "/cos-config-management"
+    cos_checkout_dir = os.path.join(git_checkout_dir, "cos-config-management")
 
     # second, see what branches we want to work with
     _, integration_branch = curr_cos_branch(args)
     import_branch = None
 
-    cos_version = getenv("COS_VERSION")
+    cos_version = get_cos_version(args)
     import_branch_cmd = "kubectl --kubeconfig=/etc/kubernetes/admin.conf get cm -n services cray-product-catalog -o custom-columns=DATA:.data.cos | grep {} | grep import_branch | tail -1 | cut -d: -f2-".format(cos_version)
     import_branch_result = connection.sudo(import_branch_cmd).stdout.splitlines()
 
@@ -506,6 +522,7 @@ def wait_for_pod(job_id):
         if 'created pod' in line.lower():
             created_line = line
             break
+
     if created_line:
         fields = created_line.split()
         event_type, event_reason = fields[0], fields[1]
@@ -593,10 +610,11 @@ def customize_cos_compute_image(args, image_info):
             "etag": etag,
             "configuration": session_name
         }
-        with open(BOS_INFO_FILE, 'w', encoding='UTF-8') as bos_info_fh:
+        bos_file = os.path.join(get_dirs(args, "state"), BOS_INFO_FILENAME)
+        with open(bos_file, 'w', encoding='UTF-8') as bos_info_fh:
             json.dump(bos_info, bos_info_fh)
-    elif os.path.exists(BOS_INFO_FILE):
-        os.remove(BOS_INFO_FILE)
+    elif os.path.exists(bos_file):
+        os.remove(bos_file)
 
 
 def build_cos_compute_image(args): #pylint: disable=unused-argument
@@ -606,19 +624,21 @@ def build_cos_compute_image(args): #pylint: disable=unused-argument
     """
 
     commit, name = curr_cos_branch(args)
+    if "cos_recipe_name" not in args:
+        raise COSProblem("A recipe name is needed to build the COS compute image.")
+
+    cos_recipe_name = args["cos_recipe_name"]
 
     if commit is None:
         raise COSProblem("WARNING: Could not determine COS branch, so cannot build a compute image")
 
     # Update the configuration.
-
     cos_version = get_cos_version(args)
     config_file = "cos-config-{}-nogpu-integration.json".format(cos_version)
     local_config_path = os.path.join(get_dirs(args, "state"), config_file)
 
     # Retrieve And Modify An Existing Configuration For COS.
-    errout = connection.sudo("cray cfs configurations describe {} --format json".format(name),
-                             warn=True)
+    errout = connection.sudo("cray cfs configurations describe {} --format json".format(name))
     install_logger.debug("out={}, err={}".format(errout.stdout, errout.stderr))
     curr_config = json.loads(errout.stdout)
 
@@ -633,16 +653,15 @@ def build_cos_compute_image(args): #pylint: disable=unused-argument
 
     with open(local_config_path, 'w', encoding='UTF-8') as fhandle:
         json.dump(curr_config, fhandle)
-    connection.put(local_config_path, '/root')
+    connection.put(local_config_path, "/root{}".format(config_file))
 
     # Update Configuration Framework Service (CFS) Session With New COS Configuration.
     connection.sudo("cray cfs configurations update cos-config-{}-nogpu-integration --file /root/{} --format json".format(cos_version, config_file))
 
-    cos_recipe_name = getenv("COS_RECIPE_NAME")
     recipe_list = json.loads(connection.sudo("cray ims recipes list --format json").stdout)
     recipes = [r for r in recipe_list if r['name'] == cos_recipe_name]
     if not recipes:
-        msg = textwrap.dedent("""
+        msg = utils.formatted("""
             WARNING: Could not find recipe {}.  Skipping image building.
             """.format(cos_recipe_name))
         raise COSProblem(msg)
@@ -661,11 +680,11 @@ def build_cos_compute_image(args): #pylint: disable=unused-argument
     ims_public_key_id = public_key['id']
 
     # Now create the image.
-    dist = getenv("RELEASE_DIST")
+    datestr =  datetime.datetime.today().strftime("%Y%m%d-%H%M%S")
     cmd = "cray ims jobs create --job-type create --image-root-archive-name \
             {}-recipe-ci-image --artifact-id {} --public-key-id {} \
             --enable-debug False --format json".format(
-                dist.lower(), ims_recipe_id, ims_public_key_id)
+                datestr, ims_recipe_id, ims_public_key_id)
     image_result = connection.sudo(cmd)
     install_logger.debug("result of image create: out={}, err={}".format(image_result.stdout, image_result.stderr))
 
@@ -698,7 +717,7 @@ def check_analytics_mount(node):
     while keep_waiting:
         # Sometimes it takes multiple tries for forceleanup, so only warn if
         # it fails.
-        connection.sudo("ssh {} 'sh /tmp/forcecleanup.sh'".format(node), warn=True)
+        connection.sudo("ssh {} 'sh /tmp/forcecleanup.sh'".format(node))
         mounts = connection.sudo("ssh {} 'mount -t dvs'".format(node)).stdout.splitlines()
         an_mounts = [m for m in mounts if 'analytics' in m.lower()]
         if an_mounts:
@@ -722,14 +741,17 @@ def unload_dvs_and_lnet(args):
     install_logger.debug("get all pods ...")
     all_pods = connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods -Ao wide").stdout.splitlines()
 
+    state_dir = get_dirs(args, "state")
+
     # Clone the analytics repo.  It will be used to unmount analytics on the worker.
-    analytics_dir = os.path.join(BUILD_DIR, 'analytics-config-management')
-    utils.git_clone(connection, 'analytics-config-management', BUILD_DIR)
+    analytics_dir = os.path.join(get_dirs(args, "state"), 'analytics-config-management')
+    utils.git_clone(connection, 'analytics-config-management', state_dir)
     k8s_job_line = None
     for w_xname, w_node in worker_tuples:
         # Disable cfs.
         install_logger.debug("disable cfs on {}".format(w_node))
         connection.sudo("cray cfs components update {} --enabled false".format(w_xname))
+        # FIXME: We should remove the reference to lemondrop.
         try:
             if host == "lemondrop-ncn-m001":
                 install_logger.debug("lemondrop has no lustre mounts ==> skip configure_fs_unload.yml play")
@@ -769,15 +791,15 @@ def unload_dvs_and_lnet(args):
             connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf delete pod -n user {}".format(uai_name))
 
         # Unmount PE
-        # Run the following sudo commands with 'warn=True' incase PE isn't installed.
+        # FIXME: These commands don't make sense if PE isn't mounted.
         install_logger.debug("Unmount PE ...")
-        connection.sudo("ssh {} '/etc/cray-pe.d/pe_overlay.sh cleanup'".format(w_node), warn=True)
-        connection.sudo("ssh {} '/var/opt/cray/pe/pe_images -maxdepth 1 -exec umount -f {{}}\;'".format(w_node), warn=True)
-        connection.sudo("ssh {} '/var/opt/cray/pe -maxdepth 1 -exec umount -f {{}} \;'".format(w_node), warn=True)
+        connection.sudo("ssh {} '/etc/cray-pe.d/pe_overlay.sh cleanup'".format(w_node))
+        connection.sudo("ssh {} '/var/opt/cray/pe/pe_images -maxdepth 1 -exec umount -f {{}}\;'".format(w_node))
+        connection.sudo("ssh {} '/var/opt/cray/pe -maxdepth 1 -exec umount -f {{}} \;'".format(w_node))
 
         # Unmount Analytics contents on the worker.
         connection.sudo("bash -c 'cd {} ; git checkout {} ; git pull'".format(
-            analytics_dir, getenv('ANALYTICS_BRANCH')))
+            analytics_dir, ANALYTICS_BRANCH))
         connection.sudo("bash -c 'cd {} && scp roles/analyticsdeploy/files/forcecleanup.sh {}:/tmp'".format(analytics_dir, w_node))
 
         check_analytics_mount(w_node)
@@ -796,10 +818,10 @@ def unload_dvs_and_lnet(args):
         if not skip_reload:
             fields = dvs_mod.split()
             if fields[2] != '0':
-                warning_str = textwrap.dedent(
-                """WARNING: The DVS module ({}) didn't unload properly from {}.
-                 Because of this, the COS Software cannot complete on this
-                 worker.  fields[2]={}""".format(fields[0], w_node, fields[2]))
+                warning_str = utils.formatted("""
+                    WARNING: The DVS module ({}) didn't unload properly from {}.
+                    Because of this, the COS Software cannot complete on this
+                    worker.  fields[2]={}""".format(fields[0], w_node, fields[2]))
                 install_logger.warning(warning_str)
                 skip_reload = True
 
@@ -886,12 +908,13 @@ def session_templates_sort(element):
 def boot_cos(args):
     """Boot a COS image"""
 
-    if not os.path.exists(BOS_INFO_FILE) and os.environ["BUILD_COS_IMAGE"] == "true":
-        msg = textwrap.dedent("""
+    bos_file = os.path.join(get_dirs(args, "state"), BOS_INFO_FILENAME)
+    if not os.path.exists(bos_file):
+        msg = utils.formatted("""
         WARNING: the bos information file {} does not exist.  Cannot boot COS.
-        """.format(BOS_INFO_FILE))
+        """.format(bos_file))
         raise COSProblem(msg)
-    elif os.environ["BUILD_COS_IMAGE"] == "false":
+    elif "build_cos_compute_image" in args["stages"] :
         # If the templates aren't generated, use the last sessiontemplate generated by the CI
         session_templates = [st for st in json.loads(connection.sudo("cray bos sessiontemplate list --format json").stdout) if "cos-sessiontemplate-" in st["name"]]
         session_templates.sort(key=session_templates_sort, reverse=True)
@@ -900,27 +923,30 @@ def boot_cos(args):
         install_logger.debug("Using Previous session template: {}".format(sessiontemplate_name))
     else:
         # Get the current template and update the etag, image id, and configuration name.
-        with open(BOS_INFO_FILE, 'r', encoding='UTF-8') as bos_fh:
+        with open(bos_file, 'r', encoding='UTF-8') as bos_fh:
             bos_info = json.load(bos_fh)
 
-        bos_sessiontemplate = getenv("BOS_SESSIONTEMPLATE")
-        working_template = json.loads(connection.sudo("cray bos sessiontemplate describe {} --format json".format(bos_sessiontemplate)).stdout)
+        if "source_bos_sessiontemplate" not in args:
+            msg = utils.formatted("""
+                When booting the compute nodes, a bos sessiontemplate
+                (-t or --source-bos-sessiontemplate) is required""")
+            raise COSProblem(msg)
 
+        # FIXME: Do we need some error-handling if the bos sessiontemplate does not exist?
+        bos_sessiontemplate = args["source_bos_session_template"]
+        working_template = json.loads(connection.sudo("cray bos sessiontemplate describe {} --format json".format(bos_sessiontemplate)).stdout)
         working_template.pop('name')
         working_template["boot_sets"]["compute"]["etag"] = bos_info["etag"]
         working_template["boot_sets"]["compute"]["path"] = "s3://boot-images/{}/manifest.json".format(bos_info["image_id"])
         working_template["cfs"]["configuration"] = bos_info["configuration"]
-        local_bos_file = os.path.join(get_dirs(args, "state"), "bos_sessiontemplate.json")
-        remote_bos_file = os.path.join(BUILD_DIR, "bos_sessiontemplate.json")
-        with open(local_bos_file, 'w', encoding='UTF-8') as bos_fh:
-            json.dump(working_template, bos_fh)
-        connection.put(local_bos_file, remote_bos_file)
+
+        bos_file = os.path.join(get_dirs(args, "state"), "bos_sessiontemplate.json")
 
         date = datetime.datetime.today().strftime("%Y%m%d")
         sessiontemplate_name = "cos-sessiontemplate-{}-{}".format(get_cos_version(args), date)
 
         connection.sudo("cray bos sessiontemplate create --file {} --name {} ".format(
-            remote_bos_file, sessiontemplate_name))
+            bos_file, sessiontemplate_name))
 
     boot_start_time = datetime.datetime.now()
     # Now reboot the compute nodes
@@ -990,23 +1016,19 @@ def run_hello_world(args):
 
 def setup(args): # pylint: disable=unused-argument
     """ Set up directories.  Remove the old job(s) from REMOTE_PROJECT_OLDJOBS_DIR"""
-    connection.sudo("rm -rf {}/*".format(REMOTE_PROJECT_OLDJOBS_DIR))
-    connection.sudo("mkdir -p {}".format(BUILD_DIR))
 
-    sync_ci_tools()
-    setup_git_config()
-    backup_config_repos()
+    sync_ci_tools(args)
+    setup_git_config(args)
+    backup_config_repos(args)
 
 
 def cleanup(args): # pylint: disable=unused-argument
     """Clean things up after a run."""
 
     # remove files containing passwords
-    connection.sudo("rm -f {}/.vcspass {}/get_local_vcspw.sh".format(BUILD_DIR,BUILD_DIR))
+    state_dir = get_dirs(args, "state")
+    connection.sudo("rm -f {}/.vcspass {}/get_local_vcspw.sh".format(state_dir, state_dir))
 
-    # archive the build temp dir
-    connection.sudo("mkdir -p {}".format(REMOTE_PROJECT_OLDJOBS_DIR))
-    connection.sudo("mv {} {}".format(BUILD_DIR,REMOTE_PROJECT_OLDJOBS_DIR))
 
 
 def hello(args):

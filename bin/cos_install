@@ -2,6 +2,9 @@
 
 # Copyright 2022 Hewlett Packard Enterprise Development LP
 
+
+# Note: We should be installing cos-2.3.38 or newer!  The older ones have a
+# CFS problem.
 """The COS Installer"""
 
 import argparse
@@ -163,6 +166,7 @@ def process_install(cmdline_args):
     stages = [stages_list[i] for i in range(begin_idx, end_idx + 1) if stages_list[i] not in skip_stages]
     install_logger.debug("stages={}".format(stages))
     install_logger.debug("(begin,end)_idx = ({},{})".format(begin_idx, end_idx))
+    args_dict["stages"] = stages
 
     if 'media_dir' in args_dict:
         if not os.path.exists(args_dict['media_dir']):
@@ -248,8 +252,11 @@ def main():
     install_sp.add_argument("-s", "--skip-stages", nargs="+", action="store",
         help="Skip the execution of the specified stages.")
 
-    install_sp.add_argument("-t", "--source-bos-template", action="store",
+    install_sp.add_argument("-t", "--source-bos-sessiontemplate", action="store",
         help="BOS template to start from when booting COS")
+
+    install_sp.add_argument("-crn", "--cos-recipe-name", action="store",
+        help="The name of the recipe to build the COS compute image")
 
     install_sp.set_defaults(func=process_install)
 

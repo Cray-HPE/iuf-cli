@@ -11,6 +11,7 @@ import re
 import shutil
 import subprocess
 import sys
+import textwrap
 import time
 import urllib
 from utils.InstallLogger import get_install_logger
@@ -27,6 +28,16 @@ def getenv(var):
         return os.environ[var]
     else:
         return None
+
+
+def formatted(text):
+    """Format a text string for a standard 80-line terminal."""
+    wrapper = textwrap.TextWrapper(width=78)
+    raw = textwrap.dedent("""
+        {}
+        """.format(text)).strip()
+    msg = wrapper.fill(text=raw)
+    return msg
 
 
 def split_strip(string_list):

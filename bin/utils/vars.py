@@ -35,6 +35,8 @@ LOCATION_DICT = "location_dict.yaml"
 BOOT_POLL_SECS = 60
 BOOT_TIMOUT_SECS = 3600
 
+BOS_INFO_FILENAME = "bos-info.json"
+
 LOG_DEFAULT_CONSOLE_LEVEL = logging.INFO
 LOG_DEFAULT_FILE_LEVEL = logging.DEBUG
 LOG_DEFAULT_FILENAME = "cos_install.log"
@@ -48,3 +50,7 @@ LOG_LEVELS = {
         "INFO": logging.INFO,
         "DEBUG": logging.DEBUG
 }
+
+# FIXME The constants below this should not be constants; we should find a
+# better way to deal with them.
+ANALYTICS_BRANCH = "cray/analytics/1.1.24"
