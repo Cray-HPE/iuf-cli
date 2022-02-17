@@ -315,7 +315,7 @@ def merge_cos_integration(args):
     """Merge the product git branch to the working config"""
 
     # first things first, get a copy of all the config repos
-    print("Cloning all of the configuration repositories...")
+    install_logger.debug("Cloning all of the configuration repositories...")
     git_checkout_dir = get_dirs(args, "state")
 
     cos_checkout_dir = os.path.join(git_checkout_dir, "cos-config-management")
