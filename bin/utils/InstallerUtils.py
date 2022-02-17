@@ -33,9 +33,7 @@ def getenv(var):
 def formatted(text):
     """Format a text string for a standard 80-line terminal."""
     wrapper = textwrap.TextWrapper(width=78)
-    raw = textwrap.dedent("""
-        {}
-        """.format(text)).strip()
+    raw = textwrap.dedent(text).strip()
     msg = wrapper.fill(text=raw)
     return msg
 
