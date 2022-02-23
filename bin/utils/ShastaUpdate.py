@@ -19,7 +19,7 @@ import textwrap
 import time
 import re
 
-from packaging import version as vers_mod
+from distutils.version import LooseVersion
 
 import yaml #pylint: disable=import-error
 
@@ -105,11 +105,11 @@ def install(args):
     # FIXME:  This is a lemondrop-specific work-around.  I don't think we
     # want to constrain customers to a specific version.
     lowest_v_str ="2.3.38"
-    lowest_v = vers_mod.parse(lowest_v_str)
+    lowest_v = LooseVersion(lowest_v_str)
 
     current_v_str = get_cos_version(args, False)
-    current_v = vers_mod.parse(current_v_str)
-    if lowest_v > current_v:
+    current_v = LooseVersion(current_v_str)
+    if lowest_v > current_v_str:
         err_msg = """ The lowest version of COS that should be installed
         is {}.  The version ({}) will break cfs.
         """.format(lowest_v_str, current_v_str)
@@ -118,13 +118,19 @@ def install(args):
 
     product_count = 0
     for prod in location_dict:
+        install_logger.info('Installing {}'.format(prod))
         # only look at entries that are identified as products
         if location_dict[prod]['product']:
             # work_dir will not be set for invalid products
-            if location_dict[prod]["work_dir"]:
-                loc = location_dict[prod]["work_dir"]
-                connection.sudo("./install.sh", cwd=loc)
-                product_count += 1
+            if location_dict[prod]['work_dir']:
+                loc = location_dict[prod]['work_dir']
+                result = connection.sudo('./install.sh', cwd=loc)
+                install_logger.debug(result)
+                if result.returncode != 0:
+                    install_logger.info('  Failed!  See log for more information')
+                else:
+                    install_logger.info('  OK')
+                    product_count += 1
 
     if not product_count:
         install_logger.error('no products to install')
@@ -499,7 +505,7 @@ def get_cos_version(args, short=True):
         locs_dict = yaml.load(fhandle, yaml.SafeLoader)
 
     cos_versions = [ld.replace('cos-', '') for ld in locs_dict.keys() if 'cos' in ld]
-    sorted_vers = sorted(cos_versions, key=vers_mod.Version)
+    sorted_vers = sorted(cos_versions, key=LooseVersion)
     highest_vers = sorted_vers[-1]
 
     version_list = highest_vers.split('.')
