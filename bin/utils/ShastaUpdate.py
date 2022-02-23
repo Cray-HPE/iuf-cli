@@ -97,7 +97,6 @@ def install(args):
 
     state_dir = get_dirs(args, "state")
 
-
     with open(os.path.join(state_dir, LOCATION_DICT), 'r',
               encoding='UTF-8') as fhandle:
         location_dict = yaml.full_load(fhandle)
@@ -124,17 +123,20 @@ def install(args):
             # work_dir will not be set for invalid products
             if location_dict[prod]['work_dir']:
                 loc = location_dict[prod]['work_dir']
-                result = connection.sudo('./install.sh', cwd=loc)
-                install_logger.debug(result)
-                if result.returncode != 0:
-                    install_logger.info('  Failed!  See log for more information')
+                cmd = './install.sh'
+                if not args['dry_run']:
+                    result = connection.sudo(cmd, cwd=loc)
+                    install_logger.debug(result)
+                    if result.returncode != 0:
+                        install_logger.info('  Failed!  See log for more information')
+                    else:
+                        install_logger.info('  OK')
+                        product_count += 1
+                    if not product_count:
+                        install_logger.error('no products to install')
+                        exit(1)
                 else:
-                    install_logger.info('  OK')
-                    product_count += 1
-
-    if not product_count:
-        install_logger.error('no products to install')
-        exit(1)
+                    install_logger.info('dry-run, not running {} in {}'.format(cmd, loc))
 
 
 def is_ready(ready):

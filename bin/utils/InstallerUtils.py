@@ -293,10 +293,12 @@ class VMConnectionException(Exception):
 def run_command(cmd):
     """Run a system command."""
 
-    # log commands to debug channel
-    install_logger.debug('  >> {}'.format(cmd))
+    parsed_cmd = shlex.split(cmd)
 
-    result = subprocess.run(shlex.split(cmd), stdout=subprocess.PIPE,
+    # log commands to debug channel
+    install_logger.debug('CMD >> {}'.format(parsed_cmd))
+
+    result = subprocess.run(parsed_cmd, stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE, shell=False,
                         check=False, universal_newlines=True)
 
@@ -305,6 +307,9 @@ def run_command(cmd):
         structured_data = json.loads(result.stdout)
     except:
         structured_data = None
+
+    install_logger.debug('RET >> {}'.format(result))
+    install_logger.debug('JSN >> {}'.format(structured_data))
 
     # log errors
     if result.returncode != 0:
