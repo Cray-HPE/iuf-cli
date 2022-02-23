@@ -14,6 +14,7 @@ import sys
 import textwrap
 import time
 import urllib
+import shlex
 from utils.InstallLogger import get_install_logger
 
 install_logger = get_install_logger(__name__)
@@ -295,7 +296,7 @@ def run_command(cmd):
     # log commands to debug channel
     install_logger.debug('  >> {}'.format(cmd))
 
-    result = subprocess.run(cmd.split(), stdout=subprocess.PIPE,
+    result = subprocess.run(shlex.split(cmd), stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE, shell=False,
                         check=False, universal_newlines=True)
 
@@ -544,7 +545,7 @@ def get_products( media_dir = '.',
             install_logger.debug('setting archive to {}'.format(item))
 
         for prefix in prefixes:
-            if item.startswith(prefixes[prefix]) and item != 'cos_install':
+            if item.startswith(prefixes[prefix]) and item not in ['cos_install', 'cos_install.log']:
                 product_type = prefix
                 products[item_name]['product'] = product_type
                 install_logger.debug('prefix match found {}'.format(prefix))

@@ -184,7 +184,7 @@ def process_branch_update(args):
 def process_list(args): #pylint: disable=unused-argument
     """Process the arguments to the list subparser"""
     stages = format_tabbed_list(STAGES)
-    install_logger.debug(stages)
+    print(stages)
 
 def process_debug_level(cmdline_args):
     if "level" in cmdline_args.keys() and cmdline_args["level"] != None:
