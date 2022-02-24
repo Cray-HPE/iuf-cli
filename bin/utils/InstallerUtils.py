@@ -290,7 +290,7 @@ class VMConnectionException(Exception):
     """A pass-through class."""
 
 
-def run_command(cmd):
+def run_command(cmd, **kwargs):
     """Run a system command."""
 
     parsed_cmd = shlex.split(cmd)
@@ -300,7 +300,8 @@ def run_command(cmd):
 
     result = subprocess.run(parsed_cmd, stdout=subprocess.PIPE,
                         stderr=subprocess.PIPE, shell=False,
-                        check=False, universal_newlines=True)
+                        check=False, universal_newlines=True,
+                        **kwargs)
 
     # convert to a dict if we can
     try:
@@ -412,10 +413,20 @@ def get_products( media_dir = '.',
 
     if not prefixes:
         prefixes = { 'cos': 'cos',
-                     'cpe': 'cpe',
                      'sles': 'SUSE',
-                     'shs': 'slingshot-host-software',
-                     'analytics': 'analytics' }
+                     'slingshot-host-software': 'slingshot-host-software',
+                     'analytics': 'analytics',
+                     'uan': 'uan',
+                     'slurm': 'cpe-slurm',
+                     'slurm': 'wlm-slurm',
+                     'pbs': 'wlm-pbs',
+                     'pbs': 'cpe-pbs',
+                     'sma': 'sma',
+                     'csm': 'csm',
+                     'sat': 'sat',
+                     'sdu': 'cray-sdu-rda',
+                     'cpe': 'cpe',
+                    }
 
     if not suffixes:
         suffixes = { 'md5': '.tar.gz.MD5.TXT',
