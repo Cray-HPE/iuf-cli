@@ -108,7 +108,7 @@ def install(args):
 
     current_v_str = get_cos_version(args, False)
     current_v = LooseVersion(current_v_str)
-    if lowest_v > current_v_str:
+    if lowest_v > current_v:
         err_msg = """ The lowest version of COS that should be installed
         is {}.  The version ({}) will break cfs.
         """.format(lowest_v_str, current_v_str)
