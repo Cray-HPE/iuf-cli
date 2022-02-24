@@ -551,12 +551,12 @@ def customize_cos_compute_image(args, image_info):
 
     cos_version = get_cos_version(args)
     date = datetime.datetime.today().strftime("%Y%m%d")
-    #configuration_name = "cos-config-{}-ci-{}".format(cos_version, date))
-    existing_sessions = connection.sudo("cray cfs sessions list --format json |jq '.[].name'").stdout.splitlines()
-    existing_sessions = [es.replace('"', '') for es in existing_sessions]
 
     # Find a session name that doesn't already exist.  We shouldn't need to
     # create more than 100 in a day.
+    cfs_sessions = json.loads(connection.sudo("cray cfs sessions list --format json").stdout)
+    existing_sessions = [cfss["name"] for cfss in cfs_sessions]
+
     for i in range(100):
         istr = "%02d" % i
         session_name = "cos-config-{}-integration-{}-{}".format(cos_version, date, istr)
@@ -573,16 +573,16 @@ def customize_cos_compute_image(args, image_info):
 
     # Now we need to poll the results and wait for it to finish.
     keep_going = True
-    status_cmd = "cray cfs sessions describe {} --format json | jq -r .status.session.status".format(session_name)
-    succeeded_cmd = "cray cfs sessions describe {} --format json | jq -r .status.session.succeeded".format(session_name)
+    cfs_cmd = "cray cfs sessions describe {} --format json".format(session_name)
 
     timeout = 1200
     start = datetime.datetime.now()
 
     finished = False
     while keep_going:
-        status = connection.sudo(status_cmd).stdout.strip().lower()
-        succeeded = connection.sudo(succeeded_cmd).stdout.strip().lower()
+        cfs_desc = json.loads(connection.sudo(cfs_cmd).stdout)
+        status = cfs_desc["status"]["session"]["status"].strip().lower()
+        succeeded = cfs_desc["status"]["session"]["succeeded"].strip().lower()
         if status == "complete" and succeeded == "true":
             keep_going = False
             finished = True
@@ -601,8 +601,8 @@ def customize_cos_compute_image(args, image_info):
         time.sleep(10)
 
     if finished:
-        image_id = connection.sudo("cray cfs sessions describe {} --format json | jq -r .status.artifacts[].result_id".format(session_name)).stdout.strip()
-        install_logger.debug('artifacts cmd="cray artifacts describe boot-images {}/manifest.json --format json"'.format(image_id))
+        cfs_desc = json.loads(connection.sudo("cray cfs sessions describe {} --format json".format(session_name)).stdout)
+        image_id = cfs_desc["status"]["artifacts"][0]["result_id"]
         artifacts = json.loads(connection.sudo("cray artifacts describe boot-images {}/manifest.json --format json".format(image_id)).stdout)
         etag = artifacts['artifact']['ETag'].replace("\\\"", "")
         bos_info = {
@@ -735,6 +735,7 @@ def unload_dvs_and_lnet(args):
     """Unload the DVS and LNET modules."""
 
     worker_tuples = utils.get_hosts(connection, "w00")
+    install_logger.debug("worker_tuples={}".format(worker_tuples))
 
     connection.sudo("scp ncn-w001:/opt/cray/dvs/default/sbin/dvs_reload_ncn /tmp")
 
@@ -744,7 +745,7 @@ def unload_dvs_and_lnet(args):
     state_dir = get_dirs(args, "state")
 
     # Clone the analytics repo.  It will be used to unmount analytics on the worker.
-    analytics_dir = os.path.join(get_dirs(args, "state"), 'analytics-config-management')
+    analytics_dir = os.path.join(state_dir, 'analytics-config-management')
     utils.git_clone(connection, 'analytics-config-management', state_dir)
     k8s_job_line = None
     for w_xname, w_node in worker_tuples:
@@ -791,16 +792,25 @@ def unload_dvs_and_lnet(args):
             connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf delete pod -n user {}".format(uai_name))
 
         # Unmount PE
-        # FIXME: These commands don't make sense if PE isn't mounted.
-        install_logger.debug("Unmount PE ...")
-        connection.sudo("ssh {} '/etc/cray-pe.d/pe_overlay.sh cleanup'".format(w_node))
-        connection.sudo("ssh {} '/var/opt/cray/pe/pe_images -maxdepth 1 -exec umount -f {{}}\;'".format(w_node))
-        connection.sudo("ssh {} '/var/opt/cray/pe -maxdepth 1 -exec umount -f {{}} \;'".format(w_node))
+        # FIXME: These commands don't make sense if PE isn't mounted.  Also,
+        # I'm not sure why we look in both of:
+        #  /var/opt/cray/pe/pe_images
+        #  /var/opt/cray/pe
+        connection.sudo("ssh {} bash /etc/cray-pe.d/pe_overlay.sh cleanup".format(w_node))
+        img_dirs = connection.sudo("ssh {} find /var/opt/cray/pe/pe_images -maxdepth 1".format(w_node)).stdout.splitlines()
+        install_logger.debug("img_dirs={}".format(img_dirs))
+        for img_dir in img_dirs:
+            connection.sudo("ssh {} umount -f {}".format(w_node, img_dir))
+
+        pe_dirs = connection.sudo("ssh {} find /var/opt/cray/pe -maxdepth 1".format(w_node)).stdout.splitlines()
+        install_logger.debug("pe_dirs={}".format(pe_dirs))
+        for pe_dir in pe_dirs:
+            connection.sudo("ssh {} umount -f {}".format(w_node, pe_dir))
 
         # Unmount Analytics contents on the worker.
-        connection.sudo("bash -c 'cd {} ; git checkout {} ; git pull'".format(
-            analytics_dir, ANALYTICS_BRANCH))
-        connection.sudo("bash -c 'cd {} && scp roles/analyticsdeploy/files/forcecleanup.sh {}:/tmp'".format(analytics_dir, w_node))
+        connection.sudo('git checkout {}', cwd=analytics_dir)
+        connection.sudo('git pull', cwd=analytics_dir)
+        connection.sudo("scp roles/analyticsdeploy/files/forcecleanup.sh {}:/tmp".format(w_node), cwd=analytics_dir)
 
         check_analytics_mount(w_node)
 
@@ -808,7 +818,7 @@ def unload_dvs_and_lnet(args):
         connection.sudo("cray cps deployment update --nodes {}".format(w_node))
 
         # Make sure the reference count for dvs is 0.
-        lsmods = connection.sudo("ssh {} 'lsmod'".format(w_node)).stdout.splitlines()
+        lsmods = connection.sudo("ssh {} lsmod".format(w_node)).stdout.splitlines()
         skip_reload = False
         try:
             dvs_mod = [m for m in lsmods if m.startswith('dvs ')][0]
@@ -851,7 +861,7 @@ def unload_dvs_and_lnet(args):
         # Note the 'for' loop below is only for record-keeping.  The dvs,
         # lustre, and craytrace rpms need to be uninstalled in a specific
         # order because of dependencies.
-        rpms = connection.sudo("ssh {} 'rpm -qa'".format(w_node)).stdout.splitlines()
+        rpms = connection.sudo("ssh {} rpm -qa".format(w_node)).stdout.splitlines()
         old_rpms = []
         for rpm in rpms:
             if any(name in rpm for name in ['dvs', 'craytrace', 'lustre']):
@@ -874,16 +884,16 @@ def unload_dvs_and_lnet(args):
                 install_logger.debug("{}".format(rpm_names))
             for rpm in rpm_names:
                 install_logger.debug("remove {} from {}".format(rpm, w_node))
-                connection.sudo("ssh {} 'rpm -e {}'".format(w_node, rpm))
+                connection.sudo("ssh {} rpm -e {}".format(w_node, rpm))
 
         # Enable and run NCN personalization on the worker.
-        connection.sudo(" cray cfs components update --enabled true --state '[]' \
+        connection.sudo("cray cfs components update --enabled true --state '[]' \
             --error-count 0 {} --format json".format(w_xname))
 
         # wait for ncn-personalization to finish.
         utils.wait_for_ncn_personalization(connection, [w_xname])
 
-        rpms = connection.sudo("ssh {} 'rpm -qa'".format(w_node)).stdout.splitlines()
+        rpms = connection.sudo("ssh {} rpm -qa".format(w_node)).stdout.splitlines()
         new_rpms = []
         for rpm in rpms:
             if any(name in rpm for name in ['dvs', 'craytrace', 'lustre']):
@@ -950,13 +960,21 @@ def boot_cos(args):
 
     boot_start_time = datetime.datetime.now()
     # Now reboot the compute nodes
-    boot_session_job_id = connection.sudo("cray bos session create --template-uuid {} --operation reboot --format json | jq -r '.job'".format(sessiontemplate_name)).stdout.replace("\n", "")
+    output = json.loads(connection.sudo("cray bos session create --template-uuid {} --operation reboot --format json".format(sessiontemplate_name)).stdout)
+    boot_session_job_id = output["job"]
     install_logger.debug("Boot session jobid {} created".format(boot_session_job_id))
 
     # Wait for the BOS session to"complete" or the BOS pod to be in a "Completed" state
     while True:
-        in_progress, complete = json.loads(connection.sudo("cray bos session describe {} --format json | jq -r '[.in_progress, .complete]'".format(boot_session_job_id[4:])).stdout)
-        pod_status = connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods -n services | grep {} | awk '{{print $3}}'".format(boot_session_job_id)).stdout.replace("\n", "")
+        session_desc = json.loads(connection.sudo("cray bos session describe {} --format json".format(boot_session_job_id[4:])).stdout)
+        in_progress = session_desc["in_progress"]
+        complete = session_desc["complete"]
+        all_pods =  connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods -n services").stdout.splitlines()
+        boot_pod = [aps for aps in all_pods if boot_session_job_id in aps]
+        pod_status = None
+        if boot_pod:
+            pod_status = boot_pod[0].split()[2]
+
         elapsed = (datetime.datetime.now() - boot_start_time).seconds
         install_logger.debug("Waited {} of {} seconds".format(elapsed, BOOT_TIMOUT_SECS))
         if (complete and not in_progress) or "Completed" in pod_status:
@@ -1014,6 +1032,7 @@ def run_hello_world(args):
 
     install_logger.info("srun hello_world test succeded")
 
+
 def setup(args): # pylint: disable=unused-argument
     """ Set up directories.  Remove the old job(s) from REMOTE_PROJECT_OLDJOBS_DIR"""
 
@@ -1030,11 +1049,11 @@ def cleanup(args): # pylint: disable=unused-argument
     connection.sudo("rm -f {}/.vcspass {}/get_local_vcspw.sh".format(state_dir, state_dir))
 
 
-
 def hello(args):
     print("hello")
     allout = connection.sudo("echo hello")
     install_logger.debug("sudo result: stdout={}, stderr={}".format(allout.stdout, allout.stderr))
+
 
 def main():
     """main entry point"""
