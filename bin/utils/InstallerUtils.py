@@ -299,6 +299,7 @@ def run_command(cmd, **kwargs):
     install_logger.debug('CMD >> {}'.format(parsed_cmd))
 
     result = subprocess.run(parsed_cmd, stdout=subprocess.PIPE,
+
                         stderr=subprocess.PIPE, shell=False,
                         check=False, universal_newlines=True,
                         **kwargs)
