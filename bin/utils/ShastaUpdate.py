@@ -136,7 +136,7 @@ def install(args):
                         product_count += 1
                     if not product_count:
                         install_logger.error('no products to install')
-                        exit(1)
+                        sys.exit(1)
                 else:
                     install_logger.info('dry-run, not running {} in {}'.format(cmd, loc))
 

@@ -413,24 +413,24 @@ def get_products( media_dir = '.',
         products = {}
 
     if not prefixes:
-        prefixes = { 
-            'cos': 'cos',
-            'SUSE-Backports-SLE': 'sles',
-            'SUSE-PTF': 'sles',
-            'SUSE-Products': 'sles',
-            'SUSE-Updates': 'sles',
-            'slingshot-host-software': 'slingshot-host-software',
-            'analytics': 'analytics',
-            'uan': 'uan',
-            'cpe-slurm': 'slurm',
-            'wlm-slurm': 'slurm',
-            'wlm-pbs': 'pbs',
-            'cpe-pbs': 'pbs',
-            'sma': 'sma',
-            'csm': 'csm',
-            'sat': 'sat',
-            'cray-sdu-rda': 'sdu',
-            'cpe': 'cpe'
+        prefixes = {
+                    'cos': 'cos',
+                    'SUSE-Backports-SLE': 'sles',
+                    'SUSE-PTF': 'sles',
+                    'SUSE-Products': 'sles',
+                    'SUSE-Updates': 'sles',
+                    'slingshot-host-software': 'slingshot-host-software',
+                    'analytics': 'analytics',
+                    'uan': 'uan',
+                    'cpe-slurm': 'slurm',
+                    'wlm-slurm': 'slurm',
+                    'wlm-pbs': 'pbs',
+                    'cpe-pbs': 'pbs',
+                    'sma': 'sma',
+                    'csm': 'csm',
+                    'sat': 'sat',
+                    'cray-sdu-rda': 'sdu',
+                    'cpe': 'cpe'
                     }
 
     if not suffixes:
