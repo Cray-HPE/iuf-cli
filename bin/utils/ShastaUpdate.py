@@ -812,6 +812,7 @@ def unload_dvs_and_lnet(args):
         connection.sudo('git pull', cwd=analytics_dir)
         connection.sudo("scp roles/analyticsdeploy/files/forcecleanup.sh {}:/tmp".format(w_node), cwd=analytics_dir)
 
+        # check_analytics will run forcecleanup.sh until dvs unmounts cleanly
         check_analytics_mount(w_node)
 
         # Add cps back to the worker
