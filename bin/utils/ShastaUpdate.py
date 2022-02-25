@@ -20,10 +20,12 @@ import time
 import re
 
 from distutils.version import LooseVersion
+from packaging import version as vers_mod
 
 import yaml #pylint: disable=import-error
 
 from utils.InstallLogger import get_install_logger
+from utils.InstallerUtils import CmdMgr
 
 install_logger = get_install_logger(__name__)
 
@@ -33,11 +35,12 @@ from utils.vars import *
 import utils.InstallerUtils as utils #pylint: disable=wrong-import-position,import-error
 from utils.InstallerUtils import getenv #pylint: disable=wrong-import-position,import-error
 
-# pylint: disable=consider-using-f-string
-
 # FIXME:  We need to do something about this, and where the host variable is used.
 host = "lemondrop-ncn-m001"
-connection = utils.CmdInterface(host)
+
+# pylint: disable=consider-using-f-string
+
+connection = utils.CmdMgr.get_cmd_interface()
 install_logger = get_install_logger(__name__)
 
 def get_binaries(args):
@@ -86,8 +89,19 @@ def get_prods(args):
 
     media_dir, state_dir = get_dirs(args)
 
-    location_dict = utils.get_products(media_dir)
+    extract_archives = (args.get("dryrun", False) == False)
+    location_dict = utils.get_products(media_dir, extract_archives=extract_archives)
     filepath = os.path.join(state_dir, "location_dict.yaml")
+
+   
+    # If this is a dryrun the files haven't been extracted,
+    # so we can just print the product info we have and return
+    # without writing anything to a state file.
+    if args.get("dryrun", False):
+        for k,v in location_dict.items():
+            print("DRYRUN Product found:\n{}:\n{}".format(k, json.dumps(v, sort_keys=True, indent=4)))
+        return
+
     with open(filepath, "w", encoding="UTF-8") as fhandle:
         yaml.dump(location_dict, fhandle)
 
@@ -126,19 +140,16 @@ def install(args):
             if location_dict[prod]['work_dir']:
                 loc = location_dict[prod]['work_dir']
                 cmd = './install.sh'
-                if not args['dry_run']:
-                    result = connection.sudo(cmd, cwd=loc)
-                    install_logger.debug(result)
-                    if result.returncode != 0:
-                        install_logger.info('  Failed!  See log for more information')
-                    else:
-                        install_logger.info('  OK')
-                        product_count += 1
-                    if not product_count:
-                        install_logger.error('no products to install')
-                        sys.exit(1)
+                result = connection.sudo(cmd, cwd=loc)
+                install_logger.debug(result)
+                if result.returncode != 0:
+                    install_logger.info('  Failed!  See log for more information')
                 else:
-                    install_logger.info('dry-run, not running {} in {}'.format(cmd, loc))
+                    install_logger.info('  OK')
+                    product_count += 1
+                if not product_count:
+                    install_logger.error('no products to install')
+                    sys.exit(1)
 
 
 def is_ready(ready):
@@ -1047,68 +1058,7 @@ def cleanup(args): # pylint: disable=unused-argument
     connection.sudo("rm -f {}/.vcspass {}/get_local_vcspw.sh".format(state_dir, state_dir))
 
 
-
 def hello(args):
     print("hello")
     allout = connection.sudo("echo hello")
     install_logger.debug("sudo result: stdout={}, stderr={}".format(allout.stdout, allout.stderr))
-
-def main():
-    """main entry point"""
-
-    parser = argparse.ArgumentParser()
-    subparsers = parser.add_subparsers(title="subcommands")
-
-    setup_sp = subparsers.add_parser("setup")
-    setup_sp.set_defaults(func=setup)
-
-    get_binaries_sp = subparsers.add_parser("get_binaries")
-    get_binaries_sp.add_argument("product", action="store",
-        help="product to fetch; one of cos, sle, or slingshot_host")
-    get_binaries_sp.set_defaults(func=get_binaries)
-
-    get_prods_sp = subparsers.add_parser("get_prods")
-    get_prods_sp.add_argument("args")
-    get_prods_sp.set_defaults(func=get_prods)
-
-    cleanup_sp = subparsers.add_parser("cleanup")
-    cleanup_sp.set_defaults(func=cleanup)
-
-    install_sp = subparsers.add_parser("install")
-    install_sp.add_argument("product", action="store",
-        help="product to install; one of cos, sle, or slingshot_host")
-    install_sp.set_defaults(func=install)
-
-    check_pods_sp = subparsers.add_parser("check_pods")
-    check_pods_sp.add_argument("product", action="store",
-        help="product pods to check; one of cos, sle, or slingshot host")
-    check_pods_sp.set_defaults(func=check_pods)
-
-    check_services_sp = subparsers.add_parser("check_services")
-    check_services_sp.add_argument("product", action="store",
-        help="Check nmd, cray-cps, and dvs services.")
-    check_services_sp.set_defaults(func=check_services)
-
-    ncn_personalization_sp = subparsers.add_parser("ncn_personalization")
-    ncn_personalization_sp.set_defaults(func=ncn_personalization)
-
-    merge_cos_integration_sp = subparsers.add_parser("merge_cos_integration")
-    merge_cos_integration_sp.set_defaults(func=merge_cos_integration)
-
-    build_cos_compute_image_sp = subparsers.add_parser("build_cos_compute_image")
-    build_cos_compute_image_sp.set_defaults(func=build_cos_compute_image)
-
-    unload_cos_and_lnet_sp = subparsers.add_parser("unload_dvs_and_lnet")
-    unload_cos_and_lnet_sp.set_defaults(func=unload_dvs_and_lnet)
-
-    boot_cos_sp = subparsers.add_parser("boot_cos")
-    boot_cos_sp.set_defaults(func=boot_cos)
-
-    run_hello_world_sp = subparsers.add_parser("run_hello_world")
-    run_hello_world_sp.set_defaults(func=run_hello_world)
-
-    args = parser.parse_args()
-    args.func(args)
-
-if __name__ == "__main__":
-    main()
