@@ -107,13 +107,15 @@ def install(args):
     lowest_v = LooseVersion(lowest_v_str)
 
     current_v_str = get_cos_version(args, False)
-    current_v = LooseVersion(current_v_str)
-    if lowest_v > current_v:
-        err_msg = """ The lowest version of COS that should be installed
-        is {}.  The version ({}) will break cfs.
-        """.format(lowest_v_str, current_v_str)
-        install_logger.error(err_msg)
-        sys.exit(1)
+    # only do the version check if we're installing cos
+    if current_v_str:
+        current_v = LooseVersion(current_v_str)
+        if lowest_v > current_v:
+            err_msg = """ The lowest version of COS that should be installed
+            is {}.  The version ({}) will break cfs.
+            """.format(lowest_v_str, current_v_str)
+            install_logger.error(err_msg)
+            sys.exit(1)
 
     product_count = 0
     for prod in location_dict:
@@ -505,13 +507,20 @@ def get_cos_version(args, short=True):
     with open(os.path.join(state_dir, LOCATION_DICT), "r",
               encoding='UTF-8') as fhandle:
         locs_dict = yaml.load(fhandle, yaml.SafeLoader)
-
-    cos_versions = [ld.replace('cos-', '') for ld in locs_dict.keys() if 'cos' in ld]
+    # use the version provided by get_products
+    cos_versions = [locs_dict[key]['version'] for key in locs_dict if 'cos' in key and locs_dict[key]['work_dir']]
     sorted_vers = sorted(cos_versions, key=LooseVersion)
-    highest_vers = sorted_vers[-1]
+    install_logger.debug('sorted cos_versions are {}'.format(sorted_vers))
+    if sorted_vers:
+        highest_vers = sorted_vers[-1]
+        version_list = highest_vers.split('.')
+        short_vers = "{}.{}".format(version_list[0], version_list[1])
+    else:
+        highest_vers = ''
+        short_vers = ''
 
-    version_list = highest_vers.split('.')
-    short_vers = "{}.{}".format(version_list[0], version_list[1])
+    install_logger.debug('highest_vers {}'.format(highest_vers))
+    install_logger.debug('short_vers {}'.format(short_vers))
 
     get_cos_version.short_version = short_vers
     get_cos_version.full_version = highest_vers

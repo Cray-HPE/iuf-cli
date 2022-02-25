@@ -412,20 +412,24 @@ def get_products( media_dir = '.',
         products = {}
 
     if not prefixes:
-        prefixes = { 'cos': 'cos',
-                     'sles': 'SUSE',
-                     'slingshot-host-software': 'slingshot-host-software',
-                     'analytics': 'analytics',
-                     'uan': 'uan',
-                     'slurm': 'cpe-slurm',
-                     'slurm': 'wlm-slurm',
-                     'pbs': 'wlm-pbs',
-                     'pbs': 'cpe-pbs',
-                     'sma': 'sma',
-                     'csm': 'csm',
-                     'sat': 'sat',
-                     'sdu': 'cray-sdu-rda',
-                     'cpe': 'cpe',
+        prefixes = { 
+            'cos': 'cos',
+            'SUSE-Backports-SLE': 'sles',
+            'SUSE-PTF': 'sles',
+            'SUSE-Products': 'sles',
+            'SUSE-Updates': 'sles',
+            'slingshot-host-software': 'slingshot-host-software',
+            'analytics': 'analytics',
+            'uan': 'uan',
+            'cpe-slurm': 'slurm',
+            'wlm-slurm': 'slurm',
+            'wlm-pbs': 'pbs',
+            'cpe-pbs': 'pbs',
+            'sma': 'sma',
+            'csm': 'csm',
+            'sat': 'sat',
+            'cray-sdu-rda': 'sdu',
+            'cpe': 'cpe'
                     }
 
     if not suffixes:
@@ -442,7 +446,8 @@ def get_products( media_dir = '.',
                         'work_dir': None,
                         'md5': None,
                         'out': None,
-                        'archive_check': None
+                        'archive_check': None,
+                        'version': None
                       }
 
 
@@ -561,10 +566,10 @@ def get_products( media_dir = '.',
             install_logger.debug('setting archive to {}'.format(item))
 
         for prefix in prefixes:
-            if item.startswith(prefixes[prefix]) and item not in ['cos_install', 'cos_install.log']:
-                product_type = prefix
+            if item.startswith(prefix) and item not in ['cos_install', 'cos_install.log']:
+                product_type = prefixes[prefix]
                 products[item_name]['product'] = product_type
-                install_logger.debug('prefix match found {}'.format(prefix))
+                install_logger.debug('prefix match found {}'.format(prefixes[prefix]))
 
         products[item_name]['media_dir'] = media_dir
 
@@ -697,5 +702,23 @@ def get_products( media_dir = '.',
 
             else:
                 install_logger.warning('skipping {}'.format(product))
+
+    # compute the version for each product
+    install_logger.debug('determining version for products')
+    for product in products:
+        working_name = None
+        working_version = None
+        pattern = r'(\D+)(\d+.*)'
+        results = re.findall(pattern, product)
+        install_logger.debug('regex product {}, results {}'.format(product, results))
+        if results:
+            if len(results[0]) == 2:
+                working_name = results[0][0].strip('-')
+                working_version = results[0][1]
+                for prefix in prefixes:
+                    if working_name.lower() == prefix.lower():
+                        install_logger.debug('working_name {} matched prefix {}'.format(
+                            working_name, prefix))
+                        products[product]['version'] = working_version
 
     return products
