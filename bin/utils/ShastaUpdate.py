@@ -140,6 +140,11 @@ def install(args):
                 else:
                     install_logger.info('dry-run, not running {} in {}'.format(cmd, loc))
 
+    # if we ask the installer to install something and it doesn't find anything
+    # we should probably just quit
+    if not product_count:
+        install_logger.error('no products to install')
+        sys.exit(1)
 
 def is_ready(ready):
     """
@@ -808,11 +813,9 @@ def unload_dvs_and_lnet(args):
             connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf delete pod -n user {}".format(uai_name))
 
         # Unmount PE
-        # FIXME: These commands don't make sense if PE isn't mounted.
         install_logger.debug("Unmount PE ...")
-        connection.sudo("ssh {} '/etc/cray-pe.d/pe_overlay.sh cleanup'".format(w_node))
-        connection.sudo("ssh {} '/var/opt/cray/pe/pe_images -maxdepth 1 -exec umount -f {{}}\;'".format(w_node))
-        connection.sudo("ssh {} '/var/opt/cray/pe -maxdepth 1 -exec umount -f {{}} \;'".format(w_node))
+        connection.sudo("scp ../src/tools/unmount_pe.sh {}:/tmp/unmount_pe.sh".format(w_node))
+        connection.sudo("ssh {} /tmp/unmount_pe.sh".format(w_node))
 
         # Unmount Analytics contents on the worker.
         connection.sudo("bash -c 'cd {} ; git checkout {} ; git pull'".format(

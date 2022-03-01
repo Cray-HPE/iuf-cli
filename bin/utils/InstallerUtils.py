@@ -334,25 +334,27 @@ class CmdInterface:
         Execute a command.
         """
 
-        # We might need to fiddle with this some.
-        install_logger.debug('  >> {}'.format(cmd))
-
-        if '|' in cmd:
-            install_logger.warning("found a pipe in the command.  Using `shell=True`.")
-            result = subprocess.run(cmd, stdout=subprocess.PIPE,
-                                    stderr=subprocess.PIPE, shell=True,
-                                    check=False, universal_newlines=True, **kwargs)
-        else:
-            result = subprocess.run(cmd.split(), stdout=subprocess.PIPE,
+        try:
+            if '|' in cmd:
+                install_logger.warning("found a pipe in the command.  Using `pipefail`.")
+                result = subprocess.run(["/bin/bash","-o","pipefail","-c",cmd], stdout=subprocess.PIPE,
                                     stderr=subprocess.PIPE, shell=False,
-                                    check=False, universal_newlines=True, **kwargs)
+                                    check=True, universal_newlines=True, **kwargs)
+            else:
+                result = subprocess.run(cmd.split(), stdout=subprocess.PIPE,
+                                    stderr=subprocess.PIPE, shell=False,
+                                    check=True, universal_newlines=True, **kwargs)
+        except subprocess.CalledProcessError as e:
+            install_logger.debug("  >>   cmd      : {}".format(e.cmd))
+            install_logger.debug("  >>>> stdout   : {}".format(e.stdout))
+            install_logger.debug("  >>>> stderr   : {}".format(e.stderr))
+            install_logger.debug("  >>>> exit code: {}".format(e.returncode))
+            raise
 
-        # Check the return code.  At this point, fabric would throw an
-        # exception; we might want to do something similar.  At least with
-        # subprocess we can examine the error.
-        if result.returncode != 0:
-            install_logger.warning('"{}" returned non-zero value {}.  stderr={}'.format(
-                  cmd.split(), result.returncode, result.stderr))
+        install_logger.debug("  >>   cmd      : {}".format(result.args))
+        install_logger.debug("  >>>> stdout   : {}".format(result.stdout))
+        install_logger.debug("  >>>> stderr   : {}".format(result.stderr))
+        install_logger.debug("  >>>> exit code: {}".format(result.returncode))
         return result
 
     def put(self, source, target):
@@ -450,7 +452,14 @@ def get_products( media_dir = '.',
                         'archive_check': None,
                         'version': None
                       }
-
+    # since media_dir defaults to PWD, let's just ignore
+    # installer files
+    SKIP_FILES=[
+        "cos_install",
+        "cos_install.log",
+        "utils",
+        "location_dict.yaml"
+        ]
 
     # convert to absolute to avoid ambiguity
     media_dir = os.path.abspath(media_dir)
@@ -467,6 +476,9 @@ def get_products( media_dir = '.',
     for item in directory_listing:
 
         install_logger.debug('processing {}'.format(item))
+        if item in SKIP_FILES:
+            install_logger.debug('skipping installer support file {}'.format(item))
+            continue
 
         item_name = None
 
