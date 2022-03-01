@@ -42,6 +42,8 @@ LOG_DEFAULT_FILE_LEVEL = logging.DEBUG
 LOG_DEFAULT_FILENAME = "cos_install.log"
 LOG_DEFAULT_FILE_FORMAT = '%(asctime)s %(levelname)s %(message)s'
 LOG_DEFAULT_CONSOLE_FORMAT = '%(levelname)s %(message)s'
+LOG_DEFAULT_FILE_FORMAT_VERBOSE = '%(asctime)s %(levelname)s %(module)s.%(funcName)s:%(lineno)d %(message)s'
+LOG_DEFAULT_CONSOLE_FORMAT_VERBOSE = '%(levelname)s %(module)s.%(funcName)s:%(lineno)d %(message)s'
 LOG_DEFAULT_NAME = "cos_install"
 LOG_LEVELS = {
         "CRITICAL": logging.CRITICAL,

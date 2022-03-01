@@ -296,7 +296,7 @@ class VMConnectionException(Exception):
     """A pass-through class."""
 
 
-def run_command(cmd, **kwargs):
+def run_command(cmd, dryrun=False, **kwargs):
     """Run a system command."""
 
     parsed_cmd = shlex.split(cmd)
@@ -304,9 +304,11 @@ def run_command(cmd, **kwargs):
     # log commands to debug channel
     install_logger.debug('CMD >> {}'.format(parsed_cmd))
 
-    result = subprocess.run(parsed_cmd, stdout=subprocess.PIPE,
+    if dryrun:
+        print("DRYRUN ", parsed_cmd)
+        return 0, json.loads("cmd"), subprocess.CompletedProcess(args=parsed_cmd, returncode=0)
 
-                        stderr=subprocess.PIPE, shell=False,
+    result = subprocess.run(parsed_cmd, stdout=subprocess.PIPE,stderr=subprocess.PIPE, shell=False,
                         check=False, universal_newlines=True,
                         **kwargs)
 
@@ -330,18 +332,22 @@ def run_command(cmd, **kwargs):
     return result.returncode, structured_data, result
 
 
-class CmdInterface:
+class _CmdInterface:
     """Wrapper around the subprocess interface to simplify usage."""
-    def __init__(self, host, n_retries=0):
+    def __init__(self, n_retries=0, dryrun=False):
         self.installer = True
+        self.dryrun = dryrun
 
-    def sudo(self, cmd, **kwargs):
+    def sudo(self, cmd, cwd=None, **kwargs):
         """
         Execute a command.
         """
-
         # We might need to fiddle with this some.
         install_logger.debug('  >> {}'.format(cmd))
+        if self.dryrun:
+            print("DRYRUN CWD={}".format(cwd))
+            print("DRYRUN {}".format(cmd))
+            return subprocess.CompletedProcess(args=shlex.split(cmd), returncode=0)
 
         result = subprocess.run(shlex.split(cmd), stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE, shell=False,
@@ -364,13 +370,26 @@ class CmdInterface:
         os.chmod(target, st.st_mode)
 
 
+
+class CmdMgr:
+    """
+    This class can be used to manage a single use of CmdInterface
+    """
+
+    connection = None
+
+    @staticmethod
+    def get_cmd_interface():
+        if CmdMgr.connection == None:
+            CmdMgr.connection = _CmdInterface()
+        return CmdMgr.connection
+
 def get_products( media_dir = '.',
                   extract_archives = True,
                   products = None,
                   prefixes = None,
                   suffixes = None,
                   new_product = None ):
-
     """
     Extract product archives and return product information.
 
