@@ -20,7 +20,6 @@ import sys
 import textwrap
 import time
 
-from packaging import version as vers_mod
 from pprint import pformat
 
 from distutils.version import LooseVersion
@@ -95,7 +94,7 @@ def get_prods(args):
 
     extract_archives = (args.get("dryrun", False) == False)
     location_dict = utils.get_products(media_dir, extract_archives=extract_archives)
-    filepath = os.path.join(state_dir, "location_dict.yaml")
+    filepath = os.path.join(statedir, "location_dict.yaml")
 
    
     # If this is a dryrun the files haven't been extracted,
@@ -103,7 +102,7 @@ def get_prods(args):
     # without writing anything to a state file.
     if args.get("dryrun", False):
         for k,v in location_dict.items():
-            print("DRYRUN Product found:\n{}:\n{}".format(k, json.dumps(v, sort_keys=True, indent=4)))
+            install_logger.dryrun("Product found:\n{}:\n{}".format(k, json.dumps(v, sort_keys=True, indent=4)))
         return
 
     with open(filepath, "w", encoding="UTF-8") as fhandle:
@@ -155,6 +154,11 @@ def install(args):
                     install_logger.error('no products to install')
                     sys.exit(1)
 
+    # if we ask the installer to install something and it doesn't find anything
+    # we should probably just quit
+    if not product_count:
+        install_logger.error('no products to install')
+        sys.exit(1)
 
 def is_ready(ready):
     """
@@ -857,20 +861,9 @@ def unload_dvs_and_lnet(args):
             connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf delete pod -n user {}".format(uai_name))
 
         # Unmount PE
-        # FIXME: These commands don't make sense if PE isn't mounted.  Also,
-        # I'm not sure why we look in both of:
-        #  /var/opt/cray/pe/pe_images
-        #  /var/opt/cray/pe
-        connection.sudo("ssh {} bash /etc/cray-pe.d/pe_overlay.sh cleanup".format(w_node))
-        img_dirs = connection.sudo("ssh {} find /var/opt/cray/pe/pe_images -maxdepth 1".format(w_node)).stdout.splitlines()
-        install_logger.debug("img_dirs={}".format(img_dirs))
-        for img_dir in img_dirs:
-            connection.sudo("ssh {} umount -f {}".format(w_node, img_dir))
-
-        pe_dirs = connection.sudo("ssh {} find /var/opt/cray/pe -maxdepth 1".format(w_node)).stdout.splitlines()
-        install_logger.debug("pe_dirs={}".format(pe_dirs))
-        for pe_dir in pe_dirs:
-            connection.sudo("ssh {} umount -f {}".format(w_node, pe_dir))
+        install_logger.debug("Unmount PE ...")
+        connection.sudo("scp ../src/tools/unmount_pe.sh {}:/tmp/unmount_pe.sh".format(w_node))
+        connection.sudo("ssh {} /tmp/unmount_pe.sh".format(w_node))
 
         # Unmount Analytics contents on the worker.
         connection.sudo('git checkout {}', cwd=analytics_dir)

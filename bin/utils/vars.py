@@ -49,6 +49,7 @@ LOG_LEVELS = {
         "CRITICAL": logging.CRITICAL,
         "ERROR": logging.ERROR,
         "WARNING": logging.WARNING,
+        "DRYRUN": logging.INFO + 1,
         "INFO": logging.INFO,
         "DEBUG": logging.DEBUG
 }

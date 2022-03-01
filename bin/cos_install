@@ -41,6 +41,10 @@ STAGES = OrderedDict({
     "run_hello_world": main_ctrl.run_hello_world,
 })
 
+NOABORT_STAGES = [
+    "boot_cos",
+    "run_hello_world"
+]
 
 def format_tabbed_list(alist):
     """Format a list into text that's easier to read.  This is useful when
@@ -178,7 +182,21 @@ def process_install(cmdline_args):
 
     for stage in stages_list:
         if stage in stages:
-            STAGES[stage](args_dict)
+            install_logger.info("Beginning stage: {}".format(stage))
+            # a logging message using exc_info must be the very first thing called after the except
+            # block starts, so I can't make all these decisions there
+            if stage in NOABORT_STAGES:
+                log_level=LOG_LEVELS["WARNING"]
+            else:
+                log_level=LOG_LEVELS["ERROR"]
+
+            try:
+                STAGES[stage](args_dict)
+            except Exception as e:
+                install_logger.log(log_level,"Exception occured while executing {}".format(stage), exc_info=True)
+                if log_level == LOG_LEVELS["ERROR"]:
+                    install_logger.critical("Fatal error occured, aborting.")
+                    sys.exit(1)
 
 def process_branch_update(args):
     """Process the arguments to the branch subparser"""
@@ -207,8 +225,13 @@ def process_dryrun(cmdline_args):
     """
     Sets the static CmdInterface interface to "dryrun" mode
     """
+    dryrun = cmdline_args.get("dryrun", False)
     connection = CmdMgr.get_cmd_interface()
-    connection.dryrun = cmdline_args.get("dryrun", False)
+    connection.dryrun = dryrun
+
+    if dryrun:
+        addLoggingLevel('DRYRUN', logging.INFO + 1)
+        install_logger.dryrun("Dryrun enabled")
 
 def main():
     """Main entry point."""
