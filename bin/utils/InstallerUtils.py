@@ -4,11 +4,14 @@
 Common utility and helper functions used by the CI.
 """
 
+import base64
 import datetime
 import json
 import os
 import re
+import shlex
 import shutil
+import stat
 import subprocess
 import sys
 import textwrap
@@ -114,7 +117,8 @@ def flushprint(txt):
 
 def format_url(connection, repo):
     """Format a git url to include the username and password"""
-    git_pw = connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf get secret -n services vcs-user-credentials --template={{.data.vcs_password}} | base64 --decode").stdout
+    git_pw_base64 = connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf get secret -n services vcs-user-credentials --template={{.data.vcs_password}}").stdout
+    git_pw = base64.b64decode(git_pw_base64).decode()
     git_user = 'crayvcs'
 
     return "https://{}:{}@api-gw-service-nmn.local/vcs/cray/{}.git".format(git_user, git_pw, repo)
@@ -123,7 +127,9 @@ def format_url(connection, repo):
 def get_hosts(connection, host_str):
     """Get hosts matching a string; for example 'get_hosts(connection, "w0")'
     will get all worker nodes."""
-    xnames = connection.sudo("cray hsm state components list --type node --format json | jq -r .Components[].ID").stdout.splitlines()
+    components_list = json.loads(connection.sudo("cray hsm state components list --type node --format json").stdout)
+
+    xnames = [clist["ID"] for clist in components_list["Components"]]
     hosts = []
 
     for xname in xnames:
@@ -180,16 +186,16 @@ def wait_for_pod(connection, pod_name, timeout=1200, delete=False):
 def git_clone(connection, repo, location):
     """
     Clone a git repository.
-
     repo is (for example) cos-config-management or csm-config-management
     """
 
     url = format_url(connection, repo)
-    try:
-        connection.sudo('bash -c "cd {} && git pull"'.format(os.path.join(location, repo)))
-    except Exception as ex:
-        install_logger.error("caught exception={} ==> repo doesn't exist", ex)
-        connection.sudo('bash -c "cd {} && git clone {}"'.format(location, url), warn=True)
+    repo_dir = os.path.join(location, repo)
+    install_logger.debug("(git_clone)repo_dir={}, location={}".format(repo_dir, location))
+    if os.path.exists(repo_dir):
+        connection.sudo('git pull', cwd=os.path.join(location, repo))
+    else:
+        connection.sudo("git clone {}".format(url), cwd=location)
 
     return os.path.join(location, repo)
 
@@ -341,13 +347,7 @@ class _CmdInterface:
             result = subprocess.CompletedProcess(args=shlex.split(cmd), returncode=0)
         else:
             try:
-                if '|' in cmd:
-                    install_logger.warning("found a pipe in the command.  Using `pipefail`.")
-                    result = subprocess.run(["/bin/bash","-o","pipefail","-c",cmd], stdout=subprocess.PIPE,
-                                    stderr=subprocess.PIPE, shell=False,
-                                    check=True, universal_newlines=True, cwd=cwd, **kwargs)
-                else:
-                    result = subprocess.run(cmd.split(), stdout=subprocess.PIPE,
+                result = subprocess.run(cmd.split(), stdout=subprocess.PIPE,
                                     stderr=subprocess.PIPE, shell=False,
                                     check=True, universal_newlines=True, cwd=cwd, **kwargs)
             except subprocess.CalledProcessError as e:
@@ -373,6 +373,8 @@ class _CmdInterface:
         A Wrapper around the Connection put.
         """
         shutil.copyfile(source, target)
+        st = os.stat(source)
+        os.chmod(target, st.st_mode)
 
 
 
