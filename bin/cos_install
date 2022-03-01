@@ -16,13 +16,16 @@ import yaml
 import logging
 
 from utils.vars import *
+from utils.InstallLogger import *
+
+from utils.InstallerUtils import CmdMgr
 
 import utils.ShastaUpdate as main_ctrl
-from utils.InstallLogger import install_logger_file_init, install_logger_stream_init
+
 
 # pylint: disable=consider-using-f-string
 
-install_logger = install_logger_file_init()
+install_logger = get_install_logger()
 
 STAGES = OrderedDict({
     "hello": main_ctrl.hello,
@@ -205,17 +208,25 @@ def process_list(args): #pylint: disable=unused-argument
     print(stages)
 
 def process_debug_level(cmdline_args):
+    install_logger_file_init(verbose=cmdline_args.get("verbose", False))
     if "level" in cmdline_args.keys() and cmdline_args["level"] != None:
         if cmdline_args["level"] in LOG_LEVELS.keys():
             level = LOG_LEVELS[cmdline_args["level"]]
-            install_logger_stream_init(level)
+            install_logger_stream_init(level, cmdline_args.get("verbose", False))
         else:
             logger.error("Unrecognized log level: {}".format(cmdline_args["level"]))
             sys.exit(1)
     else:
-        install_logger_stream_init()
+        install_logger_stream_init(verbose=cmdline_args.get("verbose", False))
 
     return
+
+def process_dryrun(cmdline_args):
+    """
+    Sets the static CmdInterface interface to "dryrun" mode
+    """
+    connection = CmdMgr.get_cmd_interface()
+    connection.dryrun = cmdline_args.get("dryrun", False)
 
 def main():
     """Main entry point."""
@@ -242,11 +253,14 @@ def main():
     parser.add_argument("-m", "--media-dir", action="store",
         help="Location of installation media")
 
-    parser.add_argument("-d", "--dry-run", action="store_true",
+    parser.add_argument("-d", "--dryrun", action="store_true",
         help="Run without making any changes to the system to see what would happen")
 
     parser.add_argument("-l", "--level", action="store",
         help="Set the debug level to the console", choices=LOG_LEVELS.keys())
+
+    parser.add_argument("-v", "--verbose", action="store_true",
+        help="Generates more verbose messages")
 
     # TODO: The stage-dir usage could use more verbiage. We might want to add
     # this to the install docs.  Describing it in detail in the help section
@@ -295,6 +309,8 @@ def main():
     args_dict = vars(args)
 
     process_debug_level(args_dict)
+    process_dryrun(args_dict)
+    install_logger.debug(args_dict)
 
     if len(sys.argv) < 2:
         install_logger.error("{} requires at least 1 argument".format(sys.argv[0]))
