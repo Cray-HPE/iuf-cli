@@ -99,7 +99,7 @@ def get_prods(args):
     # without writing anything to a state file.
     if args.get("dryrun", False):
         for k,v in location_dict.items():
-            print("DRYRUN Product found:\n{}:\n{}".format(k, json.dumps(v, sort_keys=True, indent=4)))
+            install_logger.dryrun("Product found:\n{}:\n{}".format(k, json.dumps(v, sort_keys=True, indent=4)))
         return
 
     with open(filepath, "w", encoding="UTF-8") as fhandle:

@@ -299,7 +299,7 @@ def run_command(cmd, dryrun=False, **kwargs):
     install_logger.debug('CMD >> {}'.format(parsed_cmd))
 
     if dryrun:
-        print("DRYRUN ", parsed_cmd)
+        install_logger.dryrun(parsed_cmd)
         return 0, json.loads("cmd"), subprocess.CompletedProcess(args=parsed_cmd, returncode=0)
 
     result = subprocess.run(parsed_cmd, stdout=subprocess.PIPE,stderr=subprocess.PIPE, shell=False,
@@ -338,8 +338,6 @@ class _CmdInterface:
         """
 
         if self.dryrun:
-            print("DRYRUN CWD={}".format(cwd))
-            print("DRYRUN {}".format(cmd))
             result = subprocess.CompletedProcess(args=shlex.split(cmd), returncode=0)
         else:
             try:
@@ -359,10 +357,14 @@ class _CmdInterface:
                 install_logger.debug("  >>>> exit code: {}".format(e.returncode))
                 raise
 
-        install_logger.debug("  >>   cmd      : {}".format(result.args))
-        install_logger.debug("  >>>> stdout   : {}".format(result.stdout))
-        install_logger.debug("  >>>> stderr   : {}".format(result.stderr))
-        install_logger.debug("  >>>> exit code: {}".format(result.returncode))
+        if self.dryrun:
+            install_logger.dryrun("  >>   cmd      : {}".format(result.args))
+            install_logger.dryrun("  >>>> cwd      : {}".format(cwd))
+        else:
+            install_logger.debug("  >>   cmd      : {}".format(result.args))
+            install_logger.debug("  >>>> stdout   : {}".format(result.stdout))
+            install_logger.debug("  >>>> stderr   : {}".format(result.stderr))
+            install_logger.debug("  >>>> exit code: {}".format(result.returncode))
 
         return result
 

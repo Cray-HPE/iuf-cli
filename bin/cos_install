@@ -225,8 +225,13 @@ def process_dryrun(cmdline_args):
     """
     Sets the static CmdInterface interface to "dryrun" mode
     """
+    dryrun = cmdline_args.get("dryrun", False)
     connection = CmdMgr.get_cmd_interface()
-    connection.dryrun = cmdline_args.get("dryrun", False)
+    connection.dryrun = dryrun
+
+    if dryrun:
+        addLoggingLevel('DRYRUN', logging.INFO + 1)
+        install_logger.dryrun("Dryrun enabled")
 
 def main():
     """Main entry point."""
