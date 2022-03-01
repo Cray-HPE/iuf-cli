@@ -23,6 +23,8 @@ import time
 from packaging import version as vers_mod
 from pprint import pformat
 
+from distutils.version import LooseVersion
+
 import yaml #pylint: disable=import-error
 
 from utils.InstallLogger import get_install_logger
@@ -99,7 +101,6 @@ def install(args):
 
     statedir = get_dirs(args, "state")
 
-
     with open(os.path.join(statedir, LOCATION_DICT), 'r',
               encoding='UTF-8') as fhandle:
         location_dict = yaml.full_load(fhandle)
@@ -107,30 +108,41 @@ def install(args):
     # FIXME:  This is a lemondrop-specific work-around.  I don't think we
     # want to constrain customers to a specific version.
     lowest_v_str ="2.3.38"
-    lowest_v = vers_mod.parse(lowest_v_str)
+    lowest_v = LooseVersion(lowest_v_str)
 
     current_v_str = get_cos_version(args, False)
-    current_v = vers_mod.parse(current_v_str)
-    if lowest_v > current_v:
-        err_msg = """ The lowest version of COS that should be installed
-        is {}.  The version ({}) will break cfs.
-        """.format(lowest_v_str, current_v_str)
-        install_logger.error(err_msg)
-        sys.exit(1)
+    # only do the version check if we're installing cos
+    if current_v_str:
+        current_v = LooseVersion(current_v_str)
+        if lowest_v > current_v:
+            err_msg = """ The lowest version of COS that should be installed
+            is {}.  The version ({}) will break cfs.
+            """.format(lowest_v_str, current_v_str)
+            install_logger.error(err_msg)
+            sys.exit(1)
 
     product_count = 0
     for prod in location_dict:
+        install_logger.info('Installing {}'.format(prod))
         # only look at entries that are identified as products
         if location_dict[prod]['product']:
             # work_dir will not be set for invalid products
-            if location_dict[prod]["work_dir"]:
-                loc = location_dict[prod]["work_dir"]
-                connection.sudo("./install.sh", cwd=loc)
-                product_count += 1
-
-    if not product_count:
-        install_logger.error('no products to install')
-        exit(1)
+            if location_dict[prod]['work_dir']:
+                loc = location_dict[prod]['work_dir']
+                cmd = './install.sh'
+                if not args['dry_run']:
+                    result = connection.sudo(cmd, cwd=loc)
+                    install_logger.debug(result)
+                    if result.returncode != 0:
+                        install_logger.info('  Failed!  See log for more information')
+                    else:
+                        install_logger.info('  OK')
+                        product_count += 1
+                    if not product_count:
+                        install_logger.error('no products to install')
+                        sys.exit(1)
+                else:
+                    install_logger.info('dry-run, not running {} in {}'.format(cmd, loc))
 
 
 def is_ready(ready):
@@ -524,6 +536,17 @@ def get_cos_version(args, short=True):
     with open(os.path.join(statedir, LOCATION_DICT), "r",
               encoding='UTF-8') as fhandle:
         locs_dict = yaml.load(fhandle, yaml.SafeLoader)
+    # use the version provided by get_products
+    cos_versions = [locs_dict[key]['version'] for key in locs_dict if 'cos' in key and locs_dict[key]['work_dir']]
+    sorted_vers = sorted(cos_versions, key=LooseVersion)
+    install_logger.debug('sorted cos_versions are {}'.format(sorted_vers))
+    if sorted_vers:
+        highest_vers = sorted_vers[-1]
+        version_list = highest_vers.split('.')
+        short_vers = "{}.{}".format(version_list[0], version_list[1])
+    else:
+        highest_vers = ''
+        short_vers = ''
 
     install_logger.debug("locs_dict=\n{}\n".format(pformat(locs_dict)))
     cos_versions = [ld.replace('cos-', '') for ld in locs_dict.keys() if 'cos' in ld]
@@ -533,6 +556,8 @@ def get_cos_version(args, short=True):
 
     version_list = highest_vers.split('.')
     short_vers = "{}.{}".format(version_list[0], version_list[1])
+    install_logger.debug('highest_vers {}'.format(highest_vers))
+    install_logger.debug('short_vers {}'.format(short_vers))
 
     get_cos_version.short_version = short_vers
     get_cos_version.full_version = highest_vers
