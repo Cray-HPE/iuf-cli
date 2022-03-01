@@ -14,12 +14,14 @@ import argparse
 import datetime
 import json
 import os
+import re
+import stat
 import sys
 import textwrap
 import time
-import re
 
 from packaging import version as vers_mod
+from pprint import pformat
 
 import yaml #pylint: disable=import-error
 
@@ -72,22 +74,22 @@ def get_binaries(args):
 
 def get_dirs(args,which=None):
     media_dir = args.get("media_dir", os.getcwd())
-    state_dir = args.get("state_dir", os.getcwd())
+    statedir = args.get("state_dir", os.getcwd())
     if which == "state":
-        return state_dir
+        return statedir
     elif which == "media":
         return media_dir
     else:
-        return media_dir, state_dir
+        return media_dir, statedir
 
 
 def get_prods(args):
     """A passthrough function to InstallerUtils.get_products."""
 
-    media_dir, state_dir = get_dirs(args)
+    media_dir, statedir = get_dirs(args)
 
     location_dict = utils.get_products(media_dir)
-    filepath = os.path.join(state_dir, "location_dict.yaml")
+    filepath = os.path.join(statedir, "location_dict.yaml")
     with open(filepath, "w", encoding="UTF-8") as fhandle:
         yaml.dump(location_dict, fhandle)
 
@@ -95,10 +97,10 @@ def get_prods(args):
 def install(args):
     """Install COS, Slingshot-host, or SLE"""
 
-    state_dir = get_dirs(args, "state")
+    statedir = get_dirs(args, "state")
 
 
-    with open(os.path.join(state_dir, LOCATION_DICT), 'r',
+    with open(os.path.join(statedir, LOCATION_DICT), 'r',
               encoding='UTF-8') as fhandle:
         location_dict = yaml.full_load(fhandle)
 
@@ -245,48 +247,69 @@ def sync_ci_tools(args):
     """Sync any tools the CI process might need to a temp dir on the NCN"""
 
     tools = [
-            "src/tools/get_vcspw.sh"
+            "../src/tools/get_vcspw.sh"
             ]
 
     for tool in tools:
         tool_basename = os.path.basename(tool)
         connection.put(tool,"{}/{}".format(get_dirs(args, "state"), tool_basename))
 
+def get_catalog_list(custom_columns, import_type):
+    clone_re = re.compile(r"\s+{}:\s+".format(import_type))
+    allout = connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf get cm -n services cray-product-catalog -o custom-columns={}".format(custom_columns)).stdout.splitlines()
+    repos = [allo for allo in allout if import_type in allo]
+    repos = sorted(set([re.sub(clone_re, '', repo) for repo in repos]))
+    return repos
 
 def setup_git_config(args):
     """Setup a .gitconfig that can be used by the rest of the CI"""
     host_shortname = host.split("-", maxsplit=1)[0]
-    state_dir = get_dirs(args, "state")
+    statedir = get_dirs(args, "state")
 
-    connection.sudo("{}/get_vcspw.sh > {}/.vcspass".format(state_dir, state_dir))
-    connection.sudo("echo cat {}/.vcspass > {}/get_local_vcspw.sh".format(state_dir,state_dir))
-    connection.sudo("chmod +x {}/get_local_vcspw.sh".format(state_dir))
+    connection.sudo("{}/get_vcspw.sh > {}/.vcspass".format(statedir, statedir))
+    glv = os.path.join(statedir, "get_local_vcspw.sh")
+    with open(glv, "w", encoding="UTF-8") as fhandle:
+        fhandle.write("cat {}/.vcspass".format(statedir))
+    stm = os.stat(glv)
+    os.chmod(glv, stm.st_mode | stat.S_IEXEC)
 
-    connection.sudo("HOME={} git config --global core.askPass {}/get_local_vcspw.sh".format(state_dir, state_dir))
-    connection.sudo("HOME={} git config --global credential.https://api-gw-service-nmn.local.username crayvcs".format(state_dir))
-    connection.sudo("HOME={} git config --global url.https://api-gw-service-nmn.local.insteadof https://vcs.{}.dev.cray.com".format(state_dir, host_shortname))
+    oldhome = statedir
+    if "HOME" in os.environ:
+        install_logger.debug("old home = {}".format(os.environ["HOME"]))
+        oldhome = os.environ["HOME"]
+    os.environ["HOME"] = statedir
 
+    connection.sudo("git config --global core.askPass {}".format(glv))
+    connection.sudo("git config --global credential.https://api-gw-service-nmn.local.username crayvcs".format(statedir))
+    connection.sudo("git config --global url.https://api-gw-service-nmn.local.insteadof https://vcs.{}.dev.cray.com".format(statedir, host_shortname))
+    os.environ["HOME"] = oldhome
 
 def backup_config_repos(args):
     """Backup the configuration repositories in git"""
     host_shortname = host.split("-", maxsplit=1)[0]
 
-    state_dir = get_dirs(args, "state")
+    statedir = get_dirs(args, "state")
+    oldhome = statedir
+    if "HOME" in os.environ:
+        oldhome = os.environ["HOME"]
+    os.environ["HOME"] = statedir
 
-    datestr = datetime.datetime.today().strftime("%Y%m%d")
-    backup_dir = os.path.join(state_dir, datestr)
+    datestr = datetime.datetime.today().strftime("%Y%m%d-%H%M%S")
+    backup_dir = os.path.join(statedir, datestr)
 
     connection.sudo("mkdir -p {}".format(backup_dir))
 
-    config_repos = connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf get cm -n services cray-product-catalog -o custom-columns=DATA:.data | grep clone_url | cut -d: -f2- | sort -u").stdout.splitlines()
+    config_repos = get_catalog_list("DATA:.data", "clone_url")
 
     for repo in config_repos:
-        # yeah, yeah
         repodir = re.search(r"((git|ssh|http(s)?)|(git@[\w\.]+))(:(//)?)([\w\.@\:/\-~]+)(\.git)(/)?",repo).group(7).split("/")[-1]
         clonedir = backup_dir + "/" + repodir
-        connection.sudo("HOME={} git clone {} {}".format(state_dir,repo,clonedir))
-        remotes = connection.sudo("HOME={} git -C {} branch -a".format(
-            state_dir,clonedir)).stdout.splitlines()
+
+        #connection.sudo("git clone {} {}".format(repo,clonedir))
+        # TODO: git_clone isn't secure.  The "git clone" above would be better.
+        utils.git_clone(connection, repodir, backup_dir)
+        remotes = connection.sudo("git -C {} branch -a".format(
+            clonedir)).stdout.splitlines()
         for raw in remotes:
             if not raw.strip().startswith("remotes"):
                 continue
@@ -299,16 +322,18 @@ def backup_config_repos(args):
             if branch == "master":
                 continue
 
-            connection.sudo("HOME={} git -C {} branch --track {} {}".format(
-                            state_dir,clonedir,branch,raw))
+            connection.sudo("git -C {} branch --track {} {}".format(
+                clonedir,branch,raw))
 
-        connection.sudo("HOME={} git -C {} fetch --all".format(state_dir,clonedir))
-        connection.sudo("HOME={} git -C {} pull --all".format(state_dir,clonedir))
+        connection.sudo("git -C {} fetch --all".format(clonedir))
+        connection.sudo("git -C {} pull --all".format(clonedir))
 
         # now set up the backed up repo to work locally
-        connection.sudo("git -C {} config core.askPass {}/get_vcspw.sh".format(clonedir,state_dir))
+        connection.sudo("git -C {} config core.askPass {}/get_vcspw.sh".format(clonedir,statedir))
         connection.sudo("git -C {} config credential.https://api-gw-service-nmn.local.username crayvcs".format(clonedir))
         connection.sudo("git -C {} config url.https://api-gw-service-nmn.local.insteadof https://vcs.{}.dev.cray.com".format(clonedir,host_shortname))
+
+        os.environ["HOME"] = oldhome
 
 
 def merge_cos_integration(args):
@@ -319,18 +344,18 @@ def merge_cos_integration(args):
     git_checkout_dir = get_dirs(args, "state")
 
     cos_checkout_dir = os.path.join(git_checkout_dir, "cos-config-management")
-
+    utils.git_clone(connection, "cos-config-management", git_checkout_dir)
     # second, see what branches we want to work with
     _, integration_branch = curr_cos_branch(args)
-    import_branch = None
 
     cos_version = get_cos_version(args)
-    import_branch_cmd = "kubectl --kubeconfig=/etc/kubernetes/admin.conf get cm -n services cray-product-catalog -o custom-columns=DATA:.data.cos | grep {} | grep import_branch | tail -1 | cut -d: -f2-".format(cos_version)
-    import_branch_result = connection.sudo(import_branch_cmd).stdout.splitlines()
+    branches = get_catalog_list("DATA:.data.cos", "import_branch")
+    import_branch = branches[-1] if branches else None
 
-    for line in import_branch_result:
-        import_branch = line.strip()
-        break
+    def check_cmd(cmd):
+        """Run a sudo command.  Return True on success and False on failure."""
+        result = connection.sudo(cmd).returncode
+        return int(result) == 0
 
     if import_branch is None:
         install_logger.error("Error: Unable to retrieve import branch")
@@ -353,26 +378,27 @@ def merge_cos_integration(args):
     if found_integration:
         # it exists, check it out
         install_logger.debug("Using existing integration branch")
-        checkout_ok = connection.sudo("git -C {} checkout {}".format(
-            cos_checkout_dir,integration_branch)).ok
+        checkout_ok =check_cmd("git -C {} checkout {}".format(
+            cos_checkout_dir,integration_branch))
+
     else:
         # doesn't exist, create it based on the import branch
         install_logger.debug("Unable to locate integration branch, creating it based on {}".format(import_branch))
-        result = connection.sudo("git -C {} checkout {}".format(cos_checkout_dir,import_branch))
-        if result.ok:
-            result = connection.sudo("git -C {} checkout -b {}".format(
+        cmd_ok = check_cmd("git -C {} checkout {}".format(cos_checkout_dir,import_branch))
+        if cmd_ok:
+            cmd_ok = check_cmd("git -C {} checkout -b {}".format(
                 cos_checkout_dir,integration_branch))
-        if result.ok:
-            checkout_ok = connection.sudo("git -C {} push --set-upstream origin {}".format(
-                cos_checkout_dir,integration_branch)).ok
+        if cmd_ok:
+            cmd_ok = check_cmd("git -C {} push --set-upstream origin {}".format(
+                cos_checkout_dir,integration_branch))
 
     # fourth, merge the import branch to the integration branch
     if checkout_ok:
         install_logger.debug("Merge branch {} into {}".format(import_branch,integration_branch))
-        merge_ok = connection.sudo("git -C {} merge -m \"Merge branch '{}' into {}\" {}".format(
-            cos_checkout_dir,import_branch,integration_branch,import_branch)).ok
+        merge_ok = check_cmd("git -C {} merge -m \"Merge branch '{}' into {}\" {}".format(
+            cos_checkout_dir,import_branch,integration_branch,import_branch))
         if merge_ok:
-            push_ok = connection.sudo("git -C {} push".format(cos_checkout_dir)).ok
+            push_ok = check_cmd("git -C {} push".format(cos_checkout_dir))
             if not push_ok:
                 install_logger.debug("Unable to push merged changes back to origin")
         else:
@@ -493,12 +519,15 @@ def get_cos_version(args, short=True):
 
     # If we haven't returned, full_version and short_version do not exist.
     # read the yaml and set them.
-    state_dir = get_dirs(args, "state")
-    with open(os.path.join(state_dir, LOCATION_DICT), "r",
+    statedir = get_dirs(args, "state")
+    install_logger.debug("location_dict path = {}".format(os.path.join(statedir, LOCATION_DICT)))
+    with open(os.path.join(statedir, LOCATION_DICT), "r",
               encoding='UTF-8') as fhandle:
         locs_dict = yaml.load(fhandle, yaml.SafeLoader)
 
+    install_logger.debug("locs_dict=\n{}\n".format(pformat(locs_dict)))
     cos_versions = [ld.replace('cos-', '') for ld in locs_dict.keys() if 'cos' in ld]
+    install_logger.debug("cos_version={}".format(pformat(cos_versions)))
     sorted_vers = sorted(cos_versions, key=vers_mod.Version)
     highest_vers = sorted_vers[-1]
 
@@ -742,11 +771,11 @@ def unload_dvs_and_lnet(args):
     install_logger.debug("get all pods ...")
     all_pods = connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods -Ao wide").stdout.splitlines()
 
-    state_dir = get_dirs(args, "state")
+    statedir = get_dirs(args, "state")
 
     # Clone the analytics repo.  It will be used to unmount analytics on the worker.
-    analytics_dir = os.path.join(state_dir, 'analytics-config-management')
-    utils.git_clone(connection, 'analytics-config-management', state_dir)
+    analytics_dir = os.path.join(statedir, 'analytics-config-management')
+    utils.git_clone(connection, 'analytics-config-management', statedir)
     k8s_job_line = None
     for w_xname, w_node in worker_tuples:
         # Disable cfs.
@@ -815,8 +844,9 @@ def unload_dvs_and_lnet(args):
         # check_analytics will run forcecleanup.sh until dvs unmounts cleanly
         check_analytics_mount(w_node)
 
-        # Add cps back to the worker
-        connection.sudo("cray cps deployment update --nodes {}".format(w_node))
+        # Add cps back to the worker if they were deleted
+        if  cps_cm_pm_pods:
+            connection.sudo("cray cps deployment update --nodes {}".format(w_node))
 
         # Make sure the reference count for dvs is 0.
         lsmods = connection.sudo("ssh {} lsmod".format(w_node)).stdout.splitlines()
@@ -830,7 +860,7 @@ def unload_dvs_and_lnet(args):
             fields = dvs_mod.split()
             if fields[2] != '0':
                 warning_str = utils.formatted("""
-                    WARNING: The DVS module ({}) didn't unload properly from {}.
+                    The DVS module ({}) didn't unload properly from {}.
                     Because of this, the COS Software cannot complete on this
                     worker.  fields[2]={}""".format(fields[0], w_node, fields[2]))
                 install_logger.warning(warning_str)
@@ -1046,8 +1076,8 @@ def cleanup(args): # pylint: disable=unused-argument
     """Clean things up after a run."""
 
     # remove files containing passwords
-    state_dir = get_dirs(args, "state")
-    connection.sudo("rm -f {}/.vcspass {}/get_local_vcspw.sh".format(state_dir, state_dir))
+    statedir = get_dirs(args, "state")
+    connection.sudo("rm -f {}/.vcspass {}/get_local_vcspw.sh".format(statedir, statedir))
 
 
 def hello(args):

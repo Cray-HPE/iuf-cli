@@ -11,6 +11,7 @@ import os
 import re
 import shlex
 import shutil
+import stat
 import subprocess
 import sys
 import textwrap
@@ -352,6 +353,8 @@ class CmdInterface:
         A Wrapper around the Connection put.
         """
         shutil.copyfile(source, target)
+        st = os.stat(source)
+        os.chmod(target, st.st_mode)
 
 
 def get_products( media_dir = '.',
