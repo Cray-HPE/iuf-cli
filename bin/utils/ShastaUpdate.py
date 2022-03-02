@@ -23,7 +23,6 @@ import time
 from pprint import pformat
 
 from distutils.version import LooseVersion
-from packaging import version as vers_mod
 
 import yaml #pylint: disable=import-error
 
@@ -102,8 +101,7 @@ def get_prods(args):
     # without writing anything to a state file.
     if args.get("dryrun", False):
         for k,v in location_dict.items():
-            install_logger.dryrun("Product found:\n{}:\n{}".format(k, json.dumps(v, sort_keys=True, indent=4)))
-        return
+            install_logger.debug("DRYRUN Product found:\n{}:\n{}".format(k, json.dumps(v, sort_keys=True, indent=4)))
 
     with open(filepath, "w", encoding="UTF-8") as fhandle:
         yaml.dump(location_dict, fhandle)
@@ -136,11 +134,11 @@ def install(args):
 
     product_count = 0
     for prod in location_dict:
-        install_logger.info('Installing {}'.format(prod))
         # only look at entries that are identified as products
         if location_dict[prod]['product']:
             # work_dir will not be set for invalid products
             if location_dict[prod]['work_dir']:
+                install_logger.info('Installing {}'.format(prod))
                 loc = location_dict[prod]['work_dir']
                 cmd = './install.sh'
                 result = connection.sudo(cmd, cwd=loc)
@@ -564,13 +562,6 @@ def get_cos_version(args, short=True):
         short_vers = ''
 
     install_logger.debug("locs_dict=\n{}\n".format(pformat(locs_dict)))
-    cos_versions = [ld.replace('cos-', '') for ld in locs_dict.keys() if 'cos' in ld]
-    install_logger.debug("cos_version={}".format(pformat(cos_versions)))
-    sorted_vers = sorted(cos_versions, key=vers_mod.Version)
-    highest_vers = sorted_vers[-1]
-
-    version_list = highest_vers.split('.')
-    short_vers = "{}.{}".format(version_list[0], version_list[1])
     install_logger.debug('highest_vers {}'.format(highest_vers))
     install_logger.debug('short_vers {}'.format(short_vers))
 
