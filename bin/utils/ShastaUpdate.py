@@ -786,8 +786,8 @@ def check_analytics_mount(node):
     while keep_waiting:
         # Sometimes it takes multiple tries for forceleanup, so only warn if
         # it fails.
-        connection.sudo("ssh {} 'sh /tmp/forcecleanup.sh'".format(node))
-        mounts = connection.sudo("ssh {} 'mount -t dvs'".format(node)).stdout.splitlines()
+        connection.sudo("ssh {} /bin/bash /tmp/forcecleanup.sh".format(node))
+        mounts = connection.sudo("ssh {} mount -t dvs".format(node)).stdout.splitlines()
         an_mounts = [m for m in mounts if 'analytics' in m.lower()]
         if an_mounts:
             time.sleep(sleep_time)
@@ -855,6 +855,7 @@ def unload_dvs_and_lnet(args):
 
         # Check to see if any UAIs are running on the worker.  Migrate them if so.
         uais = [ p for p in all_pods if 'uai' in p and w_node in p]
+        connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf label node {} --overwrite uas=False".format(w_node))
         for uai in uais:
             fields = uai.split()
             uai_name = fields[1]
@@ -866,16 +867,12 @@ def unload_dvs_and_lnet(args):
         connection.sudo("ssh {} /tmp/unmount_pe.sh".format(w_node))
 
         # Unmount Analytics contents on the worker.
-        connection.sudo('git checkout {}', cwd=analytics_dir)
+        connection.sudo('git checkout {}'.format(ANALYTICS_BRANCH), cwd=analytics_dir)
         connection.sudo('git pull', cwd=analytics_dir)
         connection.sudo("scp roles/analyticsdeploy/files/forcecleanup.sh {}:/tmp".format(w_node), cwd=analytics_dir)
 
         # check_analytics will run forcecleanup.sh until dvs unmounts cleanly
         check_analytics_mount(w_node)
-
-        # Add cps back to the worker if they were deleted
-        if  cps_cm_pm_pods:
-            connection.sudo("cray cps deployment update --nodes {}".format(w_node))
 
         # Make sure the reference count for dvs is 0.
         lsmods = connection.sudo("ssh {} lsmod".format(w_node)).stdout.splitlines()
@@ -888,18 +885,17 @@ def unload_dvs_and_lnet(args):
         if not skip_reload:
             fields = dvs_mod.split()
             if fields[2] != '0':
-                warning_str = utils.formatted("""
+                error_str = utils.formatted("""
                     The DVS module ({}) didn't unload properly from {}.
                     Because of this, the COS Software cannot complete on this
                     worker.  fields[2]={}""".format(fields[0], w_node, fields[2]))
-                install_logger.warning(warning_str)
-                skip_reload = True
+                raise InstallError(error_str)
 
         # Unload previous COS release’s DVS and LNet services.
         try:
             install_logger.debug("call dvs_reload_ncn...cray_dvs_unload.yml")
-            output = connection.sudo("/tmp/dvs_reload_ncn -D -c ncn-personalization -p playbooks/cray_dvs_unload.yml {}".format(w_xname),
-                                     timeout=120).stdout.splitlines()
+            output = connection.sudo("/tmp/dvs_reload_ncn -D -c ncn-personalization -p playbooks/cray_dvs_unload.yml {}".format(w_xname)
+                                     ).stdout.splitlines()
             k8s_job_line = [line for line in output if line.lower().startswith('services')][0]
         except Exception as ex:
             install_logger.warning("Caught exception {}, name={}".format(ex, ex.__class__.__name__))
@@ -912,11 +908,6 @@ def unload_dvs_and_lnet(args):
             utils.wait_for_pod(connection, k8s_job)
         else:
             install_logger.warning("WARNING: Unable to get the K8S job name.")
-
-        # TODO: We should probably continue here, but we need to make sure
-        # of that, and that the check is valid.
-        #if skip_reload:
-        #    continue
 
         # Note the 'for' loop below is only for record-keeping.  The dvs,
         # lustre, and craytrace rpms need to be uninstalled in a specific
@@ -964,10 +955,15 @@ def unload_dvs_and_lnet(args):
         install_logger.debug("Old dvs, lustre, and craytrace rpms on {}: {}".format(w_node, ','.join(old_rpms)))
         install_logger.debug("New dvs, lustre, and craytrace rpms on {}: {}".format(w_node, ','.join(new_rpms)))
 
-    # Add the UAIs back to the worker.  Note this is done earlier in the guide
-    # (at https://stash.us.cray.com/projects/SHASTA-OS/repos/cos-docs/browse/portal/developer-portal/install/Upgrade_and_Configure_COS.md)
-    # But since it's not done for each particular worker, it needs to be done out of order.
-    connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf label node ncn-m001 uas-")
+        # Add cps back to the worker if they were deleted
+        if  cps_cm_pm_pods:
+            connection.sudo("cray cps deployment update --nodes {}".format(w_node))
+
+
+        # Add the UAIs back to the worker.  Note this is done earlier in the guide
+        # (at https://stash.us.cray.com/projects/SHASTA-OS/repos/cos-docs/browse/portal/developer-portal/install/Upgrade_and_Configure_COS.md)
+        # But since it's not done for each particular worker, it needs to be done out of order.
+        connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf label node {} uas-".format(w_node))
 
 
 def session_templates_sort(element):
