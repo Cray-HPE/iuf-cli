@@ -7,6 +7,7 @@ Common utility and helper functions used by the CI.
 import base64
 import datetime
 import json
+import yaml
 import os
 import re
 import shlex
@@ -391,6 +392,57 @@ class CmdMgr:
             CmdMgr.connection = _CmdInterface()
         return CmdMgr.connection
 
+
+def get_git(products):
+    """
+    update product dictionary with gitea urls
+    """
+    install_logger.debug('determining config-management url for products')
+    # get full data for initial image_id
+    command = 'kubectl get cm -n services cray-product-catalog -o json'
+    rc, product_cat, raw = run_command(command, dryrun=False)
+    all_product_data=product_cat['data']
+    for product in products:
+        product_version = products[product]['version']
+        try:
+            working_type = products[product]['product']
+            product_data = yaml.safe_load(all_product_data[working_type])
+            matching_versions = []
+            # find all keys in the product catalog that match the supplied product
+            for item in product_data.keys():
+                if str(product_version).startswith(str(item)):
+                    matching_versions.append(item)
+            # if there is only one match, we consider this the "real" version
+            if len(matching_versions) == 1:
+                working_version = matching_versions[0]
+                products[product]['product_version'] = working_version
+                install_logger.debug('found exact version {} for {}'.format(working_version, product))
+                product_catalog = product_data[working_version]
+                try:
+                    products[product]['clone_url'] = product_catalog['configuration']['clone_url']
+                    products[product]['import_branch'] = product_catalog['configuration']['import_branch']
+                except Exception as err:
+                    # even if we have an exact match in the product catalog, there may
+                    # not be git information associated with that product entry
+                    working_version = max(product_data.keys())
+                    install_logger.debug('no product catalog config data, trying {} for {}'.format(working_version, product))
+                    product_catalog = product_data[working_version]
+                    products[product]['clone_url'] = product_catalog['configuration']['clone_url']
+            else:                
+                # if there is no exact match, attempt to get the clone_url anyway since
+                # that doesn't change between product versions
+                working_version = max(product_data.keys())
+                install_logger.debug('no exact version in {}, using {} for {}'.format(matching_versions, working_version, product))
+                product_catalog = product_data[working_version]
+                products[product]['clone_url'] = product_catalog['configuration']['clone_url']
+
+        except Exception as err:
+            install_logger.debug('unable to get all config-management data for {}'.format(product))
+            pass
+
+    return products
+
+
 def get_products( media_dir = '.',
                   extract_archives = True,
                   products = None,
@@ -476,7 +528,12 @@ def get_products( media_dir = '.',
                         'md5': None,
                         'out': None,
                         'archive_check': None,
-                        'version': None
+                        'version': None,
+                        'product_version': None,
+                        'clone_url': None,
+                        'import_branch': None,
+                        'installed': None,
+                        'merged': None
                       }
     # since media_dir defaults to PWD, let's just ignore
     # installer files

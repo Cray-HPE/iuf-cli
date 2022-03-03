@@ -86,6 +86,17 @@ def get_dirs(args,which=None):
         return media_dir, statedir
 
 
+def update_prods(args, location_dict):
+    """
+    update location_dict with updated info
+    """
+    media_dir, statedir = get_dirs(args)
+    install_logger.debug('updating location_dict')
+    filepath = os.path.join(statedir, "location_dict.yaml")
+    with open(filepath, "w", encoding="UTF-8") as fhandle:
+        yaml.dump(location_dict, fhandle)    
+
+
 def get_prods(args):
     """A passthrough function to InstallerUtils.get_products."""
 
@@ -94,14 +105,6 @@ def get_prods(args):
     extract_archives = (args.get("dryrun", False) == False)
     location_dict = utils.get_products(media_dir, extract_archives=extract_archives)
     filepath = os.path.join(statedir, "location_dict.yaml")
-
-   
-    # If this is a dryrun the files haven't been extracted,
-    # so we can just print the product info we have and return
-    # without writing anything to a state file.
-    if args.get("dryrun", False):
-        for k,v in location_dict.items():
-            install_logger.debug("DRYRUN Product found:\n{}:\n{}".format(k, json.dumps(v, sort_keys=True, indent=4)))
 
     with open(filepath, "w", encoding="UTF-8") as fhandle:
         yaml.dump(location_dict, fhandle)
@@ -137,26 +140,35 @@ def install(args):
         # only look at entries that are identified as products
         if location_dict[prod]['product']:
             # work_dir will not be set for invalid products
-            if location_dict[prod]['work_dir']:
+            if location_dict[prod]['work_dir'] and not location_dict[prod]['installed']:
                 install_logger.info('Installing {}'.format(prod))
                 loc = location_dict[prod]['work_dir']
                 cmd = './install.sh'
                 result = connection.sudo(cmd, cwd=loc)
                 install_logger.debug(result)
                 if result.returncode != 0:
-                    install_logger.info('  Failed!  See log for more information')
+                    install_logger.error('  Failed!  See log for more information')
+                    location_dict[prod]['installed'] = False
                 else:
                     install_logger.info('  OK')
                     product_count += 1
+                    location_dict[prod]['installed'] = True
                 if not product_count:
                     install_logger.error('no products to install')
+                    update_prods(args, location_dict)
                     sys.exit(1)
+            else:
+                install_logger.info('{} already installed'.format(prod))
 
     # if we ask the installer to install something and it doesn't find anything
     # we should probably just quit
     if not product_count:
         install_logger.error('no products to install')
+        update_prods(args, location_dict)
         sys.exit(1)
+
+    # add git config and write out state file
+    update_prods(args, utils.get_git(location_dict))
 
 def is_ready(ready):
     """
