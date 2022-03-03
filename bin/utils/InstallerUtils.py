@@ -395,7 +395,19 @@ class _CmdInterface:
                 install_logger.info("Too many asks.  Exiting")
                 sys.exit(0)
 
-        out = self.sudo(cmd, **kwargs)
+        out = None
+        try:
+            out = self.sudo(cmd, **kwargs)
+        except Exception as ex:
+            print("Caught exception: {}".format(ex))
+            if hasattr(out, "stderr"):
+                print("stderr='{}'".format(out.stderr))
+            if hasattr(out, "stdout"):
+                print("stdout='{}'".format(out.stdout))
+            print("Do you want to continue? (Y/y/Yes for yes, anything else to abort")
+            answer = input()
+            if answer.lower() not in ["y", "yes"]:
+                sys.exit(0)
 
         return out
 
