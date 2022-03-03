@@ -18,6 +18,7 @@ import textwrap
 import time
 import urllib
 import shlex
+
 from utils.InstallLogger import get_install_logger
 
 install_logger = get_install_logger(__name__)
@@ -347,7 +348,7 @@ class _CmdInterface:
             result = subprocess.CompletedProcess(args=shlex.split(cmd), returncode=0)
         else:
             try:
-                result = subprocess.run(cmd.split(), stdout=subprocess.PIPE,
+                result = subprocess.run(shlex.split(cmd), stdout=subprocess.PIPE,
                                     stderr=subprocess.PIPE, shell=False,
                                     check=True, universal_newlines=True, cwd=cwd, **kwargs)
             except subprocess.CalledProcessError as e:
@@ -367,6 +368,48 @@ class _CmdInterface:
             install_logger.debug("  >>>> exit code: {}".format(result.returncode))
 
         return result
+
+    def askfirst(self, cmd, **kwargs):
+        """Pause for user input after a sudo command."""
+
+        nasks = 0
+        keepgoing = True
+
+        # Ask for specific input to avoid an ambiguous answer.  We don't want
+        # to continue or exit unless it's exactly what the user wants.
+        while nasks < 10 and keepgoing:
+
+            print("Command to be ran: '{}'\nContinue?Y/y/yes or N/n/no".format(cmd))
+            answer = input()
+
+            if answer.lower() in  ["n", "no"]:
+                print("answer='{}' ==> exiting ...".format(answer))
+                sys.exit(0)
+                keepgoing = False
+            elif answer.lower() in ["y", "yes"]:
+                keepgoing = False
+            else:
+                nasks += 1
+
+            if nasks >= 10:
+                install_logger.info("Too many asks.  Exiting")
+                sys.exit(0)
+
+        out = None
+        try:
+            out = self.sudo(cmd, **kwargs)
+        except Exception as ex:
+            print("Caught exception: {}".format(ex))
+            if hasattr(out, "stderr"):
+                print("stderr='{}'".format(out.stderr))
+            if hasattr(out, "stdout"):
+                print("stdout='{}'".format(out.stdout))
+            print("Do you want to continue? (Y/y/Yes for yes, anything else to abort")
+            answer = input()
+            if answer.lower() not in ["y", "yes"]:
+                sys.exit(0)
+
+        return out
 
     def put(self, source, target):
         """
