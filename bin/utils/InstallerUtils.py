@@ -25,6 +25,7 @@ install_logger = get_install_logger(__name__)
 
 # pylint: disable=consider-using-f-string
 
+
 def getenv(var):
     """Get an environment variable"""
     # Use os.environ[...] (and NOT os.environ.get(...) so that an exception is
@@ -85,6 +86,7 @@ def download_file(url, whereto, mode='wb'):
 
     return total_bytes_read
 
+
 def download_to_mgt_node(connection, url, whereto):
     """Download a file to the management node."""
 
@@ -109,6 +111,7 @@ def check_repos(connection, product, filename):
     repos = connection.sudo(curl_cmd).stdout.split()
 
     return (len(repos) > 0, prod_name_version, repos)
+
 
 def flushprint(txt):
     """Print to stdout and flush it to avoid buffering."""
@@ -150,6 +153,7 @@ def get_hosts(connection, host_str):
 
     return hosts
 
+
 def wait_for_pod(connection, pod_name, timeout=1200, delete=False):
     """Wait for a pod to be either created or deleted."""
 
@@ -189,13 +193,14 @@ def git_clone(connection, repo, location):
     Clone a git repository.
     repo is (for example) cos-config-management or csm-config-management
     """
-
     url = format_url(connection, repo)
     repo_dir = os.path.join(location, repo)
     install_logger.debug("(git_clone)repo_dir={}, location={}".format(repo_dir, location))
     if os.path.exists(repo_dir):
-        connection.sudo('git pull', cwd=os.path.join(location, repo))
+        install_logger.debug('git pull in {}'.format(repo_dir))
+        connection.sudo('git pull', cwd=repo_dir)
     else:
+        install_logger.debug('cloning git repo {} to {}'.format(repo, repo_dir))
         connection.sudo("git clone {}".format(url), cwd=location)
 
     return os.path.join(location, repo)
@@ -378,7 +383,6 @@ class _CmdInterface:
         os.chmod(target, st.st_mode)
 
 
-
 class CmdMgr:
     """
     This class can be used to manage a single use of CmdInterface
@@ -428,7 +432,7 @@ def get_git(products):
                     install_logger.debug('no product catalog config data, trying {} for {}'.format(working_version, product))
                     product_catalog = product_data[working_version]
                     products[product]['clone_url'] = product_catalog['configuration']['clone_url']
-            else:                
+            else:
                 # if there is no exact match, attempt to get the clone_url anyway since
                 # that doesn't change between product versions
                 working_version = max(product_data.keys())
@@ -817,4 +821,5 @@ def get_products( media_dir = '.',
                             working_name, prefix))
                         products[product]['version'] = working_version
 
+    install_logger.info('  OK')
     return products
