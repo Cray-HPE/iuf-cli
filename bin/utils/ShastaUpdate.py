@@ -151,20 +151,20 @@ def install(args):
         if location_dict[prod]['product']:
             # work_dir will not be set for invalid products
             if location_dict[prod]['work_dir'] and not location_dict[prod]['installed']:
-                install_logger.info('Installing {}'.format(prod))
+                install_logger.info('  installing {}'.format(prod))
                 loc = location_dict[prod]['work_dir']
                 cmd = './install.sh'
                 result = connection.sudo(cmd, cwd=loc)
                 install_logger.debug(result)
                 if result.returncode != 0:
-                    install_logger.error('  Failed!  See log for more information')
+                    install_logger.error('    Failed!  See log for more information')
                     location_dict[prod]['installed'] = False
                 else:
-                    install_logger.info('  OK')
+                    install_logger.info('    OK')
                     product_count += 1
                     location_dict[prod]['installed'] = True
                 if not product_count:
-                    install_logger.error('no products to install')
+                    install_logger.error('  no products to install')
                     update_prods(args, location_dict)
                     sys.exit(1)
             else:
@@ -173,7 +173,7 @@ def install(args):
     # if we ask the installer to install something and it doesn't find anything
     # we should probably just quit
     if not product_count:
-        install_logger.error('no products to install')
+        install_logger.error('  no products to install')
         update_prods(args, location_dict)
         sys.exit(1)
 
@@ -480,23 +480,26 @@ def merge_cos_integration(args):
             # fourth, merge the import branch to the integration branch
             if checkout_ok:
                 install_logger.info("  Merging branch {} into {}".format(import_branch,integration_branch))
-                # merge_ok = check_cmd("git -C {} merge -m \"Merge branch '{}' into {}\" {}".format(
-                #     cos_checkout_dir,import_branch,integration_branch,import_branch))
-                merge_ok = check_cmd("git -C {} merge -m merge_comment_placeholder".format(cos_checkout_dir))
+                merge_ok = check_cmd("git -C {} merge -m \"Merge branch '{}' into {}\" {}".format(
+                    cos_checkout_dir,import_branch,integration_branch,import_branch))
                 if merge_ok:
-                    #push_ok = check_cmd("git -C {} push".format(cos_checkout_dir))
-                    install_logger.info("DRYRUN: git -C {} push".format(cos_checkout_dir))
+                    install_logger.debug("  pushing branch")
+                    push_ok = check_cmd("git -C {} push".format(cos_checkout_dir))
                     push_ok = True
+                    location_dict[product]['merged'] = integration_branch
                     if not push_ok:
                         install_logger.error("  Unable to push merged changes back to origin")
                     else:
-                        install_logger.info("  OK")
+                        install_logger.info("    OK")
                 else:
                     install_logger.error("  Merge failed!")
                     return False
             else:
                 install_logger.error("  Checkout of {} failed!".format(integration_branch))
                 return False
+
+    # add git config and write out state file
+    update_prods(args, utils.get_git(location_dict))
 
 
 def ncn_personalization(args): #pylint: disable=unused-argument

@@ -595,7 +595,7 @@ def get_products( media_dir = '.',
     media_dir = os.path.abspath(media_dir)
 
     # let user know what we are working on
-    install_logger.info('processing media_dir {}'.format(media_dir))
+    install_logger.info('  processing media_dir {}'.format(media_dir))
 
     # get contents of our media directory
     directory_listing = os.listdir(media_dir)
@@ -690,7 +690,7 @@ def get_products( media_dir = '.',
             if len(work_dir_contents) == 1:
                 products[item_name]['work_dir'] = os.path.join(media_dir, item_name, work_dir_contents[0])
             else:
-                install_logger.warning('work_dir contents of {} unexpected'.format(item))
+                install_logger.warning('    work_dir contents of {} unexpected'.format(item))
 
             install_logger.debug('found previously extracted work_dir {}'.format(item))
             install_logger.debug('processing directory {}'.format(item))
@@ -755,16 +755,16 @@ def get_products( media_dir = '.',
 
                         # check archive md5
                         cmd = 'md5sum {}'.format(archive)
-                        install_logger.info('checking the md5sum of {}'.format(archive))
+                        install_logger.info('    checking the md5sum of {}'.format(archive))
                         rc, _, msg = run_command(cmd)
                         checked_sum = msg.stdout.split()[0]
 
                         if dist_sum == checked_sum:
 
-                            install_logger.info('sum validates {}'.format(checked_sum))
+                            install_logger.info('    sum validates {}'.format(checked_sum))
 
                             # extract tarfile
-                            install_logger.info('extracting {}'.format(archive))
+                            install_logger.info('    extracting {}'.format(archive))
 
                             cmd = 'tar x{}af {} --directory {}'.format(extra_tar_flags, archive, work_dir)
                             install_logger.debug('performing: {}'.format(cmd))
@@ -774,7 +774,7 @@ def get_products( media_dir = '.',
                             # if tar fails, remove work dir
                             if rc != 0:
 
-                                install_logger.warning('unable to process {}'.format(product))
+                                install_logger.warning('    unable to process {}'.format(product))
                                 # remove dir to avoid thinking this is a valid workdir
                                 cmd = 'rm -Rf {}'.format(work_dir)
                                 install_logger.debug('performing: {}'.format(cmd))
@@ -798,10 +798,10 @@ def get_products( media_dir = '.',
                         else:
 
                             # there is a problem with the archive or sum
-                            install_logger.error("distribution sum doesn't match archive sum!")
-                            install_logger.error('distribution {}'.format(dist_sum))
-                            install_logger.error('archive_sum {}'.format(checked_sum))
-                            install_logger.error('skipping extraction of {}'.format(archive))
+                            install_logger.error("    distribution sum doesn't match archive sum!")
+                            install_logger.error('    distribution {}'.format(dist_sum))
+                            install_logger.error('    archive_sum {}'.format(checked_sum))
+                            install_logger.error('    skipping extraction of {}'.format(archive))
 
                             # take note that the md5 sum did NOT match
                             products[product]['archive_check'] = 'failed'
@@ -809,7 +809,7 @@ def get_products( media_dir = '.',
                     else:
 
                         # extract tarfile
-                        install_logger.info('extracting {}'.format(archive))
+                        install_logger.info('    extracting {}'.format(archive))
                         cmd = 'tar x{}af {} --directory {}'.format(extra_tar_flags, archive, work_dir)
                         install_logger.debug('performing: {}'.format(cmd))
                         rc, _, msg = run_command(cmd)
@@ -844,7 +844,7 @@ def get_products( media_dir = '.',
                     install_logger.debug('found previously extracted work_dir {}'.format(product))
 
             else:
-                install_logger.warning('skipping {}'.format(product))
+                install_logger.warning('  skipping {}'.format(product))
 
     # compute the version for each product
     install_logger.debug('determining version for products')
@@ -864,5 +864,5 @@ def get_products( media_dir = '.',
                             working_name, prefix))
                         products[product]['version'] = working_version
 
-    install_logger.info('  OK')
+    install_logger.info('    OK')
     return products
