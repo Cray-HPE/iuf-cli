@@ -29,10 +29,10 @@ install_logger = get_install_logger()
 
 STAGES = OrderedDict({
     "hello": main_ctrl.hello,
-    "get_products": main_ctrl.get_prods,
-    "install": main_ctrl.install,
-    "check_pods": main_ctrl.check_pods,
-    "merge_cos_integration": main_ctrl.merge_cos_integration,
+    "process_product_media": main_ctrl.get_prods,
+    "install_products": main_ctrl.install,
+    "verify_cos_import": main_ctrl.check_pods,
+    "merge_config_branches": main_ctrl.merge_cos_integration,
     "ncn_personalization": main_ctrl.ncn_personalization,
     "unload_dvs_and_lnet": main_ctrl.unload_dvs_and_lnet,
     "check_services": main_ctrl.check_services,

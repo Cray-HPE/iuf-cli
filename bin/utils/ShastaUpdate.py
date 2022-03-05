@@ -86,6 +86,19 @@ def get_dirs(args,which=None):
         return media_dir, statedir
 
 
+def load_prods(args):
+    """
+    load the product dict
+    """
+    statedir = get_dirs(args, "state")
+
+    with open(os.path.join(statedir, LOCATION_DICT), 'r',
+              encoding='UTF-8') as fhandle:
+        location_dict = yaml.full_load(fhandle)
+
+    return location_dict
+
+
 def update_prods(args, location_dict):
     """
     update location_dict with updated info
@@ -113,11 +126,8 @@ def get_prods(args):
 def install(args):
     """Install COS, Slingshot-host, or SLE"""
 
-    statedir = get_dirs(args, "state")
-
-    with open(os.path.join(statedir, LOCATION_DICT), 'r',
-              encoding='UTF-8') as fhandle:
-        location_dict = yaml.full_load(fhandle)
+    # load previously discovered produts
+    location_dict = load_prods(args)
 
     # FIXME:  This is a lemondrop-specific work-around.  I don't think we
     # want to constrain customers to a specific version.
@@ -141,20 +151,20 @@ def install(args):
         if location_dict[prod]['product']:
             # work_dir will not be set for invalid products
             if location_dict[prod]['work_dir'] and not location_dict[prod]['installed']:
-                install_logger.info('Installing {}'.format(prod))
+                install_logger.info('  installing {}'.format(prod))
                 loc = location_dict[prod]['work_dir']
                 cmd = './install.sh'
                 result = connection.sudo(cmd, cwd=loc)
                 install_logger.debug(result)
                 if result.returncode != 0:
-                    install_logger.error('  Failed!  See log for more information')
+                    install_logger.error('    Failed!  See log for more information')
                     location_dict[prod]['installed'] = False
                 else:
-                    install_logger.info('  OK')
+                    install_logger.info('    OK')
                     product_count += 1
                     location_dict[prod]['installed'] = True
                 if not product_count:
-                    install_logger.error('no products to install')
+                    install_logger.error('  no products to install')
                     update_prods(args, location_dict)
                     sys.exit(1)
             else:
@@ -163,7 +173,7 @@ def install(args):
     # if we ask the installer to install something and it doesn't find anything
     # we should probably just quit
     if not product_count:
-        install_logger.error('no products to install')
+        install_logger.error('  no products to install')
         update_prods(args, location_dict)
         sys.exit(1)
 
@@ -196,6 +206,10 @@ def check_pods(args): #pylint: disable=unused-argument
     time_to_wait = 60 * 20 # Wait 20 minutes.
     total_time = 0
     sleep_time = 10
+
+    if args['dryrun']:
+        install_logger.info('  OK')
+        return
 
     while keep_waiting:
 
@@ -240,6 +254,7 @@ def check_pods(args): #pylint: disable=unused-argument
                 """.format(','.join(not_running)))
             raise TimeOut(msg)
 
+        install_logger.info('  OK')
         sys.stdout.flush()
 
 
@@ -373,88 +388,108 @@ def backup_config_repos(args):
         os.environ["HOME"] = oldhome
 
 
+def get_mergeable_repos(args):
+
+    # load previously discovered produts
+    location_dict = load_prods(args)
+
+    repos = {}
+
+    # only products with an import_branch are mergable
+    for product in location_dict:
+        if location_dict[product]['import_branch']:
+            repo = os.path.basename(location_dict[product]['clone_url']).replace('.git', '')
+            product = location_dict[product]['product']
+            repos[product] = repo
+
+    install_logger.debug('found mergeable_repos {}'.format(repos))
+
+    return repos
+
+
 def merge_cos_integration(args):
     """Merge the product git branch to the working config"""
-
-    # first things first, get a copy of all the config repos
-    install_logger.debug("Cloning all of the configuration repositories...")
-    git_checkout_dir = get_dirs(args, "state")
-
-    cos_checkout_dir = os.path.join(git_checkout_dir, "cos-config-management")
-    utils.git_clone(connection, "cos-config-management", git_checkout_dir)
-    # second, see what branches we want to work with
-    _, integration_branch = curr_cos_branch(args)
-
-    cos_version = get_cos_version(args)
-    branches = get_catalog_list("DATA:.data.cos", "import_branch")
-    import_branch = branches[-1] if branches else None
 
     def check_cmd(cmd):
         """Run a sudo command.  Return True on success and False on failure."""
         result = connection.sudo(cmd).returncode
         return int(result) == 0
 
-    if import_branch is None:
-        install_logger.error("Error: Unable to retrieve import branch")
-        install_logger.debug("  Command executed: {}".format(import_branch_cmd))
-        return False
-    else:
-        install_logger.debug("Importing configuration from {}".format(import_branch))
+    # first things first, get a copy of all the config repos
+    install_logger.debug("Cloning all of the configuration repositories...")
+    git_checkout_dir = get_dirs(args, "state")
 
-    # third, checkout (or create) the integration branch
-    install_logger.debug("Checking to see if {} already exists".format(integration_branch))
-    found_integration = False
-    branch_list = connection.sudo("git -C {} branch".format(cos_checkout_dir)).stdout.splitlines()
+    # get dict of mergeable repos
+    repos = get_mergeable_repos(args)
 
-    for line in branch_list:
-        if line.strip("* ") == integration_branch:
-            found_integration = True
-            break
+    # load previously discovered produts
+    location_dict = load_prods(args)
 
-    checkout_ok = False
-    if found_integration:
-        # it exists, check it out
-        install_logger.debug("Using existing integration branch")
-        checkout_ok =check_cmd("git -C {} checkout {}".format(
-            cos_checkout_dir,integration_branch))
+    for product in location_dict:
+        if location_dict[product]['import_branch']:
 
-    else:
-        # doesn't exist, create it based on the import branch
-        install_logger.debug("Unable to locate integration branch, creating it based on {}".format(import_branch))
-        cmd_ok = check_cmd("git -C {} checkout {}".format(cos_checkout_dir,import_branch))
-        if cmd_ok:
-            cmd_ok = check_cmd("git -C {} checkout -b {}".format(
-                cos_checkout_dir,integration_branch))
-        if cmd_ok:
-            cmd_ok = check_cmd("git -C {} push --set-upstream origin {}".format(
-                cos_checkout_dir,integration_branch))
+            import_branch = location_dict[product]['import_branch']
+            product_name = location_dict[product]['product']
+            prod_version = location_dict[product]['product_version']
+            repo = repos[product_name]
+            cos_checkout_dir = os.path.join(git_checkout_dir, repo)
 
-    # fourth, merge the import branch to the integration branch
-    if checkout_ok:
-        install_logger.debug("Merge branch {} into {}".format(import_branch,integration_branch))
-        merge_ok = check_cmd("git -C {} merge -m \"Merge branch '{}' into {}\" {}".format(
-            cos_checkout_dir,import_branch,integration_branch,import_branch))
-        if merge_ok:
-            push_ok = check_cmd("git -C {} push".format(cos_checkout_dir))
-            if not push_ok:
-                install_logger.debug("Unable to push merged changes back to origin")
-        else:
-            install_logger.error("Merge failed!")
-            return False
-    else:
-        install_logger.error("Checkout of {} failed!".format(integration_branch))
-        return False
+            utils.git_clone(connection, repo, git_checkout_dir)
+            # second, see what branches we want to work with
+            _, integration_branch = curr_cos_branch(args, repo, prod_version) 
+
+            try:
+                cmd_ok = check_cmd("git -C {} checkout {}".format(cos_checkout_dir,import_branch))
+                #install_logger.info('checked out integration')
+                found_integration = True
+                checkout_ok = True
+            except Exception as err:
+                found_integration = False
+                checkout_ok = False
+
+            if not found_integration:
+                # doesn't exist, create it based on the import branch
+                install_logger.info("Unable to locate integration branch, creating it based on {}".format(import_branch))
+                cmd_ok = check_cmd("git -C {} checkout {}".format(cos_checkout_dir,import_branch))
+                if cmd_ok:
+                    cmd_ok = check_cmd("git -C {} checkout -b {}".format(
+                        cos_checkout_dir,integration_branch))
+                if cmd_ok:
+                    cmd_ok = check_cmd("git -C {} push --set-upstream origin {}".format(
+                        cos_checkout_dir,integration_branch))
+                if cmd_ok:
+                    checkout_ok = True
+
+            # fourth, merge the import branch to the integration branch
+            if checkout_ok:
+                install_logger.info("  Merging branch {} into {}".format(import_branch,integration_branch))
+                merge_ok = check_cmd("git -C {} merge -m \"Merge branch '{}' into {}\" {}".format(
+                    cos_checkout_dir,import_branch,integration_branch,import_branch))
+                if merge_ok:
+                    install_logger.debug("  pushing branch")
+                    push_ok = check_cmd("git -C {} push".format(cos_checkout_dir))
+                    push_ok = True
+                    location_dict[product]['merged'] = integration_branch
+                    if not push_ok:
+                        install_logger.error("  Unable to push merged changes back to origin")
+                    else:
+                        install_logger.info("    OK")
+                else:
+                    install_logger.error("  Merge failed!")
+                    return False
+            else:
+                install_logger.error("  Checkout of {} failed!".format(integration_branch))
+                return False
+
+    # add git config and write out state file
+    update_prods(args, utils.get_git(location_dict))
 
 
 def ncn_personalization(args): #pylint: disable=unused-argument
     """Do the NCN personalization as described in HPE Cray EX System
     Installation and Configuration Guide (1.4.2_S-8000 RevA)"""
 
-    repos = {
-        "cos": "cos-config-management",
-        "csm": "csm-config-management",
-        "sat":"sat-config-management"
-    }
+    repos = get_mergeable_repos(args)
 
     pzation_base_file = "ncn-personalization.{}.{}.json".format(host, get_cos_version(args))
 
@@ -508,11 +543,12 @@ def ncn_personalization(args): #pylint: disable=unused-argument
     utils.wait_for_ncn_personalization(connection, ncn_list_xnames)
 
 
-def curr_cos_branch(args):
+def curr_cos_branch(args, repo, version):
     """Find the integration branch corresponding to the current COS version"""
 
-    maj_min_v = get_cos_version(args)
-    branches = utils.ls_remote(connection, "cos-config-management").splitlines()
+    version_list = version.split('.')
+    maj_min_v = version_list[0]+'.'+version_list[1]
+    branches = utils.ls_remote(connection, repo).splitlines()
     found_branch = None
 
     # Convention dictates to name the branch
