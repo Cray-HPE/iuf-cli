@@ -132,18 +132,15 @@ def format_url(connection, repo):
 def get_hosts(connection, host_str):
     """Get hosts matching a string; for example 'get_hosts(connection, "w0")'
     will get all worker nodes."""
-    sat_stat = connection.sudo("sat status").stdout.splitlines()
+    sat_stat = json.loads(connection.sudo("sat status --format json").stdout)
     hosts = []
 
     def ncn_sort(tup):
         return tup[1]
 
-    for line in sat_stat:
-        if "xname" in line.lower():
-            continue
-        fields = line.split('|')
-        if any(host_str in txt for txt in fields[1:3]):
-            hosts.append((fields[1].strip(), fields[2].strip()))
+    for elt in sat_stat:
+        if  host_str in elt["xname"] or host_str in elt["Aliases"]:
+            hosts.append((elt["xname"], elt["Aliases"]))
 
     return sorted(hosts, key=ncn_sort)
 
