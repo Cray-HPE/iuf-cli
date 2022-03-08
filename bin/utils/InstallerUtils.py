@@ -149,10 +149,10 @@ def get_hosts(connection, host_str):
 def wait_for_pod(connection, pod_name, timeout=1200, delete=False):
     """Wait for a pod to be either created or deleted."""
 
-    keep_waiting = True
     time_waited = 0
     sleep_time = 10
-    while keep_waiting:
+    alert_time = 60
+    while True:
         pods = connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods -Ao wide").stdout.splitlines()
         found = False
         for pod in pods:
@@ -163,22 +163,24 @@ def wait_for_pod(connection, pod_name, timeout=1200, delete=False):
         if found and delete is False:
             install_logger.debug("found running and delete == False ...")
             if 'running' in running.lower() or 'completed' in running.lower():
-                keep_waiting = False
+                break
             elif running.lower() =='imagepullbackoff':
                 install_logger.warning("WARNING: pod {} in error state: {}".format(pod_name, running))
-                keep_waiting = False
+                break
             else:
                 install_logger.debug("(else) running={} ... no action performed".format(running))
         elif not found and delete is True:
             # The pod has been deleted, so quit waiting.
-            keep_waiting = False
-        time.sleep(sleep_time)
-        time_waited += sleep_time
+            break
         if time_waited >= timeout:
             action_str = "delete" if delete else "complete"
             install_logger.warning("WARNING: Timed out waiting {} seconds for pod {} to {}".format(time_waited, pod_name, action_str))
-            keep_waiting = False
-
+            break
+        if time_waited % alert_time == 0:
+            install_logger.info("Waiting for pod {} to complete. Waitied {} of {} seconds".format(pod_name, time_waited, timeout))
+        time.sleep(sleep_time)
+        time_waited += sleep_time
+        
 
 def git_clone(connection, repo, location):
     """

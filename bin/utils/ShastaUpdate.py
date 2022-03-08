@@ -200,27 +200,33 @@ def check_pods(args): #pylint: disable=unused-argument
     in this context.
     """
 
-    keep_waiting = True
+
     time_to_wait = 60 * 20 # Wait 20 minutes.
     total_time = 0
     sleep_time = 10
+    alert_time = 60
 
-    if args['dryrun']:
-        install_logger.info('  OK')
-        return
+    get_jobs_cmd = "kubectl --kubeconfig=/etc/kubernetes/admin.conf get jobs -A"
+    get_pods_cmd = "kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods -A"
 
-    while keep_waiting:
 
-        jobs_list = connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf get jobs -A").stdout.splitlines()
+    while True:
+
+        jobs_list = connection.sudo(get_jobs_cmd).stdout.splitlines()
         jobs_list = [job for job in jobs_list if 'cos' in job]
 
-        pods_list = connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods -A").stdout.splitlines()
+        pods_list = connection.sudo(get_pods_cmd).stdout.splitlines()
         pods_list = [pod for pod in pods_list if 'cos' in pod]
 
-        if not (jobs_list or pods_list):
-            keep_waiting = False
+        if args['dryrun']:
+            return
 
-        not_running = []
+        if not (jobs_list or pods_list):
+            msg = "Cannot find any related pods or jobs to monitor."
+            raise Exception(msg)
+
+        jobs_not_running = []
+        pods_not_running = []
 
         for job in jobs_list:
             fields = job.split()
@@ -228,31 +234,38 @@ def check_pods(args): #pylint: disable=unused-argument
             if 'cos-config' in job_name or 'cos-image' in job_name:
                 completions = fields[2]
                 if not is_ready(completions):
-                    install_logger.warning("found the following job --not-- running:{}".format(fields))
-                    not_running.append(job_name)
+                    install_logger.debug("found the following job --not-- running:{}".format(fields))
+                    jobs_not_running.append(job_name)
 
         for pod in pods_list:
             fields = pod.split()
             pod_name = fields[1]
             if 'cos-config' in pod_name or 'cos-image' in pod_name:
                 if not 'completed' in fields[3].lower():
-                    install_logger.warning("found the following pod --not-- running:{}".format(fields))
-                    not_running.append(pod_name)
+                    install_logger.debug("found the following pod --not-- running:{}".format(fields))
+                    pods_not_running.append(pod_name)
 
-        if not_running:
-            install_logger.debug("not_running={} ==> sleep".format(not_running))
-            total_time += sleep_time
+        if jobs_not_running or pods_not_running:
+            install_logger.debug("jobs_not_running={} ==> sleep".format(jobs_not_running))
+            install_logger.debug("pods_not_running={} ==> sleep".format(pods_not_running))
+            if total_time % alert_time == 0:
+                install_logger.info("Waiting for {}/{} jobs and {}/{} pods".format(
+                                     len(jobs_not_running), len(jobs_list), 
+                                     len(pods_not_running), len(pods_list)))
+            total_time+=sleep_time
             time.sleep(sleep_time)
         else:
-            keep_waiting = False
+            install_logger.info("Finished waiting for {}/{} jobs and {}/{} pods".format(
+                                     len(jobs_not_running), len(jobs_list), 
+                                     len(pods_not_running), len(pods_list)))
+            break
 
         if total_time > time_to_wait:
             msg = utils.formatted("""
-                WARNING: the following job/pods have not completed booting: {}
-                """.format(','.join(not_running)))
+                WARNING: the following job/pods have not completed booting: {}/{}
+                """.format(','.join(jobs_not_running), ','.join(pods_not_running)))
             raise TimeOut(msg)
 
-        install_logger.info('  OK')
         sys.stdout.flush()
 
 
@@ -861,7 +874,9 @@ def unload_dvs_and_lnet(args):
     analytics_dir = os.path.join(statedir, 'analytics-config-management')
     utils.git_clone(connection, 'analytics-config-management', statedir)
     k8s_job_line = None
+
     for w_xname, w_node in worker_tuples:
+        install_logger.info("Unloading DVS and LNET on node: {}".format(w_node))
         # Disable cfs.
         install_logger.debug("disable cfs on {}".format(w_node))
         connection.sudo("cray cfs components update {} --enabled false".format(w_xname))
