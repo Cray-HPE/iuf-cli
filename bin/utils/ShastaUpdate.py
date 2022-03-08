@@ -492,6 +492,7 @@ def ncn_personalization(args): #pylint: disable=unused-argument
     Installation and Configuration Guide (1.4.2_S-8000 RevA)"""
 
     repos = get_mergeable_repos(args)
+    cos_version = get_cos_version(args)
 
     pzation_base_file = "ncn-personalization.{}.{}.json".format(host, get_prod_version(args))
 
@@ -510,18 +511,19 @@ def ncn_personalization(args): #pylint: disable=unused-argument
     def find_substr(substr):
         """Return the index of the element containing the substring.  This
         is a slow linear search, but there are only a few elements."""
+        indices = []
         for i, _ in enumerate(layers):
-            if substr in layers[i]['name']:
-                return i
+            if substr in indices[i]['name']:
+                indices.append(i)
+        return indices
 
     # Get the commits from the repos to forumulate the
     # ncn-personalization.json.  Then write it to the ncn.
     for repo in repos:
-        branches = utils.ls_remote(connection, repos[repo]).splitlines()
-        branch = [b for b in branches if 'integration' in b][0]
-        commit, _ = branch.split()
-        layer_i = find_substr(repo)
-        pzation_template["layers"][layer_i]["commit"] = commit
+        commit, branch = curr_cos_branch(args, repos[repo], cos_version)
+        indices = find_substr(repo)
+        for layer_i in indices:
+            pzation_template["layers"][layer_i]["commit"] = commit
 
     pzation_file = os.path.join(get_dirs(args, "state"), pzation_base_file)
     remote_pzation_file = os.path.join('/root', pzation_base_file)

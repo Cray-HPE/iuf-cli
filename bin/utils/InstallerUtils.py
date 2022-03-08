@@ -132,27 +132,18 @@ def format_url(connection, repo):
 def get_hosts(connection, host_str):
     """Get hosts matching a string; for example 'get_hosts(connection, "w0")'
     will get all worker nodes."""
-    components_list = json.loads(connection.sudo("cray hsm state components list --type node --format json").stdout)
-
-    xnames = [clist["ID"] for clist in components_list["Components"]]
+    sat_stat = json.loads(connection.sudo("sat status --format json").stdout)
     hosts = []
 
-    for xname in xnames:
-        hw_desc = json.loads(connection.sudo('cray sls hardware describe {} --format json'.format(xname)).stdout)
-        try:
-            alias = hw_desc["ExtraProperties"]['Aliases'][0]
-        except KeyError:
-            pass
-        if host_str in alias:
-            hosts.append((xname, alias))
+    def ncn_sort(tup):
+        return tup[1]
 
-    # For some reason, the 'cray hsm state components list ...' command doesn't
-    # include ncn-m001.
-    if host_str in ['m0', 'ncn']:
-        self_xname = connection.sudo("cat /etc/cray/xname").stdout.rstrip()
-        hosts.append((self_xname, 'ncn-m001'))
+    for elt in sat_stat:
+        if  host_str in elt["xname"] or host_str in elt["Aliases"]:
+            hosts.append((elt["xname"], elt["Aliases"]))
 
-    return hosts
+    return sorted(hosts, key=ncn_sort)
+
 
 
 def wait_for_pod(connection, pod_name, timeout=1200, delete=False):
