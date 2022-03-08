@@ -134,7 +134,7 @@ def install(args):
     lowest_v_str ="2.3.38"
     lowest_v = LooseVersion(lowest_v_str)
 
-    current_v_str = get_cos_version(args, False)
+    current_v_str = get_prod_version(args, False)
     # only do the version check if we're installing cos
     if current_v_str:
         current_v = LooseVersion(current_v_str)
@@ -177,8 +177,6 @@ def install(args):
         update_prods(args, location_dict)
         sys.exit(1)
 
-    # add git config and write out state file
-    update_prods(args, utils.get_git(location_dict))
 
 def is_ready(ready):
     """
@@ -391,7 +389,7 @@ def backup_config_repos(args):
 def get_mergeable_repos(args):
 
     # load previously discovered produts
-    location_dict = load_prods(args)
+    location_dict = utils.get_git(load_prods(args))
 
     repos = {}
 
@@ -407,7 +405,7 @@ def get_mergeable_repos(args):
     return repos
 
 
-def merge_cos_integration(args):
+def update_working_branches(args):
     """Merge the product git branch to the working config"""
 
     def check_cmd(cmd):
@@ -419,11 +417,11 @@ def merge_cos_integration(args):
     install_logger.debug("Cloning all of the configuration repositories...")
     git_checkout_dir = get_dirs(args, "state")
 
+    # load previously discovered produts
+    location_dict = utils.get_git(load_prods(args))
+
     # get dict of mergeable repos
     repos = get_mergeable_repos(args)
-
-    # load previously discovered produts
-    location_dict = load_prods(args)
 
     for product in location_dict:
         if location_dict[product]['import_branch']:
@@ -436,20 +434,24 @@ def merge_cos_integration(args):
 
             utils.git_clone(connection, repo, git_checkout_dir)
             # second, see what branches we want to work with
-            _, integration_branch = curr_cos_branch(args, repo, prod_version) 
+            _, integration_branch = curr_prod_branch(args, repo, prod_version) 
 
+            # check out a local copy of the import_branch (release version)
             try:
                 cmd_ok = check_cmd("git -C {} checkout {}".format(cos_checkout_dir,import_branch))
-                #install_logger.info('checked out integration')
-                found_integration = True
+            except Exception as err:
+                install_logger.debug("unable to check out import_branch {} for {}".format(import_branch, product))
+                raise InstallError("unable to check out import_branch {} for {}".format(import_branch, product))
+
+            # check out a copy of the working branch
+            checkout_ok = False
+            try:
+                cmd_ok = check_cmd("git -C {} checkout {}".format(cos_checkout_dir,integration_branch))
+                install_logger.debug("successfully checked out integration_branch {}".format(integration_branch))
                 checkout_ok = True
             except Exception as err:
-                found_integration = False
-                checkout_ok = False
-
-            if not found_integration:
                 # doesn't exist, create it based on the import branch
-                install_logger.info("Unable to locate integration branch, creating it based on {}".format(import_branch))
+                install_logger.info("creating integration branch, based on {}".format(import_branch))
                 cmd_ok = check_cmd("git -C {} checkout {}".format(cos_checkout_dir,import_branch))
                 if cmd_ok:
                     cmd_ok = check_cmd("git -C {} checkout -b {}".format(
@@ -491,7 +493,7 @@ def ncn_personalization(args): #pylint: disable=unused-argument
 
     repos = get_mergeable_repos(args)
 
-    pzation_base_file = "ncn-personalization.{}.{}.json".format(host, get_cos_version(args))
+    pzation_base_file = "ncn-personalization.{}.{}.json".format(host, get_prod_version(args))
 
     # Get a list of all worker and manaagement ncns. We need to skip the
     # ncn-s00* nodes for now.  So use the m_ncn_tuples + w_ncn_tuples and
@@ -543,7 +545,7 @@ def ncn_personalization(args): #pylint: disable=unused-argument
     utils.wait_for_ncn_personalization(connection, ncn_list_xnames)
 
 
-def curr_cos_branch(args, repo, version):
+def curr_prod_branch(args, repo, version):
     """Find the integration branch corresponding to the current COS version"""
 
     version_list = version.split('.')
@@ -580,15 +582,15 @@ def curr_cos_branch(args, repo, version):
     return None, None
 
 
-def get_cos_version(args, short=True):
+def get_prod_version(args, short=True):
     """Get the COS version."""
 
     # Use static variables so the yaml doesn't need to be loaded every time.
-    if hasattr(get_cos_version, "full_version") and hasattr(get_cos_version, "short_version"):
+    if hasattr(get_prod_version, "full_version") and hasattr(get_prod_version, "short_version"):
         if short:
-            return get_cos_version.short_version
+            return get_prod_version.short_version
         else:
-            return get_cos_version.full_version
+            return get_prod_version.full_version
 
     # If we haven't returned, full_version and short_version do not exist.
     # read the yaml and set them.
@@ -613,8 +615,8 @@ def get_cos_version(args, short=True):
     install_logger.debug('highest_vers {}'.format(highest_vers))
     install_logger.debug('short_vers {}'.format(short_vers))
 
-    get_cos_version.short_version = short_vers
-    get_cos_version.full_version = highest_vers
+    get_prod_version.short_version = short_vers
+    get_prod_version.full_version = highest_vers
     if short:
         return short_vers
     else:
@@ -657,7 +659,7 @@ def wait_for_pod(job_id):
 def customize_cos_compute_image(args, image_info):
     """Customize a COS compute image."""
 
-    cos_version = get_cos_version(args)
+    cos_version = get_prod_version(args)
     date = datetime.datetime.today().strftime("%Y%m%d")
 
     # Find a session name that doesn't already exist.  We shouldn't need to
@@ -731,7 +733,9 @@ def build_cos_compute_image(args): #pylint: disable=unused-argument
     for COS.
     """
 
-    commit, name = curr_cos_branch(args)
+    cos_version = get_prod_version(args)
+
+    commit, name = curr_prod_branch(args, 'cos-config-management', cos_version)
     if "cos_recipe_name" not in args:
         raise COSProblem("A recipe name is needed to build the COS compute image.")
 
@@ -741,7 +745,6 @@ def build_cos_compute_image(args): #pylint: disable=unused-argument
         raise COSProblem("WARNING: Could not determine COS branch, so cannot build a compute image")
 
     # Update the configuration.
-    cos_version = get_cos_version(args)
     config_file = "cos-config-{}-nogpu-integration.json".format(cos_version)
     local_config_path = os.path.join(get_dirs(args, "state"), config_file)
 
@@ -1048,7 +1051,7 @@ def boot_cos(args):
         bos_file = os.path.join(get_dirs(args, "state"), "bos_sessiontemplate.json")
 
         date = datetime.datetime.today().strftime("%Y%m%d")
-        sessiontemplate_name = "cos-sessiontemplate-{}-{}".format(get_cos_version(args), date)
+        sessiontemplate_name = "cos-sessiontemplate-{}-{}".format(get_prod_version(args), date)
 
         connection.sudo("cray bos sessiontemplate create --file {} --name {} ".format(
             bos_file, sessiontemplate_name))
