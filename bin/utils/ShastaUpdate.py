@@ -116,7 +116,7 @@ def get_prods(args):
     media_dir, statedir = get_dirs(args)
 
     extract_archives = (args.get("dryrun", False) == False)
-    location_dict = utils.get_products(media_dir, extract_archives=extract_archives)
+    location_dict = utils.get_products(connection, media_dir, extract_archives=extract_archives)
     filepath = os.path.join(statedir, "location_dict.yaml")
 
     with open(filepath, "w", encoding="UTF-8") as fhandle:
@@ -176,7 +176,6 @@ def install(args):
         install_logger.error('  no products to install')
         update_prods(args, location_dict)
         sys.exit(1)
-
 
 def is_ready(ready):
     """
@@ -402,7 +401,7 @@ def backup_config_repos(args):
 def get_mergeable_repos(args):
 
     # load previously discovered produts
-    location_dict = utils.get_git(load_prods(args))
+    location_dict = utils.get_git(connection, load_prods(args))
 
     repos = {}
 
@@ -431,7 +430,7 @@ def update_working_branches(args):
     git_checkout_dir = get_dirs(args, "state")
 
     # load previously discovered produts
-    location_dict = utils.get_git(load_prods(args))
+    location_dict = utils.get_git(connection, load_prods(args))
 
     # get dict of mergeable repos
     repos = get_mergeable_repos(args)
@@ -497,7 +496,7 @@ def update_working_branches(args):
                 return False
 
     # add git config and write out state file
-    update_prods(args, utils.get_git(location_dict))
+    update_prods(args, utils.get_git(connection, location_dict))
 
 
 def ncn_personalization(args): #pylint: disable=unused-argument
