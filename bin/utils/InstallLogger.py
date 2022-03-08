@@ -54,7 +54,7 @@ def addLoggingLevel(levelName, levelNum, methodName=None):
 
 def install_logger_file_init(log_file_level=LOG_DEFAULT_FILE_LEVEL, verbose=False):
     """
-    Create the config for the log file. This should only be call once.
+    Create the config for the log file. This should only be called once.
     """
 
     install_logger = logging.getLogger(LOG_DEFAULT_NAME)
@@ -73,7 +73,7 @@ def install_logger_file_init(log_file_level=LOG_DEFAULT_FILE_LEVEL, verbose=Fals
 
 def install_logger_stream_init(log_console_level=LOG_DEFAULT_CONSOLE_LEVEL, verbose=False):
     """
-    Create the config for the log console stream. This should only be call once.
+    Create the config for the log console stream. This should only be called once.
     """
     install_logger = logging.getLogger(LOG_DEFAULT_NAME)
 
@@ -91,7 +91,7 @@ def install_logger_stream_init(log_console_level=LOG_DEFAULT_CONSOLE_LEVEL, verb
 def get_install_logger(module=None):
     """
     Call this to get an instance of the logger.
-    If this is being call outside of the __main__ module,
+    If this is being called outside of the __main__ module,
     Set the argument module=__name__ when calling.
     """
     if module == None:
