@@ -5,6 +5,9 @@ import os
 import logging
 
 
+class VMConnectionException(Exception):
+    """A pass-through class."""
+
 class InstallError(Exception):
     """A wrapper for raising an InstallError exception."""
     pass

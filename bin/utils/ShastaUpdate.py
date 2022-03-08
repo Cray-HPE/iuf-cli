@@ -116,7 +116,7 @@ def get_prods(args):
     media_dir, statedir = get_dirs(args)
 
     extract_archives = (args.get("dryrun", False) == False)
-    location_dict = utils.get_products(media_dir, extract_archives=extract_archives)
+    location_dict = utils.get_products(connection, media_dir, extract_archives=extract_archives)
     filepath = os.path.join(statedir, "location_dict.yaml")
 
     with open(filepath, "w", encoding="UTF-8") as fhandle:
@@ -178,7 +178,7 @@ def install(args):
         sys.exit(1)
 
     # add git config and write out state file
-    update_prods(args, utils.get_git(location_dict))
+    update_prods(args, utils.get_git(connection, location_dict))
 
 def is_ready(ready):
     """
@@ -482,7 +482,7 @@ def merge_cos_integration(args):
                 return False
 
     # add git config and write out state file
-    update_prods(args, utils.get_git(location_dict))
+    update_prods(args, utils.get_git(connection, location_dict))
 
 
 def ncn_personalization(args): #pylint: disable=unused-argument

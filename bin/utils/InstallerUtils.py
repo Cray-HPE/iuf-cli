@@ -23,7 +23,6 @@ import shlex
 from utils.InstallLogger import get_install_logger
 
 install_logger = get_install_logger(__name__)
-
 # pylint: disable=consider-using-f-string
 
 
@@ -298,59 +297,21 @@ def wait_for_ncn_personalization(connection, xnames, timeout=600, sleep_time=10)
             install_logger.debug("(else, bottom of loop) waited={} seconds, keep_waiting={}, found_pending={}".format(seconds_waited, keep_waiting, found_pending))
         sys.stdout.flush()
 
-
-class VMConnectionException(Exception):
-    """A pass-through class."""
-
-
-def run_command(cmd, dryrun=False, **kwargs):
-    """Run a system command."""
-
-    parsed_cmd = shlex.split(cmd)
-
-    # log commands to debug channel
-    install_logger.debug('CMD >> {}'.format(parsed_cmd))
-
-    if dryrun:
-        install_logger.dryrun(parsed_cmd)
-        return 0, json.loads("cmd"), subprocess.CompletedProcess(args=parsed_cmd, returncode=0)
-
-    result = subprocess.run(parsed_cmd, stdout=subprocess.PIPE,stderr=subprocess.PIPE, shell=False,
-                        check=False, universal_newlines=True,
-                        **kwargs)
-
-    # convert to a dict if we can
-    try:
-        structured_data = json.loads(result.stdout)
-    except:
-        structured_data = None
-
-    install_logger.debug('RET >> {}'.format(result))
-    install_logger.debug('JSN >> {}'.format(structured_data))
-
-    # log errors
-    if result.returncode != 0:
-        failure = { 'cmd': cmd,
-                    'stderr': result.stderr,
-                    'stdout': result.stdout,
-                    'returncode': result.returncode }
-        install_logger.warning(failure)
-
-    return result.returncode, structured_data, result
-
-
 class _CmdInterface:
     """Wrapper around the subprocess interface to simplify usage."""
     def __init__(self, n_retries=0, dryrun=False):
         self.installer = True
         self.dryrun = dryrun
 
-    def sudo(self, cmd, cwd=None, **kwargs):
+    def sudo(self, cmd, dryrun=None, cwd=None, **kwargs):
         """
         Execute a command.
         """
 
-        if self.dryrun:
+        if dryrun is None:
+            dryrun = self.dryrun
+
+        if dryrun:
             result = subprocess.CompletedProcess(args=shlex.split(cmd), returncode=0)
         else:
             try:
@@ -364,7 +325,7 @@ class _CmdInterface:
                 install_logger.debug("  >>>> exit code: {}".format(e.returncode))
                 raise
 
-        if self.dryrun:
+        if dryrun:
             install_logger.dryrun("  >>   cmd      : {}".format(result.args))
             install_logger.dryrun("  >>>> cwd      : {}".format(cwd))
         else:
@@ -440,14 +401,15 @@ class CmdMgr:
         return CmdMgr.connection
 
 
-def get_git(products):
+def get_git(connection, products):
     """
     update product dictionary with gitea urls
     """
     install_logger.debug('determining config-management url for products')
     # get full data for initial image_id
     command = 'kubectl get cm -n services cray-product-catalog -o json'
-    rc, product_cat, raw = run_command(command, dryrun=False)
+    product_cat_json = connection.sudo(command, dryrun=False).stdout
+    product_cat  = json.loads(product_cat_json)
     all_product_data=product_cat['data']
     for product in products:
         product_version = products[product]['version']
@@ -490,7 +452,8 @@ def get_git(products):
     return products
 
 
-def get_products( media_dir = '.',
+def get_products( connection,
+                  media_dir = '.',
                   extract_archives = True,
                   products = None,
                   prefixes = None,
@@ -736,10 +699,7 @@ def get_products( media_dir = '.',
                     work_dir = os.path.join(products[product]['media_dir'], product)
 
                     # make dir
-                    cmd = 'mkdir -p {}'.format(work_dir)
-                    install_logger.debug('performing: {}'.format(cmd))
-                    rc, _, msg = run_command(cmd)
-                    install_logger.debug('rc {}, msg={}'.format(rc, msg))
+                    connection.sudo('mkdir -p {}'.format(work_dir))
 
                     archive = os.path.join(products[product]['media_dir'], products[product]['archive'])
 
@@ -755,8 +715,7 @@ def get_products( media_dir = '.',
 
                         # check archive md5
                         cmd = 'md5sum {}'.format(archive)
-                        install_logger.info('    checking the md5sum of {}'.format(archive))
-                        rc, _, msg = run_command(cmd)
+                        msg = connection.sudo(cmd)
                         checked_sum = msg.stdout.split()[0]
 
                         if dist_sum == checked_sum:
@@ -766,31 +725,23 @@ def get_products( media_dir = '.',
                             # extract tarfile
                             install_logger.info('    extracting {}'.format(archive))
 
-                            cmd = 'tar x{}af {} --directory {}'.format(extra_tar_flags, archive, work_dir)
-                            install_logger.debug('performing: {}'.format(cmd))
-                            rc, _, msg = run_command(cmd)
-                            install_logger.debug('rc {}, msg={}'.format(rc, msg))
-
-                            # if tar fails, remove work dir
-                            if rc != 0:
-
+                            try:
+                                cmd = 'tar x{}af {} --directory {}'.format(extra_tar_flags, archive, work_dir)
+                                connection.sudo(cmd)
+                            except:
+                                # if tar fails, remove work dir
                                 install_logger.warning('    unable to process {}'.format(product))
                                 # remove dir to avoid thinking this is a valid workdir
-                                cmd = 'rm -Rf {}'.format(work_dir)
-                                install_logger.debug('performing: {}'.format(cmd))
-                                rc, _, msg = run_command(cmd)
-                                install_logger.debug('rc {}, msg={}'.format(rc, msg))
-
+                                connection.sudo('rm -Rf {}'.format(work_dir))
                                 products[product]['work_dir'] = None
+                                continue
 
-                            else:
+                            # find the directory created by the tar file and update the work_dir
+                            work_dir_prefix = os.path.join(products[product]['media_dir'], product)
+                            work_dir_contents = os.listdir(work_dir_prefix)
 
-                                # find the directory created by the tar file and update the work_dir
-                                work_dir_prefix = os.path.join(products[product]['media_dir'], product)
-                                work_dir_contents = os.listdir(work_dir_prefix)
-
-                                if work_dir_contents:
-                                    products[product]['work_dir'] = os.path.join(media_dir, product, work_dir_contents[0])
+                            if work_dir_contents:
+                                products[product]['work_dir'] = os.path.join(media_dir, product, work_dir_contents[0])
 
                             # take note that the md5 sum matched
                             products[product]['archive_check'] = 'passed'
@@ -810,29 +761,22 @@ def get_products( media_dir = '.',
 
                         # extract tarfile
                         install_logger.info('    extracting {}'.format(archive))
-                        cmd = 'tar x{}af {} --directory {}'.format(extra_tar_flags, archive, work_dir)
-                        install_logger.debug('performing: {}'.format(cmd))
-                        rc, _, msg = run_command(cmd)
-                        install_logger.debug('rc {}, msg={}'.format(rc, msg))
 
-                        # if tar fails, remove work dir so we don't leave invalid
-                        # working directories around
-                        if rc != 0:
-
+                        try:
+                            cmd = 'tar x{}af {} --directory {}'.format(extra_tar_flags, archive, work_dir)
+                            connection.sudo(cmd)
+                        except:
                             install_logger.warning('skipping {}'.format(product))
                             # remove dir to avoid thinking this is a valid workdir
-                            cmd = 'rm -Rf {}'.format(work_dir)
-                            install_logger.debug('performing: {}'.format(cmd))
-                            rc, _, msg = run_command(cmd)
-                            install_logger.debug('rc {}, msg={}'.format(rc, msg))
+                            connection.sudo('rm -Rf {}'.format(work_dir))
+                            products[product]['work_dir'] = None
+                            continue
 
-                        else:
-
-                            # find the directory created by the tar file and update the work_dir
-                            work_dir_prefix = os.path.join(products[product]['media_dir'], product)
-                            work_dir_contents = os.listdir(work_dir_prefix)
-                            if work_dir_contents:
-                                products[product]['work_dir'] = os.path.join(media_dir, product, work_dir_contents[0])
+                        # find the directory created by the tar file and update the work_dir
+                        work_dir_prefix = os.path.join(products[product]['media_dir'], product)
+                        work_dir_contents = os.listdir(work_dir_prefix)
+                        if work_dir_contents:
+                            products[product]['work_dir'] = os.path.join(media_dir, product, work_dir_contents[0])
 
                 else:
                     # find the directory created by the tar file and update the work_dir
