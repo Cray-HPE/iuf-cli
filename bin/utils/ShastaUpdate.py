@@ -134,7 +134,7 @@ def install(args):
     lowest_v_str ="2.3.38"
     lowest_v = LooseVersion(lowest_v_str)
 
-    current_v_str = get_cos_version(args, False)
+    current_v_str = get_prod_version(args, False)
     # only do the version check if we're installing cos
     if current_v_str:
         current_v = LooseVersion(current_v_str)
@@ -177,9 +177,6 @@ def install(args):
         update_prods(args, location_dict)
         sys.exit(1)
 
-    # add git config and write out state file
-    update_prods(args, utils.get_git(connection, location_dict))
-
 def is_ready(ready):
     """
     Check the output of a pod to see if its ready.  The ready variable
@@ -202,27 +199,33 @@ def check_pods(args): #pylint: disable=unused-argument
     in this context.
     """
 
-    keep_waiting = True
+
     time_to_wait = 60 * 20 # Wait 20 minutes.
     total_time = 0
     sleep_time = 10
+    alert_time = 60
 
-    if args['dryrun']:
-        install_logger.info('  OK')
-        return
+    get_jobs_cmd = "kubectl --kubeconfig=/etc/kubernetes/admin.conf get jobs -A"
+    get_pods_cmd = "kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods -A"
 
-    while keep_waiting:
 
-        jobs_list = connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf get jobs -A").stdout.splitlines()
+    while True:
+
+        jobs_list = connection.sudo(get_jobs_cmd).stdout.splitlines()
         jobs_list = [job for job in jobs_list if 'cos' in job]
 
-        pods_list = connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods -A").stdout.splitlines()
+        pods_list = connection.sudo(get_pods_cmd).stdout.splitlines()
         pods_list = [pod for pod in pods_list if 'cos' in pod]
 
-        if not (jobs_list or pods_list):
-            keep_waiting = False
+        if args['dryrun']:
+            return
 
-        not_running = []
+        if not (jobs_list or pods_list):
+            msg = "Cannot find any related pods or jobs to monitor."
+            raise Exception(msg)
+
+        jobs_not_running = []
+        pods_not_running = []
 
         for job in jobs_list:
             fields = job.split()
@@ -230,31 +233,38 @@ def check_pods(args): #pylint: disable=unused-argument
             if 'cos-config' in job_name or 'cos-image' in job_name:
                 completions = fields[2]
                 if not is_ready(completions):
-                    install_logger.warning("found the following job --not-- running:{}".format(fields))
-                    not_running.append(job_name)
+                    install_logger.debug("found the following job --not-- running:{}".format(fields))
+                    jobs_not_running.append(job_name)
 
         for pod in pods_list:
             fields = pod.split()
             pod_name = fields[1]
             if 'cos-config' in pod_name or 'cos-image' in pod_name:
                 if not 'completed' in fields[3].lower():
-                    install_logger.warning("found the following pod --not-- running:{}".format(fields))
-                    not_running.append(pod_name)
+                    install_logger.debug("found the following pod --not-- running:{}".format(fields))
+                    pods_not_running.append(pod_name)
 
-        if not_running:
-            install_logger.debug("not_running={} ==> sleep".format(not_running))
-            total_time += sleep_time
+        if jobs_not_running or pods_not_running:
+            install_logger.debug("jobs_not_running={} ==> sleep".format(jobs_not_running))
+            install_logger.debug("pods_not_running={} ==> sleep".format(pods_not_running))
+            if total_time % alert_time == 0:
+                install_logger.info("Waiting for {}/{} jobs and {}/{} pods".format(
+                                     len(jobs_not_running), len(jobs_list), 
+                                     len(pods_not_running), len(pods_list)))
+            total_time+=sleep_time
             time.sleep(sleep_time)
         else:
-            keep_waiting = False
+            install_logger.info("Finished waiting for {}/{} jobs and {}/{} pods".format(
+                                     len(jobs_not_running), len(jobs_list), 
+                                     len(pods_not_running), len(pods_list)))
+            break
 
         if total_time > time_to_wait:
             msg = utils.formatted("""
-                WARNING: the following job/pods have not completed booting: {}
-                """.format(','.join(not_running)))
+                WARNING: the following job/pods have not completed booting: {}/{}
+                """.format(','.join(jobs_not_running), ','.join(pods_not_running)))
             raise TimeOut(msg)
 
-        install_logger.info('  OK')
         sys.stdout.flush()
 
 
@@ -391,7 +401,7 @@ def backup_config_repos(args):
 def get_mergeable_repos(args):
 
     # load previously discovered produts
-    location_dict = load_prods(args)
+    location_dict = utils.get_git(connection, load_prods(args))
 
     repos = {}
 
@@ -407,7 +417,7 @@ def get_mergeable_repos(args):
     return repos
 
 
-def merge_cos_integration(args):
+def update_working_branches(args):
     """Merge the product git branch to the working config"""
 
     def check_cmd(cmd):
@@ -419,11 +429,11 @@ def merge_cos_integration(args):
     install_logger.debug("Cloning all of the configuration repositories...")
     git_checkout_dir = get_dirs(args, "state")
 
+    # load previously discovered produts
+    location_dict = utils.get_git(connection, load_prods(args))
+
     # get dict of mergeable repos
     repos = get_mergeable_repos(args)
-
-    # load previously discovered produts
-    location_dict = load_prods(args)
 
     for product in location_dict:
         if location_dict[product]['import_branch']:
@@ -436,20 +446,24 @@ def merge_cos_integration(args):
 
             utils.git_clone(connection, repo, git_checkout_dir)
             # second, see what branches we want to work with
-            _, integration_branch = curr_cos_branch(args, repo, prod_version) 
+            _, integration_branch = curr_prod_branch(args, repo, prod_version) 
 
+            # check out a local copy of the import_branch (release version)
             try:
                 cmd_ok = check_cmd("git -C {} checkout {}".format(cos_checkout_dir,import_branch))
-                #install_logger.info('checked out integration')
-                found_integration = True
+            except Exception as err:
+                install_logger.debug("unable to check out import_branch {} for {}".format(import_branch, product))
+                raise InstallError("unable to check out import_branch {} for {}".format(import_branch, product))
+
+            # check out a copy of the working branch
+            checkout_ok = False
+            try:
+                cmd_ok = check_cmd("git -C {} checkout {}".format(cos_checkout_dir,integration_branch))
+                install_logger.debug("successfully checked out integration_branch {}".format(integration_branch))
                 checkout_ok = True
             except Exception as err:
-                found_integration = False
-                checkout_ok = False
-
-            if not found_integration:
                 # doesn't exist, create it based on the import branch
-                install_logger.info("Unable to locate integration branch, creating it based on {}".format(import_branch))
+                install_logger.info("creating integration branch, based on {}".format(import_branch))
                 cmd_ok = check_cmd("git -C {} checkout {}".format(cos_checkout_dir,import_branch))
                 if cmd_ok:
                     cmd_ok = check_cmd("git -C {} checkout -b {}".format(
@@ -490,8 +504,9 @@ def ncn_personalization(args): #pylint: disable=unused-argument
     Installation and Configuration Guide (1.4.2_S-8000 RevA)"""
 
     repos = get_mergeable_repos(args)
+    cos_version = get_cos_version(args)
 
-    pzation_base_file = "ncn-personalization.{}.{}.json".format(host, get_cos_version(args))
+    pzation_base_file = "ncn-personalization.{}.{}.json".format(host, get_prod_version(args))
 
     # Get a list of all worker and manaagement ncns. We need to skip the
     # ncn-s00* nodes for now.  So use the m_ncn_tuples + w_ncn_tuples and
@@ -508,18 +523,19 @@ def ncn_personalization(args): #pylint: disable=unused-argument
     def find_substr(substr):
         """Return the index of the element containing the substring.  This
         is a slow linear search, but there are only a few elements."""
+        indices = []
         for i, _ in enumerate(layers):
-            if substr in layers[i]['name']:
-                return i
+            if substr in indices[i]['name']:
+                indices.append(i)
+        return indices
 
     # Get the commits from the repos to forumulate the
     # ncn-personalization.json.  Then write it to the ncn.
     for repo in repos:
-        branches = utils.ls_remote(connection, repos[repo]).splitlines()
-        branch = [b for b in branches if 'integration' in b][0]
-        commit, _ = branch.split()
-        layer_i = find_substr(repo)
-        pzation_template["layers"][layer_i]["commit"] = commit
+        commit, branch = curr_cos_branch(args, repos[repo], cos_version)
+        indices = find_substr(repo)
+        for layer_i in indices:
+            pzation_template["layers"][layer_i]["commit"] = commit
 
     pzation_file = os.path.join(get_dirs(args, "state"), pzation_base_file)
     remote_pzation_file = os.path.join('/root', pzation_base_file)
@@ -543,7 +559,7 @@ def ncn_personalization(args): #pylint: disable=unused-argument
     utils.wait_for_ncn_personalization(connection, ncn_list_xnames)
 
 
-def curr_cos_branch(args, repo, version):
+def curr_prod_branch(args, repo, version):
     """Find the integration branch corresponding to the current COS version"""
 
     version_list = version.split('.')
@@ -580,15 +596,15 @@ def curr_cos_branch(args, repo, version):
     return None, None
 
 
-def get_cos_version(args, short=True):
+def get_prod_version(args, short=True):
     """Get the COS version."""
 
     # Use static variables so the yaml doesn't need to be loaded every time.
-    if hasattr(get_cos_version, "full_version") and hasattr(get_cos_version, "short_version"):
+    if hasattr(get_prod_version, "full_version") and hasattr(get_prod_version, "short_version"):
         if short:
-            return get_cos_version.short_version
+            return get_prod_version.short_version
         else:
-            return get_cos_version.full_version
+            return get_prod_version.full_version
 
     # If we haven't returned, full_version and short_version do not exist.
     # read the yaml and set them.
@@ -613,8 +629,8 @@ def get_cos_version(args, short=True):
     install_logger.debug('highest_vers {}'.format(highest_vers))
     install_logger.debug('short_vers {}'.format(short_vers))
 
-    get_cos_version.short_version = short_vers
-    get_cos_version.full_version = highest_vers
+    get_prod_version.short_version = short_vers
+    get_prod_version.full_version = highest_vers
     if short:
         return short_vers
     else:
@@ -657,7 +673,7 @@ def wait_for_pod(job_id):
 def customize_cos_compute_image(args, image_info):
     """Customize a COS compute image."""
 
-    cos_version = get_cos_version(args)
+    cos_version = get_prod_version(args)
     date = datetime.datetime.today().strftime("%Y%m%d")
 
     # Find a session name that doesn't already exist.  We shouldn't need to
@@ -731,7 +747,9 @@ def build_cos_compute_image(args): #pylint: disable=unused-argument
     for COS.
     """
 
-    commit, name = curr_cos_branch(args)
+    cos_version = get_prod_version(args)
+
+    commit, name = curr_prod_branch(args, 'cos-config-management', cos_version)
     if "cos_recipe_name" not in args:
         raise COSProblem("A recipe name is needed to build the COS compute image.")
 
@@ -741,7 +759,6 @@ def build_cos_compute_image(args): #pylint: disable=unused-argument
         raise COSProblem("WARNING: Could not determine COS branch, so cannot build a compute image")
 
     # Update the configuration.
-    cos_version = get_cos_version(args)
     config_file = "cos-config-{}-nogpu-integration.json".format(cos_version)
     local_config_path = os.path.join(get_dirs(args, "state"), config_file)
 
@@ -856,7 +873,9 @@ def unload_dvs_and_lnet(args):
     analytics_dir = os.path.join(statedir, 'analytics-config-management')
     utils.git_clone(connection, 'analytics-config-management', statedir)
     k8s_job_line = None
+
     for w_xname, w_node in worker_tuples:
+        install_logger.info("Unloading DVS and LNET on node: {}".format(w_node))
         # Disable cfs.
         install_logger.debug("disable cfs on {}".format(w_node))
         connection.sudo("cray cfs components update {} --enabled false".format(w_xname))
@@ -1048,7 +1067,7 @@ def boot_cos(args):
         bos_file = os.path.join(get_dirs(args, "state"), "bos_sessiontemplate.json")
 
         date = datetime.datetime.today().strftime("%Y%m%d")
-        sessiontemplate_name = "cos-sessiontemplate-{}-{}".format(get_cos_version(args), date)
+        sessiontemplate_name = "cos-sessiontemplate-{}-{}".format(get_prod_version(args), date)
 
         connection.sudo("cray bos sessiontemplate create --file {} --name {} ".format(
             bos_file, sessiontemplate_name))

@@ -131,36 +131,27 @@ def format_url(connection, repo):
 def get_hosts(connection, host_str):
     """Get hosts matching a string; for example 'get_hosts(connection, "w0")'
     will get all worker nodes."""
-    components_list = json.loads(connection.sudo("cray hsm state components list --type node --format json").stdout)
-
-    xnames = [clist["ID"] for clist in components_list["Components"]]
+    sat_stat = json.loads(connection.sudo("sat status --format json").stdout)
     hosts = []
 
-    for xname in xnames:
-        hw_desc = json.loads(connection.sudo('cray sls hardware describe {} --format json'.format(xname)).stdout)
-        try:
-            alias = hw_desc["ExtraProperties"]['Aliases'][0]
-        except KeyError:
-            pass
-        if host_str in alias:
-            hosts.append((xname, alias))
+    def ncn_sort(tup):
+        return tup[1]
 
-    # For some reason, the 'cray hsm state components list ...' command doesn't
-    # include ncn-m001.
-    if host_str in ['m0', 'ncn']:
-        self_xname = connection.sudo("cat /etc/cray/xname").stdout.rstrip()
-        hosts.append((self_xname, 'ncn-m001'))
+    for elt in sat_stat:
+        if  host_str in elt["xname"] or host_str in elt["Aliases"]:
+            hosts.append((elt["xname"], elt["Aliases"]))
 
-    return hosts
+    return sorted(hosts, key=ncn_sort)
+
 
 
 def wait_for_pod(connection, pod_name, timeout=1200, delete=False):
     """Wait for a pod to be either created or deleted."""
 
-    keep_waiting = True
     time_waited = 0
     sleep_time = 10
-    while keep_waiting:
+    alert_time = 60
+    while True:
         pods = connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods -Ao wide").stdout.splitlines()
         found = False
         for pod in pods:
@@ -171,22 +162,24 @@ def wait_for_pod(connection, pod_name, timeout=1200, delete=False):
         if found and delete is False:
             install_logger.debug("found running and delete == False ...")
             if 'running' in running.lower() or 'completed' in running.lower():
-                keep_waiting = False
+                break
             elif running.lower() =='imagepullbackoff':
                 install_logger.warning("WARNING: pod {} in error state: {}".format(pod_name, running))
-                keep_waiting = False
+                break
             else:
                 install_logger.debug("(else) running={} ... no action performed".format(running))
         elif not found and delete is True:
             # The pod has been deleted, so quit waiting.
-            keep_waiting = False
-        time.sleep(sleep_time)
-        time_waited += sleep_time
+            break
         if time_waited >= timeout:
             action_str = "delete" if delete else "complete"
             install_logger.warning("WARNING: Timed out waiting {} seconds for pod {} to {}".format(time_waited, pod_name, action_str))
-            keep_waiting = False
-
+            break
+        if time_waited % alert_time == 0:
+            install_logger.info("Waiting for pod {} to complete. Waitied {} of {} seconds".format(pod_name, time_waited, timeout))
+        time.sleep(sleep_time)
+        time_waited += sleep_time
+        
 
 def git_clone(connection, repo, location):
     """
