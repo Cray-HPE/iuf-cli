@@ -423,6 +423,8 @@ def get_git(connection, products):
                 try:
                     products[product]['clone_url'] = product_catalog['configuration']['clone_url']
                     products[product]['import_branch'] = product_catalog['configuration']['import_branch']
+                    if "recipes" in product_catalog:
+                        products[product]['recipe'] = list(product_catalog['recipes'].keys())[0]
                 except Exception as err:
                     # even if we have an exact match in the product catalog, there may
                     # not be git information associated with that product entry
@@ -430,6 +432,8 @@ def get_git(connection, products):
                     install_logger.debug('no product catalog config data, trying {} for {}'.format(working_version, product))
                     product_catalog = product_data[working_version]
                     products[product]['clone_url'] = product_catalog['configuration']['clone_url']
+                    if "recipes" in product_catalog:
+                        products[product]['recipe'] = list(product_catalog['recipes'].keys())[0]
             else:
                 # if there is no exact match, attempt to get the clone_url anyway since
                 # that doesn't change between product versions
@@ -437,6 +441,8 @@ def get_git(connection, products):
                 install_logger.debug('no exact version in {}, using {} for {}'.format(matching_versions, working_version, product))
                 product_catalog = product_data[working_version]
                 products[product]['clone_url'] = product_catalog['configuration']['clone_url']
+                if "recipes" in product_catalog:
+                    products[product]['recipe'] = list(product_catalog['recipes'].keys())[0]
 
         except Exception as err:
             install_logger.debug('unable to get all config-management data for {}'.format(product))
