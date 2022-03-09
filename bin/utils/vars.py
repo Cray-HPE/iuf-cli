@@ -32,6 +32,10 @@ class SyntaxError(Exception):
     """A wrapper for raising yaml or json syntax errors."""
     pass
 
+class NCNPersonalization(Exception):
+    """A wrapper for raising an NCNPersonalization error"""
+    pass
+
 
 LOCATION_DICT = "location_dict.yaml"
 

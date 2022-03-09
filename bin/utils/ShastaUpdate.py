@@ -526,9 +526,10 @@ def ncn_personalization(args): #pylint: disable=unused-argument
     Installation and Configuration Guide (1.4.2_S-8000 RevA)"""
 
     repos = get_mergeable_repos(args)
-    cos_version = get_cos_version(args)
-
-    pzation_base_file = "ncn-personalization.{}.{}.json".format(host, get_prod_version(args))
+    prod_version = get_prod_version(args)
+    pzation_base_file = "ncn-personalization.{}-{}.json".format(
+        prod_version,
+        datetime.datetime.today().strftime("%Y%m%d-%H%M%S"))
 
     # Get a list of all worker and manaagement ncns. We need to skip the
     # ncn-s00* nodes for now.  So use the m_ncn_tuples + w_ncn_tuples and
@@ -537,33 +538,47 @@ def ncn_personalization(args): #pylint: disable=unused-argument
     w_ncn_tuples = utils.get_hosts(connection, "w0")
     all_ncn_tuples = w_ncn_tuples + m_ncn_tuples
 
-    install_logger.debug("ncn_personalization, working here: {}".format(os.getcwd()))
-    with open(os.path.join('../src/templates', pzation_base_file), 'r', encoding='UTF-8') as fhandle:
-        pzation_template = json.load(fhandle)
-    layers = pzation_template["layers"]
+    configs = json.loads(connection.sudo("cray cfs configurations list --format json").stdout)
+
+    # ncn_personalization should always be found in args since it has a
+    # default value.
+    template_name = args.get("ncn_personalization")
+    pzation_template = None
+    for i, _ in enumerate(configs):
+        if configs[i]["name"] == template_name:
+            pzation_template = configs[i]
+            break
+
+    if not pzation_template:
+        err_msg = utils.formatted("""
+        Unable to find a cfs configuration named {}.  Was one
+        specified via the commandline?""".format(template_name))
+        raise NCNPersonalization(err_msg)
+
+    del pzation_template["name"]
+    del pzation_template["lastUpdated"]
 
     def find_substr(substr):
         """Return the index of the element containing the substring.  This
         is a slow linear search, but there are only a few elements."""
         indices = []
-        for i, _ in enumerate(layers):
-            if substr in indices[i]['name']:
+        for i, _ in enumerate(pzation_template["layers"]):
+            if substr in pzation_template["layers"][i]["cloneUrl"]:
                 indices.append(i)
         return indices
 
     # Get the commits from the repos to forumulate the
-    # ncn-personalization.json.  Then write it to the ncn.
+    # ncn-personalization.json.  Then write it out for the
+    # `cray cfs configurations update ...`.
     for repo in repos:
-        commit, branch = curr_cos_branch(args, repos[repo], cos_version)
-        indices = find_substr(repo)
+        commit, branch = curr_prod_branch(args, repos[repo], prod_version)
+        indices = find_substr(repos[repo])
         for layer_i in indices:
             pzation_template["layers"][layer_i]["commit"] = commit
 
     pzation_file = os.path.join(get_dirs(args, "state"), pzation_base_file)
-    remote_pzation_file = os.path.join('/root', pzation_base_file)
     with open(pzation_file, 'w', encoding='UTF-8') as fhandle:
         json.dump(pzation_template, fhandle)
-    connection.put(pzation_file, remote_pzation_file)
 
     ncn_list_xnames = [n[0] for n in all_ncn_tuples]
 
@@ -571,14 +586,14 @@ def ncn_personalization(args): #pylint: disable=unused-argument
     for ncn in ncn_list_xnames:
         connection.sudo("cray cfs components update {} --enabled false".format(ncn))
     # Upload the file to CFS.
-    connection.sudo("cray cfs configurations update ncn-personalization --file {} --format json".format(remote_pzation_file))
+    connection.sudo("cray cfs configurations update {} --file {} --format json".format(template_name, pzation_file))
 
     # Update the CFS component for all ncns.  Skip the ncn-s* nodes for now;
     # so this is basically the worker and management nodes.
     for ncn in ncn_list_xnames:
-        connection.sudo("cray cfs components update --desired-config ncn-personalization --enabled true --format json {}".format(ncn))
+        connection.sudo("cray cfs components update --desired-config {} --enabled true --format json --error-count 0 --state [] {}".format(template_name, ncn))
 
-    utils.wait_for_ncn_personalization(connection, ncn_list_xnames)
+    utils.wait_for_ncn_personalization(connection, ncn_list_xnames, timeout=3600)
 
 
 def curr_prod_branch(args, repo, version):
@@ -907,11 +922,11 @@ def unload_dvs_and_lnet(args):
                 install_logger.debug("lemondrop has no lustre mounts ==> skip configure_fs_unload.yml play")
             else:
                 install_logger.debug("call dvs_reload_ncn...configure_fs_unload.yaml...")
-                k8s_job_line = connection.sudo("/tmp/dvs_reload_ncn -c ncn-personalization -p playbooks/configure_fs_unload.yml {}".format(w_xname),
+                k8s_job_line = connection.sudo("/tmp/dvs_reload_ncn -c ncn-personalization -p configure_fs_unload.yml {}".format(w_xname),
                     timeout=120).stdout.splitlines()
         except Exception as ex:
             install_logger.warning("WARNING (unload_dvs_and_lnet): Caught exception {}, name={}".format(ex, ex.__class__.__name__))
-            install_logger.warning("dvs_reload_ncn...playbooks/configure_fs_unload.yml timed out on node {}".format(w_node))
+            install_logger.warning("dvs_reload_ncn...configure_fs_unload.yml timed out on node {}".format(w_node))
 
         if k8s_job_line:
             k8s_job = k8s_job_line.split()[1].strip()
@@ -974,7 +989,7 @@ def unload_dvs_and_lnet(args):
         # Unload previous COS release’s DVS and LNet services.
         try:
             install_logger.debug("call dvs_reload_ncn...cray_dvs_unload.yml")
-            output = connection.sudo("/tmp/dvs_reload_ncn -D -c ncn-personalization -p playbooks/cray_dvs_unload.yml {}".format(w_xname)
+            output = connection.sudo("/tmp/dvs_reload_ncn -D -c ncn-personalization -p cray_dvs_unload.yml {}".format(w_xname)
                                      ).stdout.splitlines()
             k8s_job_line = [line for line in output if line.lower().startswith('services')][0]
         except Exception as ex:
@@ -1187,5 +1202,4 @@ def cleanup(args): # pylint: disable=unused-argument
 
 def hello(args):
     print("hello")
-    allout = connection.sudo("echo hello")
-    install_logger.debug("sudo result: stdout={}, stderr={}".format(allout.stdout, allout.stderr))
+

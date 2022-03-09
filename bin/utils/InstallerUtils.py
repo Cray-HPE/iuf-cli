@@ -179,7 +179,7 @@ def wait_for_pod(connection, pod_name, timeout=1200, delete=False):
             install_logger.info("Waiting for pod {} to complete. Waitied {} of {} seconds".format(pod_name, time_waited, timeout))
         time.sleep(sleep_time)
         time_waited += sleep_time
-        
+
 
 def git_clone(connection, repo, location):
     """
