@@ -397,7 +397,6 @@ def backup_config_repos(args):
 
         os.environ["HOME"] = oldhome
 
-
 def get_mergeable_repos(args):
 
     # load previously discovered produts
@@ -498,6 +497,29 @@ def update_working_branches(args):
     # add git config and write out state file
     update_prods(args, utils.get_git(connection, location_dict))
 
+def get_cos_recipe_name(args):
+    # if cos_recipe_name was supplied on the command line, just return it
+    if "cos_recipe_name" in args:
+        return args['cos_recipe_name']
+
+    cos_version = get_prod_version(args, False)
+    product = "cos-" + cos_version
+
+    # if not, lets see if we can find it
+    # load previously discovered produts
+    location_dict = utils.get_git(connection, load_prods(args))
+    if product not in location_dict:
+        # no cos at all in the location_dict, give up
+        install_logger.debug("{} not found in the location_dict.".format(product))
+        return None
+
+    if "recipe" not in location_dict[product]:
+        # no recipe was found by get_git, give up
+        install_logger.debug("'recipe' keyword not found in the location_dict.")
+        return None
+
+    # return what we've got
+    return location_dict[product]["recipe"]
 
 def ncn_personalization(args): #pylint: disable=unused-argument
     """Do the NCN personalization as described in HPE Cray EX System
@@ -748,12 +770,12 @@ def build_cos_compute_image(args): #pylint: disable=unused-argument
     """
 
     cos_version = get_prod_version(args)
+    cos_recipe_name = get_cos_recipe_name(args)
 
-    commit, name = curr_prod_branch(args, 'cos-config-management', cos_version)
-    if "cos_recipe_name" not in args:
+    if not cos_recipe_name:
         raise COSProblem("A recipe name is needed to build the COS compute image.")
 
-    cos_recipe_name = args["cos_recipe_name"]
+    commit, name = curr_prod_branch(args, 'cos-config-management', cos_version)
 
     if commit is None:
         raise COSProblem("WARNING: Could not determine COS branch, so cannot build a compute image")
