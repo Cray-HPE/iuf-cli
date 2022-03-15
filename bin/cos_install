@@ -295,6 +295,10 @@ def main():
     install_sp.add_argument("-crn", "--cos-recipe-name", action="store",
         help="The name of the recipe to build the COS compute image")
 
+    install_sp.add_argument("-ncnp", "--ncn-personalization", action="store",
+        default="ncn-personalization",
+        help="The name of the ncn personalization config to update.  Defaults to 'ncn-personalization'")
+
     install_sp.set_defaults(func=process_install)
 
     bu_sp = subparsers.add_parser("branch-update", aliases=["bu"])
