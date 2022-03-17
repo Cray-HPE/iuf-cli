@@ -572,8 +572,8 @@ def update_cfs_config(args):
         json.dump(cfs_template, fhandle)
 
     outdict = {"template_name": template_name, "file_location": file_location}
-    with open(outfile, "w") as fhandle:
-        yaml.dump(outdict, outfile)
+    with open(os.path.join(get_dirs(args, "state"), NCNP_VARS), "w") as fhandle:
+        yaml.dump(outdict, fhandle)
 
     return template_name, file_location
 
