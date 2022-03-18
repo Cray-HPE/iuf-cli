@@ -28,10 +28,34 @@ from utils.vars import *
 install_logger = get_install_logger(__name__)
 # pylint: disable=consider-using-f-string
 
+
+class version():
+    def __init__(self, short_version, full_version):
+        self.short_v = short_version
+        self.full_v = full_version
+
+    @property
+    def short_version(self):
+        return self.short_v
+
+    @property
+    def full_version(self):
+        return self.full_v
+
+
+class productVersions():
+    def __init__(self):
+        self.versions = {}
+    def set(self, product, short_version, full_version):
+        if product not in self.versions:
+            self.versions[product] = version(short_version, full_version)
+    def has(self, product):
+        return product in self.versions
+
+
 def getenv(var):
     """Get an environment variable"""
-    # Use os.environ[...] (and NOT os.environ.get(...) so that an exception is
-    # raised by default if a key does not exist.
+
     if var in os.environ:
         return os.environ[var]
     else:

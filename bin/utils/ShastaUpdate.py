@@ -104,7 +104,7 @@ def update_prods(args, location_dict):
     install_logger.debug('updating location_dict')
     filepath = os.path.join(statedir, "location_dict.yaml")
     with open(filepath, "w", encoding="UTF-8") as fhandle:
-        yaml.dump(location_dict, fhandle)    
+        yaml.dump(location_dict, fhandle)
 
 
 def get_prods(args):
@@ -125,22 +125,6 @@ def install(args):
 
     # load previously discovered produts
     location_dict = load_prods(args)
-
-    # FIXME:  This is a lemondrop-specific work-around.  I don't think we
-    # want to constrain customers to a specific version.
-    lowest_v_str ="2.3.38"
-    lowest_v = LooseVersion(lowest_v_str)
-
-    current_v_str = get_prod_version(args, False)
-    # only do the version check if we're installing cos
-    if current_v_str:
-        current_v = LooseVersion(current_v_str)
-        if lowest_v > current_v:
-            err_msg = """ The lowest version of COS that should be installed
-            is {}.  The version ({}) will break cfs.
-            """.format(lowest_v_str, current_v_str)
-            install_logger.error(err_msg)
-            sys.exit(1)
 
     product_count = 0
     for prod in location_dict:
@@ -380,7 +364,7 @@ def get_cos_recipe_name(args):
     if "cos_recipe_name" in args:
         return args['cos_recipe_name']
 
-    cos_version = get_prod_version(args, False)
+    cos_version = get_prod_version(args, 'cos', False)
     product = "cos-" + cos_version
 
     # if not, lets see if we can find it
@@ -402,7 +386,13 @@ def get_cos_recipe_name(args):
 def update_cfs_config(args):
     """Update the commits in the CFS config."""
 
-    prod_version = get_prod_version(args)
+    repos = get_mergeable_repos(args)
+    if 'cos' in repos:
+        prod_version = get_prod_version(args, 'cos')
+    else:
+        prod = repos.keys()[0]
+        prod_version = get_prod_version(args, prod)
+
     base_file = "cfs-config.{}-{}.json".format(
         prod_version,
         datetime.datetime.today().strftime("%Y%m%d-%H%M%S"))
@@ -438,7 +428,6 @@ def update_cfs_config(args):
     # Get the commits from the repos to forumulate the
     # ncn-personalization.json.  Then write it out for the
     # `cray cfs configurations update ...`.
-    repos = get_mergeable_repos(args)
     for _, repo in repos.items():
         commit, branch = curr_prod_branch(args, repo, prod_version)
         indices = find_substr(repo)
@@ -454,6 +443,7 @@ def update_cfs_config(args):
         yaml.dump(outdict, fhandle)
 
     return template_name, file_location
+
 
 def ncn_personalization(args): #pylint: disable=unused-argument
     """Do the NCN personalization as described in HPE Cray EX System
@@ -528,15 +518,17 @@ def curr_prod_branch(args, repo, version):
     return None, None
 
 
-def get_prod_version(args, short=True):
+def get_prod_version(args, product, short=True):
+
     """Get the COS version."""
 
+
     # Use static variables so the yaml doesn't need to be loaded every time.
-    if hasattr(get_prod_version, "full_version") and hasattr(get_prod_version, "short_version"):
+    if hasattr(get_prod_version, "products") and get_prod_version.products.has(product):
         if short:
-            return get_prod_version.short_version
+            return get_prod_version.products.versions[product].short_version
         else:
-            return get_prod_version.full_version
+            return get_prod_version.products.versions[product].full_version
 
     # If we haven't returned, full_version and short_version do not exist.
     # read the yaml and set them.
@@ -545,10 +537,12 @@ def get_prod_version(args, short=True):
     with open(os.path.join(statedir, LOCATION_DICT), "r",
               encoding='UTF-8') as fhandle:
         locs_dict = yaml.load(fhandle, yaml.SafeLoader)
+
+    repos = get_mergeable_repos(args)
     # use the version provided by get_products
-    cos_versions = [locs_dict[key]['version'] for key in locs_dict if 'cos' in key and locs_dict[key]['work_dir']]
-    sorted_vers = sorted(cos_versions, key=LooseVersion)
-    install_logger.debug('sorted cos_versions are {}'.format(sorted_vers))
+    prod_versions = [locs_dict[key]['version'] for key in locs_dict if product in key and locs_dict[key]['work_dir']]
+    sorted_vers = sorted(prod_versions, key=LooseVersion)
+    install_logger.debug('sorted prod_versions are {}'.format(sorted_vers))
     if sorted_vers:
         highest_vers = sorted_vers[-1]
         version_list = highest_vers.split('.')
@@ -561,8 +555,9 @@ def get_prod_version(args, short=True):
     install_logger.debug('highest_vers {}'.format(highest_vers))
     install_logger.debug('short_vers {}'.format(short_vers))
 
-    get_prod_version.short_version = short_vers
-    get_prod_version.full_version = highest_vers
+    get_prod_version.products = utils.productVersions()
+    get_prod_version.products.set(product, short_vers, highest_vers)
+
     if short:
         return short_vers
     else:
@@ -605,7 +600,7 @@ def wait_for_pod(job_id):
 def customize_cos_compute_image(args, image_info):
     """Customize a COS compute image."""
 
-    cos_version = get_prod_version(args)
+    cos_version = get_prod_version(args, 'cos')
     date = datetime.datetime.today().strftime("%Y%m%d")
 
     # Find a session name that doesn't already exist.  We shouldn't need to
@@ -679,7 +674,7 @@ def build_cos_compute_image(args): #pylint: disable=unused-argument
     for COS.
     """
 
-    cos_version = get_prod_version(args)
+    cos_version = get_prod_version(args, 'cos')
     cos_recipe_name = get_cos_recipe_name(args)
 
     if not cos_recipe_name:
@@ -1000,7 +995,7 @@ def boot_cos(args):
         bos_file = os.path.join(get_dirs(args, "state"), "bos_sessiontemplate.json")
 
         date = datetime.datetime.today().strftime("%Y%m%d")
-        sessiontemplate_name = "cos-sessiontemplate-{}-{}".format(get_prod_version(args), date)
+        sessiontemplate_name = "cos-sessiontemplate-{}-{}".format(get_prod_version(args, 'cos'), date)
 
         connection.sudo("cray bos sessiontemplate create --file {} --name {} ".format(
             bos_file, sessiontemplate_name))
@@ -1091,11 +1086,7 @@ def cleanup(args): # pylint: disable=unused-argument
 def hello(args):
     print("hello")
     allout = connection.sudo("echo hello")
-    install_logger.error("sudo result: stdout={}, stderr={}".format(allout.stdout, allout.stderr))
-    cos_version = get_prod_version(args)
-    cos_recipe_name = get_cos_recipe_name(args)
-
-    print("cos_version={}, cos_recipe_name={}".format(cos_version, cos_recipe_name))
+    install_logger.debug("sudo result: stdout={}, stderr={}".format(allout.stdout, allout.stderr))
 
 
 
