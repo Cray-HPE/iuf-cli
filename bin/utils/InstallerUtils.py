@@ -809,3 +809,16 @@ def get_products( connection,
 
     install_logger.info('    OK')
     return products
+
+
+def get_os():
+    """
+    return the current os release
+    """
+    with open('/etc/os-release', 'r') as os_file:
+        os_contents = os_file.readlines()
+    release = None
+    for line in os_contents:
+        if line.startswith('VERSION='):
+            release = line.split('"')[1]
+    return release

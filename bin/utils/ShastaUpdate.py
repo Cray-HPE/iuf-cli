@@ -1203,3 +1203,68 @@ def cleanup(args): # pylint: disable=unused-argument
 def hello(args):
     print("hello")
 
+
+def validate_products(args):
+    """
+    verify media prior to installation
+    """
+
+    # load previously discovered produts
+    location_dict = load_prods(args)
+
+    valid_products = {'cos': {}, 'slingshot-host-software': {}}
+
+    # build a list of valid cos and shs products
+    for prod in location_dict:
+        # only look at entries that are identified as products
+        if location_dict[prod]['product']:
+            # work_dir will not be set for invalid products
+            if location_dict[prod]['work_dir'] and not location_dict[prod]['installed']:
+                product_name = location_dict[prod]['product']
+                # products we care about from a validation perspective
+                if product_name in ['cos']:
+                    valid_products[product_name][prod] = location_dict[prod]
+
+    num_cos_products = len(valid_products['cos'])
+    # num_shs_products = len(valid_products['slingshot-host-software'])
+
+    if num_cos_products == 1:
+
+        cos_products = valid_products['cos']
+        cos_key = list(cos_products.keys())[0]
+        cos_product = valid_products['cos'][cos_key]
+        cos_workdir = cos_product['work_dir']
+
+        install_logger.info('  Performing compatability check for COS {} on running NCN'.format(cos_key))
+
+        # get the os release version (ie, 15-sp2)
+        os_release = utils.get_os().lower()
+
+        # get the running kernel version and format it to match the way it is
+        # represented in the COS rpms
+        cmd = 'uname -r'
+        running_kernel = connection.sudo(cmd).stdout.split('-default')[0].replace('-', '_')
+
+        # find a representive rpm from the cos media
+        query_package = 'cray-dvs-kmp-default'
+        cmd = "find {} -path '*{}-ncn*{}*' -print".format(cos_workdir, os_release, query_package)
+        rpms = connection.sudo(cmd).stdout.splitlines()
+
+        # see if our sample rpm matches the running NCN kernel
+        if len(rpms) == 1:
+            if running_kernel in rpms[0]:
+                install_logger.info('    COS NCN content matches running NCN kernel {}'.format(running_kernel))
+                install_logger.debug(rpms)
+            else:
+                install_logger.debug(rpms)
+                install_logger.error('    COS NCN content does NOT match running NCN kernel {}'.format(running_kernel))
+                install_logger.error('    It is not recommended to proceed as packages such as DVS which have')
+                install_logger.error('    a kernel module will not work correctly on your NCN worker nodes.')
+                sys.exit(1)
+                raise InstallError('    COS NCN content does NOT match running NCN kernel {}'.format(running_kernel))
+        else:
+            install_logger.warning('    Cannot perform check due to unexpected number of RPM matches')
+            install_logger.debug(rpms)
+
+    else:
+        install_logger.info('  Cannot validate {} versions of COS, skipping validation check'.format(num_cos_products))

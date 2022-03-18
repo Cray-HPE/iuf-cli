@@ -30,15 +30,16 @@ install_logger = get_install_logger()
 STAGES = OrderedDict({
     "hello": main_ctrl.hello,
     "process_product_media": main_ctrl.get_prods,
+    "validate_products": main_ctrl.validate_products,
     "install_products": main_ctrl.install,
-    "verify_cos_import": main_ctrl.check_pods,
+    "verify_product_import": main_ctrl.check_pods,
     "update_working_branches": main_ctrl.update_working_branches,
     "ncn_personalization": main_ctrl.ncn_personalization,
     "unload_dvs_and_lnet": main_ctrl.unload_dvs_and_lnet,
     "check_services": main_ctrl.check_services,
     "build_cos_compute_image": main_ctrl.build_cos_compute_image,
-    "boot_cos": main_ctrl.boot_cos,
-    "run_hello_world": main_ctrl.run_hello_world,
+    "boot_computes": main_ctrl.boot_cos,
+    "run_slurm_hello_world": main_ctrl.run_hello_world,
 })
 
 NOABORT_STAGES = [
@@ -51,7 +52,9 @@ def format_tabbed_list(alist):
     a list needs to be displayed to a user."""
     retstr = ""
     for elt in alist:
-        retstr += "  {}\n".format(elt)
+        # hide the hello stage
+        if elt != 'hello':
+            retstr += "  {}\n".format(elt)
 
     return retstr
 
@@ -179,6 +182,8 @@ def process_install(cmdline_args):
         if not os.path.exists(args_dict['media_dir']):
             install_logger.error("media-dir {} does not exist.".format(args_dict['media_dir']))
             sys.exit(1)
+
+    install_logger.debug("ARGS_DICT={}".format(args_dict))
 
     for stage in stages_list:
         if stage in stages:
