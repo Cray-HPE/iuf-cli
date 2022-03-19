@@ -1267,4 +1267,4 @@ def validate_products(args):
             install_logger.debug(rpms)
 
     else:
-        install_logger.info('  Cannot validate {} versions of COS, skipping validation check'.format(num_cos_products))
+        install_logger.warning('  Cannot validate {} versions of COS, skipping validation check'.format(num_cos_products))
