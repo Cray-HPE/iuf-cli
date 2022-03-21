@@ -37,9 +37,6 @@ from utils.vars import *
 import utils.InstallerUtils as utils #pylint: disable=wrong-import-position,import-error
 from utils.InstallerUtils import getenv #pylint: disable=wrong-import-position,import-error
 
-# FIXME:  We need to do something about this, and where the host variable is used.
-host = "lemondrop-ncn-m001"
-
 # pylint: disable=consider-using-f-string
 
 connection = utils.CmdMgr.get_cmd_interface()
@@ -76,14 +73,14 @@ def get_binaries(args):
 
 
 def get_dirs(args,which=None):
-    media_dir = args.get("media_dir", os.getcwd())
-    statedir = args.get("state_dir", os.getcwd())
+    media_dir = args.get("media_dir")
+    state_dir = args.get("state_dir")
     if which == "state":
-        return statedir
+        return state_dir
     elif which == "media":
         return media_dir
     else:
-        return media_dir, statedir
+        return media_dir, state_dir
 
 
 def load_prods(args):
@@ -305,17 +302,6 @@ def check_services(args): #pylint: disable=unused-argument
             install_logger.warning("WARNING: lnet not found in kernel modules on node {}!".format(node))
 
 
-def sync_ci_tools(args):
-    """Sync any tools the CI process might need to a temp dir on the NCN"""
-
-    tools = [
-            "../src/tools/get_vcspw.sh"
-            ]
-
-    for tool in tools:
-        tool_basename = os.path.basename(tool)
-        connection.put(tool,"{}/{}".format(get_dirs(args, "state"), tool_basename))
-
 def get_catalog_list(custom_columns, import_type):
     clone_re = re.compile(r"\s+{}:\s+".format(import_type))
     allout = connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf get cm -n services cray-product-catalog -o custom-columns={}".format(custom_columns)).stdout.splitlines()
@@ -323,84 +309,10 @@ def get_catalog_list(custom_columns, import_type):
     repos = sorted(set([re.sub(clone_re, '', repo) for repo in repos]))
     return repos
 
-def setup_git_config(args):
-    """Setup a .gitconfig that can be used by the rest of the CI"""
-    host_shortname = host.split("-", maxsplit=1)[0]
-    statedir = get_dirs(args, "state")
-
-    connection.sudo("{}/get_vcspw.sh > {}/.vcspass".format(statedir, statedir))
-    glv = os.path.join(statedir, "get_local_vcspw.sh")
-    with open(glv, "w", encoding="UTF-8") as fhandle:
-        fhandle.write("cat {}/.vcspass".format(statedir))
-    stm = os.stat(glv)
-    os.chmod(glv, stm.st_mode | stat.S_IEXEC)
-
-    oldhome = statedir
-    if "HOME" in os.environ:
-        install_logger.debug("old home = {}".format(os.environ["HOME"]))
-        oldhome = os.environ["HOME"]
-    os.environ["HOME"] = statedir
-
-    connection.sudo("git config --global core.askPass {}".format(glv))
-    connection.sudo("git config --global credential.https://api-gw-service-nmn.local.username crayvcs".format(statedir))
-    connection.sudo("git config --global url.https://api-gw-service-nmn.local.insteadof https://vcs.{}.dev.cray.com".format(statedir, host_shortname))
-    os.environ["HOME"] = oldhome
-
-def backup_config_repos(args):
-    """Backup the configuration repositories in git"""
-    host_shortname = host.split("-", maxsplit=1)[0]
-
-    statedir = get_dirs(args, "state")
-    oldhome = statedir
-    if "HOME" in os.environ:
-        oldhome = os.environ["HOME"]
-    os.environ["HOME"] = statedir
-
-    datestr = datetime.datetime.today().strftime("%Y%m%d-%H%M%S")
-    backup_dir = os.path.join(statedir, datestr)
-
-    connection.sudo("mkdir -p {}".format(backup_dir))
-
-    config_repos = get_catalog_list("DATA:.data", "clone_url")
-
-    for repo in config_repos:
-        repodir = re.search(r"((git|ssh|http(s)?)|(git@[\w\.]+))(:(//)?)([\w\.@\:/\-~]+)(\.git)(/)?",repo).group(7).split("/")[-1]
-        clonedir = backup_dir + "/" + repodir
-
-        #connection.sudo("git clone {} {}".format(repo,clonedir))
-        # TODO: git_clone isn't secure.  The "git clone" above would be better.
-        utils.git_clone(connection, repodir, backup_dir)
-        remotes = connection.sudo("git -C {} branch -a".format(
-            clonedir)).stdout.splitlines()
-        for raw in remotes:
-            if not raw.strip().startswith("remotes"):
-                continue
-            if "HEAD" in raw:
-                continue
-
-            rxp = re.search("(remotes/[^/]+)/(.*)$",raw)
-            branch = rxp.group(2)
-
-            if branch == "master":
-                continue
-
-            connection.sudo("git -C {} branch --track {} {}".format(
-                clonedir,branch,raw))
-
-        connection.sudo("git -C {} fetch --all".format(clonedir))
-        connection.sudo("git -C {} pull --all".format(clonedir))
-
-        # now set up the backed up repo to work locally
-        connection.sudo("git -C {} config core.askPass {}/get_vcspw.sh".format(clonedir,statedir))
-        connection.sudo("git -C {} config credential.https://api-gw-service-nmn.local.username crayvcs".format(clonedir))
-        connection.sudo("git -C {} config url.https://api-gw-service-nmn.local.insteadof https://vcs.{}.dev.cray.com".format(clonedir,host_shortname))
-
-        os.environ["HOME"] = oldhome
-
 def get_mergeable_repos(args):
 
     # load previously discovered produts
-    location_dict = utils.get_git(connection, load_prods(args))
+    location_dict = utils.get_product_catalog(connection, load_prods(args))
 
     repos = {}
 
@@ -419,20 +331,15 @@ def get_mergeable_repos(args):
 def update_working_branches(args):
     """Merge the product git branch to the working config"""
 
-    def check_cmd(cmd):
-        """Run a sudo command.  Return True on success and False on failure."""
-        result = connection.sudo(cmd).returncode
-        return int(result) == 0
-
     # first things first, get a copy of all the config repos
     install_logger.debug("Cloning all of the configuration repositories...")
-    git_checkout_dir = get_dirs(args, "state")
 
     # load previously discovered produts
-    location_dict = utils.get_git(connection, load_prods(args))
+    location_dict = utils.get_product_catalog(connection, load_prods(args))
 
     # get dict of mergeable repos
     repos = get_mergeable_repos(args)
+    git = utils.git(args, connection)
 
     for product in location_dict:
         if location_dict[product]['import_branch']:
@@ -441,61 +348,32 @@ def update_working_branches(args):
             product_name = location_dict[product]['product']
             prod_version = location_dict[product]['product_version']
             repo = repos[product_name]
-            cos_checkout_dir = os.path.join(git_checkout_dir, repo)
+            cos_checkout_dir = git.clone(repo)
 
-            utils.git_clone(connection, repo, git_checkout_dir)
             # second, see what branches we want to work with
             _, integration_branch = curr_prod_branch(args, repo, prod_version) 
 
-            # check out a local copy of the import_branch (release version)
-            try:
-                cmd_ok = check_cmd("git -C {} checkout {}".format(cos_checkout_dir,import_branch))
-            except Exception as err:
-                install_logger.debug("unable to check out import_branch {} for {}".format(import_branch, product))
-                raise InstallError("unable to check out import_branch {} for {}".format(import_branch, product))
+            if integration_branch is None:
+                raise UnexpectedState("ERROR: Could not determine {} branch".format(product))
 
-            # check out a copy of the working branch
-            checkout_ok = False
-            try:
-                cmd_ok = check_cmd("git -C {} checkout {}".format(cos_checkout_dir,integration_branch))
-                install_logger.debug("successfully checked out integration_branch {}".format(integration_branch))
-                checkout_ok = True
-            except Exception as err:
-                # doesn't exist, create it based on the import branch
-                install_logger.info("creating integration branch, based on {}".format(import_branch))
-                cmd_ok = check_cmd("git -C {} checkout {}".format(cos_checkout_dir,import_branch))
-                if cmd_ok:
-                    cmd_ok = check_cmd("git -C {} checkout -b {}".format(
-                        cos_checkout_dir,integration_branch))
-                if cmd_ok:
-                    cmd_ok = check_cmd("git -C {} push --set-upstream origin {}".format(
-                        cos_checkout_dir,integration_branch))
-                if cmd_ok:
-                    checkout_ok = True
+            # check out a local copy of the import_branch (release version)
+            git.checkout(repo, import_branch)
+
+            # check out a copy of the working branch, creating it if necessary
+            git.checkout(repo, integration_branch, create=True)
 
             # fourth, merge the import branch to the integration branch
-            if checkout_ok:
-                install_logger.info("  Merging branch {} into {}".format(import_branch,integration_branch))
-                merge_ok = check_cmd("git -C {} merge -m \"Merge branch '{}' into {}\" {}".format(
-                    cos_checkout_dir,import_branch,integration_branch,import_branch))
-                if merge_ok:
-                    install_logger.debug("  pushing branch")
-                    push_ok = check_cmd("git -C {} push".format(cos_checkout_dir))
-                    push_ok = True
-                    location_dict[product]['merged'] = integration_branch
-                    if not push_ok:
-                        install_logger.error("  Unable to push merged changes back to origin")
-                    else:
-                        install_logger.info("    OK")
-                else:
-                    install_logger.error("  Merge failed!")
-                    return False
-            else:
-                install_logger.error("  Checkout of {} failed!".format(integration_branch))
-                return False
+            install_logger.info("  Merging branch {} into {}".format(import_branch,integration_branch))
+            git.merge(repo, import_branch)
+            git.push(repo)
+
+            # then clean up
+            git.cleanup(repo)
+
+            install_logger.info("    OK")
 
     # add git config and write out state file
-    update_prods(args, utils.get_git(connection, location_dict))
+    update_prods(args, utils.get_product_catalog(connection, location_dict))
 
 def get_cos_recipe_name(args):
     # if cos_recipe_name was supplied on the command line, just return it
@@ -507,14 +385,14 @@ def get_cos_recipe_name(args):
 
     # if not, lets see if we can find it
     # load previously discovered produts
-    location_dict = utils.get_git(connection, load_prods(args))
+    location_dict = utils.get_product_catalog(connection, load_prods(args))
     if product not in location_dict:
         # no cos at all in the location_dict, give up
         install_logger.debug("{} not found in the location_dict.".format(product))
         return None
 
     if "recipe" not in location_dict[product]:
-        # no recipe was found by get_git, give up
+        # no recipe was found by get_product_catalog, give up
         install_logger.debug("'recipe' keyword not found in the location_dict.")
         return None
 
@@ -601,7 +479,8 @@ def curr_prod_branch(args, repo, version):
 
     version_list = version.split('.')
     maj_min_v = version_list[0]+'.'+version_list[1]
-    branches = utils.ls_remote(connection, repo).splitlines()
+    git = utils.git(args, connection)
+    branches = git.ls_remote(repo)
     found_branch = None
 
     # Convention dictates to name the branch
@@ -907,8 +786,12 @@ def unload_dvs_and_lnet(args):
     statedir = get_dirs(args, "state")
 
     # Clone the analytics repo.  It will be used to unmount analytics on the worker.
-    analytics_dir = os.path.join(statedir, 'analytics-config-management')
-    utils.git_clone(connection, 'analytics-config-management', statedir)
+    git = utils.git(args, connection)
+    repo = "analytics-config-management"
+    analytics_dir = git.clone(repo)
+    git.checkout(repo, ANALYTICS_BRANCH)
+    git.pull(repo, quiet=True)
+
     k8s_job_line = None
 
     for w_xname, w_node in worker_tuples:
@@ -962,8 +845,6 @@ def unload_dvs_and_lnet(args):
         connection.sudo("ssh {} /tmp/unmount_pe.sh".format(w_node))
 
         # Unmount Analytics contents on the worker.
-        connection.sudo('git checkout {}'.format(ANALYTICS_BRANCH), cwd=analytics_dir)
-        connection.sudo('git pull', cwd=analytics_dir)
         connection.sudo("scp roles/analyticsdeploy/files/forcecleanup.sh {}:/tmp".format(w_node), cwd=analytics_dir)
 
         # check_analytics will run forcecleanup.sh until dvs unmounts cleanly
@@ -1182,14 +1063,6 @@ def run_hello_world(args):
                 srun_output,slurm_idle_node_lst))
 
     install_logger.info("srun hello_world test succeded")
-
-
-def setup(args): # pylint: disable=unused-argument
-    """ Set up directories.  Remove the old job(s) from REMOTE_PROJECT_OLDJOBS_DIR"""
-
-    sync_ci_tools(args)
-    setup_git_config(args)
-    backup_config_repos(args)
 
 
 def cleanup(args): # pylint: disable=unused-argument

@@ -253,10 +253,10 @@ def main():
         help="format on input ('-i' or '--input-file').  Accepts json or yaml")
 
     parser.add_argument("-s", "--state-dir", action="store",
-        help="A directory used to store the current state of stages.  Defaults to $PWD")
+        help="A directory used to store the current state of stages.  Defaults to $PWD/state")
 
     parser.add_argument("-m", "--media-dir", action="store",
-        help="Location of installation media")
+        help="Location of installation media.  Defaults to $PWD/media")
 
     parser.add_argument("-d", "--dryrun", action="store_true",
         help="Run without making any changes to the system to see what would happen")
@@ -317,6 +317,18 @@ def main():
     # deck.
     args_dict = vars(args)
 
+    if args_dict["media_dir"] is None:
+        media_default = os.path.join(os.getcwd(), "media")
+        args_dict["media_dir"] = media_default
+        if not os.path.exists(media_default):
+            os.mkdir(media_default)
+
+    if args_dict["state_dir"] is None:
+        state_default = os.path.join(os.getcwd(), "state")
+        args_dict["state_dir"] = state_default
+        if not os.path.exists(state_default):
+            os.mkdir(state_default)
+
     process_debug_level(args_dict)
     process_dryrun(args_dict)
     install_logger.debug(args_dict)
@@ -324,6 +336,15 @@ def main():
     if len(sys.argv) < 2:
         install_logger.error("{} requires at least 1 argument".format(sys.argv[0]))
         parser.print_help(sys.stderr)
+        sys.exit(1)
+
+    # some sanity testing
+    if not os.path.exists(args_dict["media_dir"]):
+        install_logger.error("Media directory {} does not exist.".format(args_dict["media_dir"]))
+        sys.exit(1)
+
+    if not os.path.exists(args_dict["state_dir"]):
+        install_logger.error("State directory {} does not exist.".format(args_dict["state_dir"]))
         sys.exit(1)
 
     args.func(args_dict)
