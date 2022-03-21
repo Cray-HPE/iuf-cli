@@ -33,6 +33,7 @@ STAGES = OrderedDict({
     "install_products": main_ctrl.install,
     "verify_cos_import": main_ctrl.check_pods,
     "update_working_branches": main_ctrl.update_working_branches,
+    "update_ncn_config": main_ctrl.update_cfs_config,
     "ncn_personalization": main_ctrl.ncn_personalization,
     "unload_dvs_and_lnet": main_ctrl.unload_dvs_and_lnet,
     "check_services": main_ctrl.check_services,
@@ -332,7 +333,6 @@ def main():
     process_debug_level(args_dict)
     process_dryrun(args_dict)
     install_logger.debug(args_dict)
-
     if len(sys.argv) < 2:
         install_logger.error("{} requires at least 1 argument".format(sys.argv[0]))
         parser.print_help(sys.stderr)
@@ -347,6 +347,10 @@ def main():
         install_logger.error("State directory {} does not exist.".format(args_dict["state_dir"]))
         sys.exit(1)
 
-    args.func(args_dict)
+    try:
+        args.func(args_dict)
+    except AttributeError:
+        install_logger.error("A subcommand was not specified.")
+        sys.exit(1)
 if __name__ == "__main__":
     main()

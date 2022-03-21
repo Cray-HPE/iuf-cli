@@ -399,15 +399,65 @@ def get_cos_recipe_name(args):
     # return what we've got
     return location_dict[product]["recipe"]
 
+def update_cfs_config(args):
+    """Update the commits in the CFS config."""
+
+    prod_version = get_prod_version(args)
+    base_file = "cfs-config.{}-{}.json".format(
+        prod_version,
+        datetime.datetime.today().strftime("%Y%m%d-%H%M%S"))
+
+    # ncn_personalization should always be found in args since it has a
+    # default value.
+    template_name = args.get("ncn_personalization")
+    cfs_template = None
+    configs = json.loads(connection.sudo("cray cfs configurations list --format json").stdout)
+    for i, _ in enumerate(configs):
+        if configs[i]["name"] == template_name:
+            cfs_template = configs[i]
+            break
+
+    if not cfs_template:
+        err_msg = utils.formatted("""
+        Unable to find a cfs configuration named {}.  Was one
+        specified via the commandline?""".format(template_name))
+        raise NCNPersonalization(err_msg)
+
+    del cfs_template["name"]
+    del cfs_template["lastUpdated"]
+
+    def find_substr(substr):
+        """Return the index of the element containing the substring.  This
+        is a slow linear search, but there are only a few elements."""
+        indices = []
+        for i, _ in enumerate(cfs_template["layers"]):
+            if substr in cfs_template["layers"][i]["cloneUrl"]:
+                indices.append(i)
+        return indices
+
+    # Get the commits from the repos to forumulate the
+    # ncn-personalization.json.  Then write it out for the
+    # `cray cfs configurations update ...`.
+    repos = get_mergeable_repos(args)
+    for _, repo in repos.items():
+        commit, branch = curr_prod_branch(args, repo, prod_version)
+        indices = find_substr(repo)
+        for layer_i in indices:
+            cfs_template["layers"][layer_i]["commit"] = commit
+
+    file_location = os.path.join(get_dirs(args, "state"), base_file)
+    with open(file_location, 'w', encoding='UTF-8') as fhandle:
+        json.dump(cfs_template, fhandle)
+
+    outdict = {"template_name": template_name, "file_location": file_location}
+    with open(os.path.join(get_dirs(args, "state"), NCNP_VARS), "w") as fhandle:
+        yaml.dump(outdict, fhandle)
+
+    return template_name, file_location
+
 def ncn_personalization(args): #pylint: disable=unused-argument
     """Do the NCN personalization as described in HPE Cray EX System
     Installation and Configuration Guide (1.4.2_S-8000 RevA)"""
-
-    repos = get_mergeable_repos(args)
-    prod_version = get_prod_version(args)
-    pzation_base_file = "ncn-personalization.{}-{}.json".format(
-        prod_version,
-        datetime.datetime.today().strftime("%Y%m%d-%H%M%S"))
 
     # Get a list of all worker and manaagement ncns. We need to skip the
     # ncn-s00* nodes for now.  So use the m_ncn_tuples + w_ncn_tuples and
@@ -416,53 +466,19 @@ def ncn_personalization(args): #pylint: disable=unused-argument
     w_ncn_tuples = utils.get_hosts(connection, "w0")
     all_ncn_tuples = w_ncn_tuples + m_ncn_tuples
 
-    configs = json.loads(connection.sudo("cray cfs configurations list --format json").stdout)
-
-    # ncn_personalization should always be found in args since it has a
-    # default value.
-    template_name = args.get("ncn_personalization")
-    pzation_template = None
-    for i, _ in enumerate(configs):
-        if configs[i]["name"] == template_name:
-            pzation_template = configs[i]
-            break
-
-    if not pzation_template:
-        err_msg = utils.formatted("""
-        Unable to find a cfs configuration named {}.  Was one
-        specified via the commandline?""".format(template_name))
-        raise NCNPersonalization(err_msg)
-
-    del pzation_template["name"]
-    del pzation_template["lastUpdated"]
-
-    def find_substr(substr):
-        """Return the index of the element containing the substring.  This
-        is a slow linear search, but there are only a few elements."""
-        indices = []
-        for i, _ in enumerate(pzation_template["layers"]):
-            if substr in pzation_template["layers"][i]["cloneUrl"]:
-                indices.append(i)
-        return indices
-
-    # Get the commits from the repos to forumulate the
-    # ncn-personalization.json.  Then write it out for the
-    # `cray cfs configurations update ...`.
-    for repo in repos:
-        commit, branch = curr_prod_branch(args, repos[repo], prod_version)
-        indices = find_substr(repos[repo])
-        for layer_i in indices:
-            pzation_template["layers"][layer_i]["commit"] = commit
-
-    pzation_file = os.path.join(get_dirs(args, "state"), pzation_base_file)
-    with open(pzation_file, 'w', encoding='UTF-8') as fhandle:
-        json.dump(pzation_template, fhandle)
-
     ncn_list_xnames = [n[0] for n in all_ncn_tuples]
+
+    ncn_p_file = os.path.join(get_dirs(args, "state"),NCNP_VARS)
+    with open(os.path.join(get_dirs(args, "state"),NCNP_VARS), "r") as fhandle:
+        ncnp_dict = yaml.load(fhandle, yaml.SafeLoader)
+
+    template_name = ncnp_dict["template_name"]
+    pzation_file = ncnp_dict["file_location"]
 
     # Disable cfs.
     for ncn in ncn_list_xnames:
         connection.sudo("cray cfs components update {} --enabled false".format(ncn))
+
     # Upload the file to CFS.
     connection.sudo("cray cfs configurations update {} --file {} --format json".format(template_name, pzation_file))
 
@@ -478,7 +494,7 @@ def curr_prod_branch(args, repo, version):
     """Find the integration branch corresponding to the current COS version"""
 
     version_list = version.split('.')
-    maj_min_v = version_list[0]+'.'+version_list[1]
+    maj_min_v = version_list[0] + '.' + version_list[1]
     git = utils.git(args, connection)
     branches = git.ls_remote(repo)
     found_branch = None
@@ -799,18 +815,14 @@ def unload_dvs_and_lnet(args):
         # Disable cfs.
         install_logger.debug("disable cfs on {}".format(w_node))
         connection.sudo("cray cfs components update {} --enabled false".format(w_xname))
-        # FIXME: We should remove the reference to lemondrop.
-        try:
-            if host == "lemondrop-ncn-m001":
-                install_logger.debug("lemondrop has no lustre mounts ==> skip configure_fs_unload.yml play")
-            else:
-                install_logger.debug("call dvs_reload_ncn...configure_fs_unload.yaml...")
-                k8s_job_line = connection.sudo("/tmp/dvs_reload_ncn -c ncn-personalization -p configure_fs_unload.yml {}".format(w_xname),
-                    timeout=120).stdout.splitlines()
-        except Exception as ex:
-            install_logger.warning("WARNING (unload_dvs_and_lnet): Caught exception {}, name={}".format(ex, ex.__class__.__name__))
-            install_logger.warning("dvs_reload_ncn...configure_fs_unload.yml timed out on node {}".format(w_node))
 
+        # FIXME: We should remove the reference to lemondrop.
+        if host == "lemondrop-ncn-m001":
+            install_logger.debug("lemondrop has no lustre mounts ==> skip configure_fs_unload.yml play")
+        else:
+            install_logger.debug("call dvs_reload_ncn...configure_fs_unload.yaml...")
+            k8s_job_line = connection.sudo("/tmp/dvs_reload_ncn -c ncn-personalization -p configure_fs_unload.yml {}".format(w_xname),
+                timeout=120).stdout.splitlines()
         if k8s_job_line:
             k8s_job = k8s_job_line.split()[1].strip()
             install_logger.debug("k8sjob={}  wait for the pod...".format(k8s_job))
@@ -839,6 +851,10 @@ def unload_dvs_and_lnet(args):
             uai_name = fields[1]
             connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf delete pod -n user {}".format(uai_name))
 
+        # Sleep for a minute before unmounting PE.
+        install_logger.debug("Let the system settle prior to unmounting PE")
+        time.sleep(60)
+
         # Unmount PE
         install_logger.debug("Unmount PE ...")
         connection.sudo("scp ../src/tools/unmount_pe.sh {}:/tmp/unmount_pe.sh".format(w_node))
@@ -864,18 +880,18 @@ def unload_dvs_and_lnet(args):
                 error_str = utils.formatted("""
                     The DVS module ({}) didn't unload properly from {}.
                     Because of this, the COS Software cannot complete on this
-                    worker.  fields[2]={}""".format(fields[0], w_node, fields[2]))
+                    worker.  the reference count is {} (should be 0)""".format(fields[0], w_node, fields[2]))
                 raise InstallError(error_str)
 
         # Unload previous COS release’s DVS and LNet services.
-        try:
-            install_logger.debug("call dvs_reload_ncn...cray_dvs_unload.yml")
-            output = connection.sudo("/tmp/dvs_reload_ncn -D -c ncn-personalization -p cray_dvs_unload.yml {}".format(w_xname)
+        install_logger.debug("call dvs_reload_ncn...cray_dvs_unload.yml")
+        output = connection.sudo("/tmp/dvs_reload_ncn -D -c ncn-personalization -p cray_dvs_unload.yml {}".format(w_xname)
                                      ).stdout.splitlines()
+
+        # I don't think the k8s jobline not being found should be fatal.
+        try:
             k8s_job_line = [line for line in output if line.lower().startswith('services')][0]
-        except Exception as ex:
-            install_logger.warning("Caught exception {}, name={}".format(ex, ex.__class__.__name__))
-            install_logger.warning("WARNING (unload_dvs_and_lnet): dvs_reload_ncn...cray_dvs_unload.yml timed out on node {}".format(w_node))
+        except Exception as IndexError:
             k8s_job_line = None
 
         if k8s_job_line:
@@ -883,7 +899,7 @@ def unload_dvs_and_lnet(args):
             install_logger.debug("k8sjob={}.  wait for the pod...".format(k8s_job))
             utils.wait_for_pod(connection, k8s_job)
         else:
-            install_logger.warning("WARNING: Unable to get the K8S job name.")
+            install_logger.warning("(unload_dvs_and_lnet): Unable to get the K8S job name.")
 
         # Note the 'for' loop below is only for record-keeping.  The dvs,
         # lustre, and craytrace rpms need to be uninstalled in a specific
@@ -934,7 +950,6 @@ def unload_dvs_and_lnet(args):
         # Add cps back to the worker if they were deleted
         if  cps_cm_pm_pods:
             connection.sudo("cray cps deployment update --nodes {}".format(w_node))
-
 
         # Add the UAIs back to the worker.  Note this is done earlier in the guide
         # (at https://stash.us.cray.com/projects/SHASTA-OS/repos/cos-docs/browse/portal/developer-portal/install/Upgrade_and_Configure_COS.md)
@@ -1075,4 +1090,11 @@ def cleanup(args): # pylint: disable=unused-argument
 
 def hello(args):
     print("hello")
+    allout = connection.sudo("echo hello")
+    install_logger.error("sudo result: stdout={}, stderr={}".format(allout.stdout, allout.stderr))
+    cos_version = get_prod_version(args)
+    cos_recipe_name = get_cos_recipe_name(args)
+
+    print("cos_version={}, cos_recipe_name={}".format(cos_version, cos_recipe_name))
+
 
