@@ -34,11 +34,12 @@ STAGES = OrderedDict({
     "install_products": main_ctrl.install,
     "verify_product_import": main_ctrl.check_pods,
     "update_working_branches": main_ctrl.update_working_branches,
-    "update_ncn_config": main_ctrl.update_cfs_config,
+    "update_ncnp_config": main_ctrl.update_ncnp_config,
     "ncn_personalization": main_ctrl.ncn_personalization,
     "unload_dvs_and_lnet": main_ctrl.unload_dvs_and_lnet,
     "check_services": main_ctrl.check_services,
     "build_cos_compute_image": main_ctrl.build_cos_compute_image,
+    "customize_cos_compute_image": main_ctrl.customize_cos_compute_image,
     "boot_computes": main_ctrl.boot_cos,
     "run_slurm_hello_world": main_ctrl.run_hello_world,
 })
