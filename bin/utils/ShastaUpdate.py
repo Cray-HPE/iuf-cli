@@ -10,14 +10,13 @@ perform integration tests against actual Cray hardware.
 Copyright 2021 Hewlett Packard Enterprise Development LP
 """
 
-import argparse
+import copy
 import datetime
 import json
 import os
 import re
 import stat
 import sys
-import textwrap
 import time
 
 from pprint import pformat
@@ -230,13 +229,13 @@ def check_pods(args): #pylint: disable=unused-argument
             install_logger.debug("pods_not_running={} ==> sleep".format(pods_not_running))
             if total_time % alert_time == 0:
                 install_logger.info("Waiting for {}/{} jobs and {}/{} pods".format(
-                                     len(jobs_not_running), len(jobs_list), 
+                                     len(jobs_not_running), len(jobs_list),
                                      len(pods_not_running), len(pods_list)))
             total_time+=sleep_time
             time.sleep(sleep_time)
         else:
             install_logger.info("Finished waiting for {}/{} jobs and {}/{} pods".format(
-                                     len(jobs_not_running), len(jobs_list), 
+                                     len(jobs_not_running), len(jobs_list),
                                      len(pods_not_running), len(pods_list)))
             break
 
@@ -335,7 +334,7 @@ def update_working_branches(args):
             cos_checkout_dir = git.clone(repo)
 
             # second, see what branches we want to work with
-            _, integration_branch = curr_prod_branch(args, repo, prod_version) 
+            _, integration_branch = current_repo_branch(args, repo, prod_version)
 
             if integration_branch is None:
                 raise UnexpectedState("ERROR: Could not determine {} branch".format(product))
@@ -358,6 +357,8 @@ def update_working_branches(args):
 
     # add git config and write out state file
     update_prods(args, utils.get_product_catalog(connection, location_dict))
+
+
 
 def get_cos_recipe_name(args):
     # if cos_recipe_name was supplied on the command line, just return it
@@ -383,8 +384,40 @@ def get_cos_recipe_name(args):
     # return what we've got
     return location_dict[product]["recipe"]
 
-def update_cfs_config(args):
-    """Update the commits in the CFS config."""
+
+def update_cfs_commits(args, cfs_template_arg):
+    """Update the the commits in a CFS config."""
+    cfs_template = copy.deepcopy(cfs_template_arg)
+
+    del cfs_template["name"]
+    del cfs_template["lastUpdated"]
+
+    def find_substr(substr):
+        """Return the index of the element containing the substring.  This
+        is a slow linear search, but there are only a few elements."""
+        indices = []
+        for i, _ in enumerate(cfs_template["layers"]):
+            if substr in cfs_template["layers"][i]["cloneUrl"]:
+                indices.append(i)
+        return indices
+
+    # Get the commits from the repos to forumulate the
+    # ncn-personalization.json.  Then write it out for the
+    # `cray cfs configurations update ...`.
+    repos = get_mergeable_repos(args)
+    for product, repo in repos.items():
+        prod_version = get_prod_version(args, product)
+        commit, branch = current_repo_branch(args, repo, prod_version)
+        print("(update_cfs_commits)repo={}, commit={}, branch={}".format(repo, commit, branch))
+        indices = find_substr(repo)
+        for layer_i in indices:
+            cfs_template["layers"][layer_i]["commit"] = commit
+
+    return cfs_template
+
+
+def update_ncnp_config(args):
+    """Update the config used for NCN Personalization."""
 
     repos = get_mergeable_repos(args)
     if 'cos' in repos:
@@ -413,26 +446,7 @@ def update_cfs_config(args):
         specified via the commandline?""".format(template_name))
         raise NCNPersonalization(err_msg)
 
-    del cfs_template["name"]
-    del cfs_template["lastUpdated"]
-
-    def find_substr(substr):
-        """Return the index of the element containing the substring.  This
-        is a slow linear search, but there are only a few elements."""
-        indices = []
-        for i, _ in enumerate(cfs_template["layers"]):
-            if substr in cfs_template["layers"][i]["cloneUrl"]:
-                indices.append(i)
-        return indices
-
-    # Get the commits from the repos to forumulate the
-    # ncn-personalization.json.  Then write it out for the
-    # `cray cfs configurations update ...`.
-    for _, repo in repos.items():
-        commit, branch = curr_prod_branch(args, repo, prod_version)
-        indices = find_substr(repo)
-        for layer_i in indices:
-            cfs_template["layers"][layer_i]["commit"] = commit
+    cfs_template = update_cfs_commits(args, cfs_template)
 
     file_location = os.path.join(get_dirs(args, "state"), base_file)
     with open(file_location, 'w', encoding='UTF-8') as fhandle:
@@ -480,7 +494,7 @@ def ncn_personalization(args): #pylint: disable=unused-argument
     utils.wait_for_ncn_personalization(connection, ncn_list_xnames, timeout=3600)
 
 
-def curr_prod_branch(args, repo, version):
+def current_repo_branch(args, repo, version):
     """Find the integration branch corresponding to the current COS version"""
 
     version_list = version.split('.')
@@ -519,9 +533,7 @@ def curr_prod_branch(args, repo, version):
 
 
 def get_prod_version(args, product, short=True):
-
     """Get the COS version."""
-
 
     # Use static variables so the yaml doesn't need to be loaded every time.
     if hasattr(get_prod_version, "products") and get_prod_version.products.has(product):
@@ -597,12 +609,24 @@ def wait_for_pod(job_id):
     return pod_name, resultant_image_id, etag
 
 
-def customize_cos_compute_image(args, image_info):
+def customize_cos_compute_image(args):
     """Customize a COS compute image."""
 
     cos_version = get_prod_version(args, 'cos')
     date = datetime.datetime.today().strftime("%Y%m%d")
 
+    image_info_location = os.path.join(get_dirs(args, "state"), IMAGE_INFO)
+    if not os.path.exists(image_info_location):
+        errmsg = utils.formatted("""
+            Could not find {}, which is generated in the
+            build_cos_compute_image stage.  Was this stage ran, or has the
+            state directory (specified with the '-s/--stage-dir' option)
+            changed?""".format(image_info_location))
+
+        raise COSProblem(errmsg)
+
+    with open(image_info_location, 'r') as fhandle:
+        image_info = yaml.load(fhandle, yaml.SafeLoader)
     # Find a session name that doesn't already exist.  We shouldn't need to
     # create more than 100 in a day.
     cfs_sessions = json.loads(connection.sudo("cray cfs sessions list --format json").stdout)
@@ -680,9 +704,9 @@ def build_cos_compute_image(args): #pylint: disable=unused-argument
     if not cos_recipe_name:
         raise COSProblem("A recipe name is needed to build the COS compute image.")
 
-    commit, name = curr_prod_branch(args, 'cos-config-management', cos_version)
+    _, intbranch = current_repo_branch(args, 'cos-config-management', cos_version)
 
-    if commit is None:
+    if intbranch is None:
         raise COSProblem("WARNING: Could not determine COS branch, so cannot build a compute image")
 
     # Update the configuration.
@@ -690,18 +714,10 @@ def build_cos_compute_image(args): #pylint: disable=unused-argument
     local_config_path = os.path.join(get_dirs(args, "state"), config_file)
 
     # Retrieve And Modify An Existing Configuration For COS.
-    errout = connection.sudo("cray cfs configurations describe {} --format json".format(name))
+    errout = connection.sudo("cray cfs configurations describe {} --format json".format(intbranch))
     install_logger.debug("out={}, err={}".format(errout.stdout, errout.stderr))
     curr_config = json.loads(errout.stdout)
-
-    if 'name' in curr_config.keys():
-        curr_config.pop('name')
-    if 'lastUpdated' in curr_config.keys():
-        curr_config.pop('lastUpdated')
-
-    for layer in curr_config["layers"]:
-        if layer["name"] == name:
-            layer["commit"] = commit
+    curr_config = update_cfs_commits(args, curr_config)
 
     with open(local_config_path, 'w', encoding='UTF-8') as fhandle:
         json.dump(curr_config, fhandle)
@@ -757,7 +773,11 @@ def build_cos_compute_image(args): #pylint: disable=unused-argument
     image_info['resultant_image_id'] = resultant_image_id
     image_info['etag'] = etag
     image_info['pod_name'] = pod_name
-    customize_cos_compute_image(args, image_info)
+
+    # Dump the image information so it can be used when making the
+    # customized compute image.
+    with open(os.path.join(get_dirs(args, "state"), IMAGE_INFO), 'w') as fhandle:
+        yaml.dump(image_info, fhandle)
 
 
 def check_analytics_mount(node):
