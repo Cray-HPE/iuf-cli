@@ -3,7 +3,9 @@
 import datetime
 import os
 import logging
-
+import platform
+import json
+import subprocess
 
 class VMConnectionException(Exception):
     """A pass-through class."""
@@ -36,6 +38,9 @@ class NCNPersonalization(Exception):
     """A wrapper for raising an NCNPersonalization error"""
     pass
 
+class GitError(Exception):
+    """A wrapper for raising an NCNPersonalization error"""
+    pass
 
 LOCATION_DICT = "location_dict.yaml"
 
@@ -46,8 +51,10 @@ BOS_INFO_FILENAME = "bos-info.json"
 NCNP_VARS = "ncnp-vars.yaml"
 
 LOG_DEFAULT_CONSOLE_LEVEL = logging.INFO
+LOG_DEFAULT_DIR = os.path.join(os.getcwd(), "log")
 LOG_DEFAULT_FILE_LEVEL = logging.DEBUG
 LOG_DEFAULT_FILENAME = "cos_install.log"
+LOG_SESSION_FILENAME = "cos_install.{}.log".format(datetime.datetime.now().strftime("%Y%m%d%H%M%S"))
 LOG_DEFAULT_FILE_FORMAT = '%(asctime)s %(levelname)s %(message)s'
 LOG_DEFAULT_CONSOLE_FORMAT = '%(levelname)s %(message)s'
 LOG_DEFAULT_FILE_FORMAT_VERBOSE = '%(asctime)s %(levelname)s %(module)s.%(funcName)s:%(lineno)d %(message)s'
@@ -65,3 +72,17 @@ LOG_LEVELS = {
 # FIXME The constants below this should not be constants; we should find a
 # better way to deal with them.
 ANALYTICS_BRANCH = "cray/analytics/1.1.24"
+
+host = None
+host_shortname = None
+
+system_json = subprocess.run("sat showrev --system --format json".split(), stdout=subprocess.PIPE).stdout
+showrev = json.loads(system_json)["System Revision Information"]
+
+for component in showrev:
+    if component["component"] == "System name":
+        host_shortname = component["data"].lower()
+        break
+
+if host_shortname is not None:
+    host = "{}-{}".format(host_shortname, platform.node())

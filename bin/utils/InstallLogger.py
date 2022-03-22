@@ -59,8 +59,21 @@ def install_logger_file_init(log_file_level=LOG_DEFAULT_FILE_LEVEL, verbose=Fals
 
     install_logger = logging.getLogger(LOG_DEFAULT_NAME)
     install_logger.setLevel(LOG_DEFAULT_FILE_LEVEL)
-    
-    log_file_handler = logging.FileHandler(LOG_DEFAULT_FILENAME)
+
+    if not os.path.exists(LOG_DEFAULT_DIR):
+        os.mkdir(LOG_DEFAULT_DIR)
+
+    log_filename = os.path.join(LOG_DEFAULT_DIR, LOG_SESSION_FILENAME)
+    log_file_handler = logging.FileHandler(log_filename)
+
+    if os.path.islink(LOG_DEFAULT_FILENAME):
+        os.remove(LOG_DEFAULT_FILENAME)
+
+    if os.path.exists(LOG_DEFAULT_FILENAME):
+        os.rename(LOG_DEFAULT_FILENAME, "{}.{}".format(LOG_DEFAULT_FILENAME, os.getpid()))
+
+    os.symlink(log_filename, LOG_DEFAULT_FILENAME)
+
     log_file_handler.setLevel(log_file_level)
     if verbose:
         log_file_handler.setFormatter(logging.Formatter(LOG_DEFAULT_FILE_FORMAT_VERBOSE))
