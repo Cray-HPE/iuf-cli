@@ -408,7 +408,6 @@ def update_cfs_commits(args, cfs_template_arg):
     for product, repo in repos.items():
         prod_version = get_prod_version(args, product)
         commit, branch = current_repo_branch(args, repo, prod_version)
-        print("(update_cfs_commits)repo={}, commit={}, branch={}".format(repo, commit, branch))
         indices = find_substr(repo)
         for layer_i in indices:
             cfs_template["layers"][layer_i]["commit"] = commit
@@ -551,7 +550,19 @@ def get_prod_version(args, product, short=True):
         locs_dict = yaml.load(fhandle, yaml.SafeLoader)
 
     repos = get_mergeable_repos(args)
-    # use the version provided by get_products
+
+    # The version field is obtained by simply splitting the product name
+    # into a name and version section. So use product_version if possible,
+    # because it leverages the "official" version once the product has been
+    # installed.
+    prod_versions = []
+    for key in locs_dict:
+        if product in key and locs_dict[key]['work_dir']:
+            if 'product_version' in locs_dict[key].keys():
+                prod_versions.append(locs_dict[key]['product_version'])
+            else:
+                prod_versions.append(locs_dict[key]['version'])
+
     prod_versions = [locs_dict[key]['version'] for key in locs_dict if product in key and locs_dict[key]['work_dir']]
     sorted_vers = sorted(prod_versions, key=LooseVersion)
     install_logger.debug('sorted prod_versions are {}'.format(sorted_vers))
@@ -1107,7 +1118,6 @@ def hello(args):
     print("hello")
     allout = connection.sudo("echo hello")
     install_logger.debug("sudo result: stdout={}, stderr={}".format(allout.stdout, allout.stderr))
-
 
 
 def validate_products(args):
