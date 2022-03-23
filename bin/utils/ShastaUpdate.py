@@ -791,12 +791,15 @@ def build_cos_compute_image(args): #pylint: disable=unused-argument
         yaml.dump(image_info, fhandle)
 
 
-def check_analytics_mount(node):
+def check_analytics_mount(node, analytics_dir):
     """Check the analytics mount.  It occassionally takes a few tries."""
     keep_waiting = True
     timeout = 60
     sleep_time = 10
     waited = 0
+    # Unmount Analytics contents on the worker.
+    connection.sudo("scp roles/analyticsdeploy/files/forcecleanup.sh {}:/tmp".format(w_node), cwd=analytics_dir)
+
     while keep_waiting:
         # Sometimes it takes multiple tries for forceleanup, so only warn if
         # it fails.
@@ -869,13 +872,16 @@ def unload_dvs_and_lnet(args):
             pod_name = fields[1]
             utils.wait_for_pod(connection, pod_name, delete=True)
 
-        # Check to see if any UAIs are running on the worker.  Migrate them if so.
+        # Check to see if any UAIs are running on the worker.  Migrate the UAIs and wait for each to finish.
         uais = [ p for p in all_pods if 'uai' in p and w_node in p]
         connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf label node {} --overwrite uas=False".format(w_node))
         for uai in uais:
             fields = uai.split()
             uai_name = fields[1]
+            install_logger.debug("Migrating UAI {} off the workder {}".format(uai_name, w_node))
             connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf delete pod -n user {}".format(uai_name))
+            install_logger.debug("Waiting for UAI {} to migrate".format(uai_name))
+            utils.wait_for_pod(connection, uai_name)
 
         # Sleep for a minute before unmounting PE.
         install_logger.debug("Let the system settle prior to unmounting PE")
@@ -886,11 +892,8 @@ def unload_dvs_and_lnet(args):
         connection.sudo("scp ../src/tools/unmount_pe.sh {}:/tmp/unmount_pe.sh".format(w_node))
         connection.sudo("ssh {} /tmp/unmount_pe.sh".format(w_node))
 
-        # Unmount Analytics contents on the worker.
-        connection.sudo("scp roles/analyticsdeploy/files/forcecleanup.sh {}:/tmp".format(w_node), cwd=analytics_dir)
-
         # check_analytics will run forcecleanup.sh until dvs unmounts cleanly
-        check_analytics_mount(w_node)
+        check_analytics_mount(w_node, analytics_dir)
 
         # Make sure the reference count for dvs is 0.
         lsmods = connection.sudo("ssh {} lsmod".format(w_node)).stdout.splitlines()
