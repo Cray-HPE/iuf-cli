@@ -164,7 +164,7 @@ def validate_stages(args_dict):
             elif stage in run_stages:
                 end_stage = stage
 
-    install_logger.debug("(after checking run_stages)begin_stage={}, end_stage={}".format(begin_stage, end_stage))
+    install_logger.info("STAGE SUMMARY: begin_stage={}, end_stage={}".format(begin_stage, end_stage))
 
     return begin_stage, end_stage
 
