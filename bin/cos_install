@@ -163,7 +163,7 @@ def process_install(cmdline_args):
             elif stage in args_dict['run_stages']:
                 end_stage = stage
 
-    install_logger.info("(after checking run_stages)begin_stage={}, end_stage={}".format(begin_stage, end_stage))
+    install_logger.info("STAGE SUMMARY: begin_stage={}, end_stage={}".format(begin_stage, end_stage))
     bad_skip = False
     for sstage in skip_stages:
         if sstage not in stages_list:

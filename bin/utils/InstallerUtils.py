@@ -167,6 +167,7 @@ def wait_for_pod(connection, pod_name, timeout=1200, delete=False):
     time_waited = 0
     sleep_time = 10
     alert_time = 60
+    install_logger.info("  Waiting for pod {} to complete.".format(pod_name))
     while True:
         pods = connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods -Ao wide").stdout.splitlines()
         found = False
@@ -180,7 +181,7 @@ def wait_for_pod(connection, pod_name, timeout=1200, delete=False):
             if 'running' in running.lower() or 'completed' in running.lower():
                 break
             elif running.lower() =='imagepullbackoff':
-                install_logger.warning("WARNING: pod {} in error state: {}".format(pod_name, running))
+                install_logger.warning("    WARNING: pod {} in error state: {}".format(pod_name, running))
                 break
             else:
                 install_logger.debug("(else) running={} ... no action performed".format(running))
@@ -189,10 +190,10 @@ def wait_for_pod(connection, pod_name, timeout=1200, delete=False):
             break
         if time_waited >= timeout:
             action_str = "delete" if delete else "complete"
-            install_logger.warning("WARNING: Timed out waiting {} seconds for pod {} to {}".format(time_waited, pod_name, action_str))
+            install_logger.warning("    WARNING: Timed out waiting {} seconds for pod {} to {}".format(time_waited, pod_name, action_str))
             break
         if time_waited % alert_time == 0:
-            install_logger.info("Waiting for pod {} to complete. Waitied {} of {} seconds".format(pod_name, time_waited, timeout))
+            install_logger.info("    Waited {} of {} seconds".format(time_waited, timeout))
         time.sleep(sleep_time)
         time_waited += sleep_time
 
