@@ -10,14 +10,13 @@ perform integration tests against actual Cray hardware.
 Copyright 2021 Hewlett Packard Enterprise Development LP
 """
 
-import argparse
+import copy
 import datetime
 import json
 import os
 import re
 import stat
 import sys
-import textwrap
 import time
 
 from pprint import pformat
@@ -104,7 +103,7 @@ def update_prods(args, location_dict):
     install_logger.debug('updating location_dict')
     filepath = os.path.join(statedir, "location_dict.yaml")
     with open(filepath, "w", encoding="UTF-8") as fhandle:
-        yaml.dump(location_dict, fhandle)    
+        yaml.dump(location_dict, fhandle)
 
 
 def get_prods(args):
@@ -125,22 +124,6 @@ def install(args):
 
     # load previously discovered produts
     location_dict = load_prods(args)
-
-    # FIXME:  This is a lemondrop-specific work-around.  I don't think we
-    # want to constrain customers to a specific version.
-    lowest_v_str ="2.3.38"
-    lowest_v = LooseVersion(lowest_v_str)
-
-    current_v_str = get_prod_version(args, False)
-    # only do the version check if we're installing cos
-    if current_v_str:
-        current_v = LooseVersion(current_v_str)
-        if lowest_v > current_v:
-            err_msg = """ The lowest version of COS that should be installed
-            is {}.  The version ({}) will break cfs.
-            """.format(lowest_v_str, current_v_str)
-            install_logger.error(err_msg)
-            sys.exit(1)
 
     product_count = 0
     for prod in location_dict:
@@ -246,13 +229,13 @@ def check_pods(args): #pylint: disable=unused-argument
             install_logger.debug("pods_not_running={} ==> sleep".format(pods_not_running))
             if total_time % alert_time == 0:
                 install_logger.info("Waiting for {}/{} jobs and {}/{} pods".format(
-                                     len(jobs_not_running), len(jobs_list), 
+                                     len(jobs_not_running), len(jobs_list),
                                      len(pods_not_running), len(pods_list)))
             total_time+=sleep_time
             time.sleep(sleep_time)
         else:
             install_logger.info("Finished waiting for {}/{} jobs and {}/{} pods".format(
-                                     len(jobs_not_running), len(jobs_list), 
+                                     len(jobs_not_running), len(jobs_list),
                                      len(pods_not_running), len(pods_list)))
             break
 
@@ -351,7 +334,7 @@ def update_working_branches(args):
             cos_checkout_dir = git.clone(repo)
 
             # second, see what branches we want to work with
-            _, integration_branch = curr_prod_branch(args, repo, prod_version) 
+            _, integration_branch = current_repo_branch(args, repo, prod_version)
 
             if integration_branch is None:
                 raise UnexpectedState("ERROR: Could not determine {} branch".format(product))
@@ -375,12 +358,14 @@ def update_working_branches(args):
     # add git config and write out state file
     update_prods(args, utils.get_product_catalog(connection, location_dict))
 
+
+
 def get_cos_recipe_name(args):
     # if cos_recipe_name was supplied on the command line, just return it
     if "cos_recipe_name" in args:
         return args['cos_recipe_name']
 
-    cos_version = get_prod_version(args, False)
+    cos_version = get_prod_version(args, 'cos', False)
     product = "cos-" + cos_version
 
     # if not, lets see if we can find it
@@ -399,10 +384,47 @@ def get_cos_recipe_name(args):
     # return what we've got
     return location_dict[product]["recipe"]
 
-def update_cfs_config(args):
-    """Update the commits in the CFS config."""
 
-    prod_version = get_prod_version(args)
+def update_cfs_commits(args, cfs_template_arg):
+    """Update the the commits in a CFS config."""
+    cfs_template = copy.deepcopy(cfs_template_arg)
+
+    del cfs_template["name"]
+    del cfs_template["lastUpdated"]
+
+    def find_substr(substr):
+        """Return the index of the element containing the substring.  This
+        is a slow linear search, but there are only a few elements."""
+        indices = []
+        for i, _ in enumerate(cfs_template["layers"]):
+            if substr in cfs_template["layers"][i]["cloneUrl"]:
+                indices.append(i)
+        return indices
+
+    # Get the commits from the repos to forumulate the
+    # ncn-personalization.json.  Then write it out for the
+    # `cray cfs configurations update ...`.
+    repos = get_mergeable_repos(args)
+    for product, repo in repos.items():
+        prod_version = get_prod_version(args, product)
+        commit, branch = current_repo_branch(args, repo, prod_version)
+        indices = find_substr(repo)
+        for layer_i in indices:
+            cfs_template["layers"][layer_i]["commit"] = commit
+
+    return cfs_template
+
+
+def update_ncnp_config(args):
+    """Update the config used for NCN Personalization."""
+
+    repos = get_mergeable_repos(args)
+    if 'cos' in repos:
+        prod_version = get_prod_version(args, 'cos')
+    else:
+        prod = repos.keys()[0]
+        prod_version = get_prod_version(args, prod)
+
     base_file = "cfs-config.{}-{}.json".format(
         prod_version,
         datetime.datetime.today().strftime("%Y%m%d-%H%M%S"))
@@ -423,27 +445,7 @@ def update_cfs_config(args):
         specified via the commandline?""".format(template_name))
         raise NCNPersonalization(err_msg)
 
-    del cfs_template["name"]
-    del cfs_template["lastUpdated"]
-
-    def find_substr(substr):
-        """Return the index of the element containing the substring.  This
-        is a slow linear search, but there are only a few elements."""
-        indices = []
-        for i, _ in enumerate(cfs_template["layers"]):
-            if substr in cfs_template["layers"][i]["cloneUrl"]:
-                indices.append(i)
-        return indices
-
-    # Get the commits from the repos to forumulate the
-    # ncn-personalization.json.  Then write it out for the
-    # `cray cfs configurations update ...`.
-    repos = get_mergeable_repos(args)
-    for _, repo in repos.items():
-        commit, branch = curr_prod_branch(args, repo, prod_version)
-        indices = find_substr(repo)
-        for layer_i in indices:
-            cfs_template["layers"][layer_i]["commit"] = commit
+    cfs_template = update_cfs_commits(args, cfs_template)
 
     file_location = os.path.join(get_dirs(args, "state"), base_file)
     with open(file_location, 'w', encoding='UTF-8') as fhandle:
@@ -454,6 +456,7 @@ def update_cfs_config(args):
         yaml.dump(outdict, fhandle)
 
     return template_name, file_location
+
 
 def ncn_personalization(args): #pylint: disable=unused-argument
     """Do the NCN personalization as described in HPE Cray EX System
@@ -490,7 +493,7 @@ def ncn_personalization(args): #pylint: disable=unused-argument
     utils.wait_for_ncn_personalization(connection, ncn_list_xnames, timeout=3600)
 
 
-def curr_prod_branch(args, repo, version):
+def current_repo_branch(args, repo, version):
     """Find the integration branch corresponding to the current COS version"""
 
     version_list = version.split('.')
@@ -528,15 +531,15 @@ def curr_prod_branch(args, repo, version):
     return None, None
 
 
-def get_prod_version(args, short=True):
+def get_prod_version(args, product, short=True):
     """Get the COS version."""
 
     # Use static variables so the yaml doesn't need to be loaded every time.
-    if hasattr(get_prod_version, "full_version") and hasattr(get_prod_version, "short_version"):
+    if hasattr(get_prod_version, "products") and get_prod_version.products.has(product):
         if short:
-            return get_prod_version.short_version
+            return get_prod_version.products.versions[product].short_version
         else:
-            return get_prod_version.full_version
+            return get_prod_version.products.versions[product].full_version
 
     # If we haven't returned, full_version and short_version do not exist.
     # read the yaml and set them.
@@ -545,10 +548,24 @@ def get_prod_version(args, short=True):
     with open(os.path.join(statedir, LOCATION_DICT), "r",
               encoding='UTF-8') as fhandle:
         locs_dict = yaml.load(fhandle, yaml.SafeLoader)
-    # use the version provided by get_products
-    cos_versions = [locs_dict[key]['version'] for key in locs_dict if 'cos' in key and locs_dict[key]['work_dir']]
-    sorted_vers = sorted(cos_versions, key=LooseVersion)
-    install_logger.debug('sorted cos_versions are {}'.format(sorted_vers))
+
+    repos = get_mergeable_repos(args)
+
+    # The version field is obtained by simply splitting the product name
+    # into a name and version section. So use product_version if possible,
+    # because it leverages the "official" version once the product has been
+    # installed.
+    prod_versions = []
+    for key in locs_dict:
+        if product in key and locs_dict[key]['work_dir']:
+            if 'product_version' in locs_dict[key].keys():
+                prod_versions.append(locs_dict[key]['product_version'])
+            else:
+                prod_versions.append(locs_dict[key]['version'])
+
+    prod_versions = [locs_dict[key]['version'] for key in locs_dict if product in key and locs_dict[key]['work_dir']]
+    sorted_vers = sorted(prod_versions, key=LooseVersion)
+    install_logger.debug('sorted prod_versions are {}'.format(sorted_vers))
     if sorted_vers:
         highest_vers = sorted_vers[-1]
         version_list = highest_vers.split('.')
@@ -561,8 +578,9 @@ def get_prod_version(args, short=True):
     install_logger.debug('highest_vers {}'.format(highest_vers))
     install_logger.debug('short_vers {}'.format(short_vers))
 
-    get_prod_version.short_version = short_vers
-    get_prod_version.full_version = highest_vers
+    get_prod_version.products = utils.productVersions()
+    get_prod_version.products.set(product, short_vers, highest_vers)
+
     if short:
         return short_vers
     else:
@@ -602,12 +620,24 @@ def wait_for_pod(job_id):
     return pod_name, resultant_image_id, etag
 
 
-def customize_cos_compute_image(args, image_info):
+def customize_cos_compute_image(args):
     """Customize a COS compute image."""
 
-    cos_version = get_prod_version(args)
+    cos_version = get_prod_version(args, 'cos')
     date = datetime.datetime.today().strftime("%Y%m%d")
 
+    image_info_location = os.path.join(get_dirs(args, "state"), IMAGE_INFO)
+    if not os.path.exists(image_info_location):
+        errmsg = utils.formatted("""
+            Could not find {}, which is generated in the
+            build_cos_compute_image stage.  Was this stage ran, or has the
+            state directory (specified with the '-s/--stage-dir' option)
+            changed?""".format(image_info_location))
+
+        raise COSProblem(errmsg)
+
+    with open(image_info_location, 'r') as fhandle:
+        image_info = yaml.load(fhandle, yaml.SafeLoader)
     # Find a session name that doesn't already exist.  We shouldn't need to
     # create more than 100 in a day.
     cfs_sessions = json.loads(connection.sudo("cray cfs sessions list --format json").stdout)
@@ -679,15 +709,15 @@ def build_cos_compute_image(args): #pylint: disable=unused-argument
     for COS.
     """
 
-    cos_version = get_prod_version(args)
+    cos_version = get_prod_version(args, 'cos')
     cos_recipe_name = get_cos_recipe_name(args)
 
     if not cos_recipe_name:
         raise COSProblem("A recipe name is needed to build the COS compute image.")
 
-    commit, name = curr_prod_branch(args, 'cos-config-management', cos_version)
+    _, intbranch = current_repo_branch(args, 'cos-config-management', cos_version)
 
-    if commit is None:
+    if intbranch is None:
         raise COSProblem("WARNING: Could not determine COS branch, so cannot build a compute image")
 
     # Update the configuration.
@@ -695,18 +725,10 @@ def build_cos_compute_image(args): #pylint: disable=unused-argument
     local_config_path = os.path.join(get_dirs(args, "state"), config_file)
 
     # Retrieve And Modify An Existing Configuration For COS.
-    errout = connection.sudo("cray cfs configurations describe {} --format json".format(name))
+    errout = connection.sudo("cray cfs configurations describe {} --format json".format(intbranch))
     install_logger.debug("out={}, err={}".format(errout.stdout, errout.stderr))
     curr_config = json.loads(errout.stdout)
-
-    if 'name' in curr_config.keys():
-        curr_config.pop('name')
-    if 'lastUpdated' in curr_config.keys():
-        curr_config.pop('lastUpdated')
-
-    for layer in curr_config["layers"]:
-        if layer["name"] == name:
-            layer["commit"] = commit
+    curr_config = update_cfs_commits(args, curr_config)
 
     with open(local_config_path, 'w', encoding='UTF-8') as fhandle:
         json.dump(curr_config, fhandle)
@@ -762,15 +784,22 @@ def build_cos_compute_image(args): #pylint: disable=unused-argument
     image_info['resultant_image_id'] = resultant_image_id
     image_info['etag'] = etag
     image_info['pod_name'] = pod_name
-    customize_cos_compute_image(args, image_info)
+
+    # Dump the image information so it can be used when making the
+    # customized compute image.
+    with open(os.path.join(get_dirs(args, "state"), IMAGE_INFO), 'w') as fhandle:
+        yaml.dump(image_info, fhandle)
 
 
-def check_analytics_mount(node):
+def check_analytics_mount(node, analytics_dir):
     """Check the analytics mount.  It occassionally takes a few tries."""
     keep_waiting = True
     timeout = 60
     sleep_time = 10
     waited = 0
+    # Unmount Analytics contents on the worker.
+    connection.sudo("scp roles/analyticsdeploy/files/forcecleanup.sh {}:/tmp".format(w_node), cwd=analytics_dir)
+
     while keep_waiting:
         # Sometimes it takes multiple tries for forceleanup, so only warn if
         # it fails.
@@ -843,13 +872,16 @@ def unload_dvs_and_lnet(args):
             pod_name = fields[1]
             utils.wait_for_pod(connection, pod_name, delete=True)
 
-        # Check to see if any UAIs are running on the worker.  Migrate them if so.
+        # Check to see if any UAIs are running on the worker.  Migrate the UAIs and wait for each to finish.
         uais = [ p for p in all_pods if 'uai' in p and w_node in p]
         connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf label node {} --overwrite uas=False".format(w_node))
         for uai in uais:
             fields = uai.split()
             uai_name = fields[1]
+            install_logger.debug("Migrating UAI {} off the workder {}".format(uai_name, w_node))
             connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf delete pod -n user {}".format(uai_name))
+            install_logger.debug("Waiting for UAI {} to migrate".format(uai_name))
+            utils.wait_for_pod(connection, uai_name)
 
         # Sleep for a minute before unmounting PE.
         install_logger.debug("Let the system settle prior to unmounting PE")
@@ -860,11 +892,8 @@ def unload_dvs_and_lnet(args):
         connection.sudo("scp ../src/tools/unmount_pe.sh {}:/tmp/unmount_pe.sh".format(w_node))
         connection.sudo("ssh {} /tmp/unmount_pe.sh".format(w_node))
 
-        # Unmount Analytics contents on the worker.
-        connection.sudo("scp roles/analyticsdeploy/files/forcecleanup.sh {}:/tmp".format(w_node), cwd=analytics_dir)
-
         # check_analytics will run forcecleanup.sh until dvs unmounts cleanly
-        check_analytics_mount(w_node)
+        check_analytics_mount(w_node, analytics_dir)
 
         # Make sure the reference count for dvs is 0.
         lsmods = connection.sudo("ssh {} lsmod".format(w_node)).stdout.splitlines()
@@ -1000,7 +1029,7 @@ def boot_cos(args):
         bos_file = os.path.join(get_dirs(args, "state"), "bos_sessiontemplate.json")
 
         date = datetime.datetime.today().strftime("%Y%m%d")
-        sessiontemplate_name = "cos-sessiontemplate-{}-{}".format(get_prod_version(args), date)
+        sessiontemplate_name = "cos-sessiontemplate-{}-{}".format(get_prod_version(args, 'cos'), date)
 
         connection.sudo("cray bos sessiontemplate create --file {} --name {} ".format(
             bos_file, sessiontemplate_name))
@@ -1092,11 +1121,6 @@ def hello(args):
     print("hello")
     allout = connection.sudo("echo hello")
     install_logger.debug("sudo result: stdout={}, stderr={}".format(allout.stdout, allout.stderr))
-    cos_version = get_prod_version(args)
-    cos_recipe_name = get_cos_recipe_name(args)
-
-    print("cos_version={}, cos_recipe_name={}".format(cos_version, cos_recipe_name))
-
 
 
 def validate_products(args):

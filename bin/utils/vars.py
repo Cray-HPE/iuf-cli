@@ -48,6 +48,8 @@ BOOT_POLL_SECS = 60
 BOOT_TIMOUT_SECS = 3600
 
 BOS_INFO_FILENAME = "bos-info.json"
+IMAGE_INFO = "image_info.yaml"
+
 NCNP_VARS = "ncnp-vars.yaml"
 
 LOG_DEFAULT_CONSOLE_LEVEL = logging.INFO
