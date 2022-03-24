@@ -76,7 +76,7 @@ class Config:
 
         # now that we've done all that, insert the config file defaults into the parser
         defaults = file_defaults.get("global",dict())
-        parser._defaults.update(**defaults)
+        parser.set_defaults(**defaults)
         for action in parser._actions:
             if action.dest != "==SUPPRESS==":
                 continue
@@ -95,6 +95,11 @@ class Config:
                         defaults = dict()
 
                 current._defaults.update(**defaults)
+
+                # need to set the defaults in two places
+                for argument in current._actions:
+                    if argument.dest in defaults:
+                        argument.default = defaults[argument.dest]
 
     # write out the input file and quit
     def write(self, args):
