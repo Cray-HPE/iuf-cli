@@ -62,6 +62,8 @@ class Config:
                 print("ERROR: Input file {} does not exist.".format(config))
                 sys.exit(1)
 
+            return
+
         # don't allow certain things in the input deck for sanity.  For now this is
         # the same list of things we don't allow to be written out.
         for section in file_defaults:
