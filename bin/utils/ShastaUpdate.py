@@ -538,7 +538,14 @@ def ncn_personalization(args): #pylint: disable=unused-argument
     for ncn in ncn_list_xnames:
         connection.sudo("cray cfs components update --desired-config {} --enabled true --format json --error-count 0 --state [] {}".format(template_name, ncn))
 
-    utils.wait_for_ncn_personalization(connection, ncn_list_xnames, timeout=3600)
+    bad_nodes = utils.wait_for_ncn_personalization(connection, ncn_list_xnames, timeout=3600)
+
+    if bad_nodes:
+        nodes_str = ", ".join(bad_nodes)
+        err_msg = utils.formatted("""
+            The following nodes failed NCN Personalization:
+            {}""".format(nodes_str))
+        raise(NCNPersonalization(err_msg))
 
 
 def current_repo_branch(args, repo, version):
