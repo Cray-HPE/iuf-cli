@@ -23,8 +23,6 @@ from utils.Config import Config
 from utils.Config import InvertableArgument
 
 import utils.ShastaUpdate as main_ctrl
-from pprint import PrettyPrinter
-
 
 # pylint: disable=consider-using-f-string
 
