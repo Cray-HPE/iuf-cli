@@ -19,8 +19,11 @@ from utils.vars import *
 from utils.InstallLogger import *
 
 from utils.InstallerUtils import CmdMgr
+from utils.Config import Config
+from utils.Config import InvertableArgument
 
 import utils.ShastaUpdate as main_ctrl
+from pprint import PrettyPrinter
 
 
 # pylint: disable=consider-using-f-string
@@ -104,72 +107,77 @@ def get_input_deck(cmdline_args):
 
     return return_dict
 
-
-def process_install(cmdline_args):
-    """Process the arguments to the install subparser.  This function
-    merges the commandline arguments with the arguments passed via the input
-    file ('--input-file').  The arguments passed in via the commandline override
-    those of the input file.  For example, if the input file has a
-    begin-stage that differs from the one passed in via the commandline,
-    the commandline option will be used."""
-
-    # Override the input deck (if specified) with the arguments specified on the commandline.
-    args_dict = {}
-    used_args = {}
-    for arg in cmdline_args:
-        if cmdline_args[arg] is not None:
-            used_args[arg] = cmdline_args[arg]
-
-    if cmdline_args["input_file"]:
-        args_dict = get_input_deck(cmdline_args)
-
-    args_dict.update(used_args)
-
+def validate_stages(args_dict):
+    """Validate that all of the various stage related args passed in are valid"""
     # Do some error-handling with the stage-related args
     stages_list = list(STAGES.keys())
-    begin_stage = stages_list[0]
-    end_stage = stages_list[-1]
-    skip_stages = args_dict['skip_stages'] if 'skip_stages' in args_dict else []
+    skip_stages = args_dict.get('skip_stages')
+    if skip_stages is None:
+        skip_stages = dict()
 
     stages_formatted = format_tabbed_list(stages_list)
-    if "begin_stage" in args_dict and args_dict['begin_stage'] not in stages_list:
-        install_logger.error("begin_stage ({}) must be one of the following:\n{}".format(args_dict['begin_stage'], stages_formatted))
-        sys.exit(1)
-    elif 'end_stage' in args_dict and args_dict['end_stage'] not in stages_list:
-        install_logger.error("end_stage ({}) must be one of the following:\n{}".format(args_dict['end_stage'], stages_formatted))
-        sys.exit(1)
 
-    if 'run_stages' in args_dict:
-        for stage in args_dict['run_stages']:
+    # wait to exit until we process all the stages
+    error=False
+
+    begin_stage = args_dict.get('begin_stage')
+    if begin_stage is None:
+        begin_stage = stages_list[0]
+    end_stage = args_dict.get('end_stage')
+    if end_stage is None:
+        end_stage = stages_list[-1]
+
+    if begin_stage not in stages_list:
+        install_logger.error("invalid stage ({}) found in --begin-stage".format(begin_stage))
+        error=True
+
+    if end_stage not in stages_list:
+        install_logger.error("invalid stage ({}) found in --end-stage.".format(end_stage))
+        error=True
+
+    run_stages = args_dict.get('run_stages', None)
+    if run_stages:
+        for stage in run_stages:
             if stage not in stages_list:
-                install_logger.error("invalid stage ({}) found in '--run-stages' argument".format(stage))
-                sys.exit(1)
+                install_logger.error("invalid stage ({}) found in --run-stages".format(stage))
+                error=True
 
-    begin_stage = args_dict.get('begin_stage', begin_stage)
-    end_stage = args_dict.get('end_stage', end_stage)
+    for sstage in skip_stages:
+        if sstage not in stages_list:
+            install_logger.error("invalid stage ({}) found in --skip-stages".format(sstage))
+            error=True
+
+    if error:
+        install_logger.error("All stages must be one of the following:\n{}".format(stages_formatted))
+        sys.exit(1)
+
 
     # Let args_dict['run_stages'] override begin_stage and end_stage; that is,
     # if all three were passed in, run_stages wins.  Loop against stages_list
     # to preserve the execution order.
-    if 'run_stages' in args_dict:
-        install_logger.info("got run_stages ...")
+    if run_stages:
         got_first_stage = False
         for stage in stages_list:
-            if stage in args_dict['run_stages'] and not got_first_stage:
+            if stage in run_stages and not got_first_stage:
                 begin_stage = stage
                 end_stage = stage
                 got_first_stage = True
-            elif stage in args_dict['run_stages']:
+            elif stage in run_stages:
                 end_stage = stage
 
-    install_logger.info("(after checking run_stages)begin_stage={}, end_stage={}".format(begin_stage, end_stage))
-    bad_skip = False
-    for sstage in skip_stages:
-        if sstage not in stages_list:
-            install_logger.warning("WARNING: Stage {} is not a valid stage".format(sstage))
-            bad_skip = True
-    if bad_skip:
-        sys.exit(1)
+    install_logger.debug("(after checking run_stages)begin_stage={}, end_stage={}".format(begin_stage, end_stage))
+
+    return begin_stage, end_stage
+
+def process_install(args_dict):
+    """Run the install"""
+    stages_list = list(STAGES.keys())
+    skip_stages = args_dict.get('skip_stages')
+    if skip_stages is None:
+        skip_stages = dict()
+
+    begin_stage = args_dict.get('begin_stage')
+    end_stage = args_dict.get('end_stage')
 
     begin_idx = stages_list.index(begin_stage)
     end_idx = stages_list.index(end_stage)
@@ -178,13 +186,6 @@ def process_install(cmdline_args):
     install_logger.debug("stages={}".format(stages))
     install_logger.debug("(begin,end)_idx = ({},{})".format(begin_idx, end_idx))
     args_dict["stages"] = stages
-
-    if 'media_dir' in args_dict:
-        if not os.path.exists(args_dict['media_dir']):
-            install_logger.error("media-dir {} does not exist.".format(args_dict['media_dir']))
-            sys.exit(1)
-
-    install_logger.debug("ARGS_DICT={}".format(args_dict))
 
     for stage in stages_list:
         if stage in stages:
@@ -220,7 +221,8 @@ def process_debug_level(cmdline_args):
             level = LOG_LEVELS[cmdline_args["level"]]
             install_logger_stream_init(level, cmdline_args.get("verbose", False))
         else:
-            logger.error("Unrecognized log level: {}".format(cmdline_args["level"]))
+            # when this runs we don't have a logger yet, just print and exit
+            print("ERROR: Unrecognized log level: {}".format(cmdline_args["level"]))
             sys.exit(1)
     else:
         install_logger_stream_init(verbose=cmdline_args.get("verbose", False))
@@ -251,12 +253,11 @@ def main():
     parser.add_argument("-i", "--input-file", action="store", help="""Input
         file used to control the install.   Command line arguments will
         override what is in the file.
+        Input file should be YAML.""")
 
-        By default, the input file is assumed to be json.  Use this option in
-        conjunction with '--format yaml' to use a yaml input""")
-
-    parser.add_argument("-f", "--format", action="store",
-        help="format on input ('-i' or '--input-file').  Accepts json or yaml")
+    parser.add_argument("-w", "--write-input-file", action="store_true",
+        help="""Write out a new config file to the input file specified with defaults+
+        any command line options specified and quit.""")
 
     parser.add_argument("-s", "--state-dir", action="store",
         help="A directory used to store the current state of stages.  Defaults to $PWD/state")
@@ -264,10 +265,10 @@ def main():
     parser.add_argument("-m", "--media-dir", action="store",
         help="Location of installation media.  Defaults to $PWD/media")
 
-    parser.add_argument("-d", "--dryrun", action="store_true",
+    parser.add_argument("--dryrun", action=InvertableArgument, default=False,
         help="Run without making any changes to the system to see what would happen")
 
-    parser.add_argument("-l", "--level", action="store",
+    parser.add_argument("-l", "--level", action="store", default='INFO',
         help="Set the debug level to the console", choices=LOG_LEVELS.keys())
 
     parser.add_argument("-v", "--verbose", action="store_true",
@@ -305,7 +306,7 @@ def main():
         default="ncn-personalization",
         help="The name of the ncn personalization config to update.  Defaults to 'ncn-personalization'")
 
-    install_sp.set_defaults(func=process_install)
+    install_sp.set_defaults(func=process_install, skip_stages=list(), run_stages=list())
 
     bu_sp = subparsers.add_parser("branch-update", aliases=["bu"])
     bu_sp.add_argument("branches", nargs="+", action="store", default=["integration"],
@@ -315,6 +316,17 @@ def main():
     list_sp = subparsers.add_parser("list-stages", aliases=["ls"])
     list_sp.set_defaults(func=process_list)
 
+    # create a config object to store all of the configured options in the parser
+    config = Config()
+    config.load_parser_defaults(parser)
+
+    # parse the arguments once to get input file
+    tmp_args = parser.parse_args()
+
+    # load any defaults from the input file
+    config.set_defaults(parser,vars(tmp_args))
+
+    # parse the command line for real
     args = parser.parse_args()
 
     # Convert the args to a dict, and use that rather than the argparse
@@ -338,6 +350,7 @@ def main():
     process_debug_level(args_dict)
     process_dryrun(args_dict)
     install_logger.debug(args_dict)
+
     if len(sys.argv) < 2:
         install_logger.error("{} requires at least 1 argument".format(sys.argv[0]))
         parser.print_help(sys.stderr)
@@ -351,6 +364,13 @@ def main():
     if not os.path.exists(args_dict["state_dir"]):
         install_logger.error("State directory {} does not exist.".format(args_dict["state_dir"]))
         sys.exit(1)
+
+    # stage sanity testing.  Don't do this unless we're in the install section
+    if "begin_stage" in args_dict:
+        args_dict['begin_stage'], args_dict['end_stage'] = validate_stages(args_dict)
+
+    if args_dict["write_input_file"]:
+        config.write(args_dict)
 
     try:
         args.func(args_dict)

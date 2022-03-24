@@ -1091,7 +1091,7 @@ def cleanup(args): # pylint: disable=unused-argument
 def hello(args):
     print("hello")
     allout = connection.sudo("echo hello")
-    install_logger.error("sudo result: stdout={}, stderr={}".format(allout.stdout, allout.stderr))
+    install_logger.debug("sudo result: stdout={}, stderr={}".format(allout.stdout, allout.stderr))
     cos_version = get_prod_version(args)
     cos_recipe_name = get_cos_recipe_name(args)
 
@@ -1138,12 +1138,12 @@ def validate_products(args):
         # get the running kernel version and format it to match the way it is
         # represented in the COS rpms
         cmd = 'uname -r'
-        running_kernel = connection.sudo(cmd).stdout.split('-default')[0].replace('-', '_')
+        running_kernel = connection.sudo(cmd, dryrun=False).stdout.split('-default')[0].replace('-', '_')
 
         # find a representive rpm from the cos media
         query_package = 'cray-dvs-kmp-default'
         cmd = "find {} -path '*{}-ncn*{}*' -print".format(cos_workdir, os_release, query_package)
-        rpms = connection.sudo(cmd).stdout.splitlines()
+        rpms = connection.sudo(cmd, dryrun=False).stdout.splitlines()
 
         # see if our sample rpm matches the running NCN kernel
         if len(rpms) == 1:
