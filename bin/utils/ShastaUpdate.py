@@ -125,7 +125,7 @@ def install(args):
     # load previously discovered produts
     location_dict = load_prods(args)
 
-    product_count = 0
+    unsuccessful_products = []
     for prod in location_dict:
         # only look at entries that are identified as products
         if location_dict[prod]['product']:
@@ -134,28 +134,54 @@ def install(args):
                 install_logger.info('  installing {}'.format(prod))
                 loc = location_dict[prod]['work_dir']
                 cmd = './install.sh'
-                result = connection.sudo(cmd, cwd=loc)
-                install_logger.debug(result)
-                if result.returncode != 0:
-                    install_logger.error('    Failed!  See log for more information')
-                    location_dict[prod]['installed'] = False
-                else:
+                try:
+                    result = connection.sudo(cmd, cwd=loc, timeout=900)
+                    install_logger.debug(result)
                     install_logger.info('    OK')
-                    product_count += 1
                     location_dict[prod]['installed'] = True
-                if not product_count:
-                    install_logger.error('  no products to install')
                     update_prods(args, location_dict)
-                    sys.exit(1)
-            else:
-                install_logger.info('{} already installed'.format(prod))
+                except Exception as err:
+                    install_logger.error('    Failed')
+                    err_summary = {
+                        'product': prod,
+                        'stderr': err.stderr.splitlines()[-5:]
+                    }
+                    unsuccessful_products.append(err_summary)
+                    location_dict[prod]['installed'] = False
+                    update_prods(args, location_dict)
 
-    # if we ask the installer to install something and it doesn't find anything
-    # we should probably just quit
-    if not product_count:
-        install_logger.error('  no products to install')
-        update_prods(args, location_dict)
-        sys.exit(1)
+            else:
+                install_logger.info('  {} already installed'.format(prod))
+
+    valid_products = 0
+    for prod in location_dict:
+        # only look at entries that are identified as products
+        if location_dict[prod]['product']:
+            # work_dir will not be set for invalid products
+            if location_dict[prod]['work_dir']:
+                valid_products += 1
+
+    if unsuccessful_products:
+        install_logger.error('The following products failed to install:')
+        for problem in unsuccessful_products:
+            install_logger.error('  {} ==========================='.format(problem['product']))
+            for line in problem['stderr']:
+                if len(line) > 75:
+                    fmt_line = line[:75] + '[..]'
+                else:
+                    fmt_line = line
+                # log the full line, but print a short line to the screen
+                install_logger.debug('    stderr> {}'.format(line))
+                print('ERROR    stderr> {}'.format(fmt_line))
+
+    # we shouldn't continue if we tried to install something and failed
+    if unsuccessful_products:
+        raise InstallError('Product installation failure')
+
+    # if there are no valid products you'll fail at subsequent stages
+    if not valid_products:
+        raise InstallError('No valid products')
+
 
 def is_ready(ready):
     """
