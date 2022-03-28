@@ -985,7 +985,7 @@ def get_products( connection,
             else:
                 install_logger.warning('    work_dir contents of {} unexpected'.format(item))
 
-            install_logger.debug('found previously extracted work_dir {}'.format(item))
+            install_logger.info('    found existing work_dir for {}'.format(item))
             install_logger.debug('processing directory {}'.format(item))
             install_logger.debug('new product {}'.format(item_name))
             install_logger.debug('setting work_dir to'.format(item_name))
@@ -1118,7 +1118,7 @@ def get_products( connection,
                     install_logger.debug('found previously extracted work_dir {}'.format(product))
 
             else:
-                install_logger.warning('  skipping {}'.format(product))
+                install_logger.debug('no archive for {}'.format(product))
 
     # compute the version for each product
     install_logger.debug('determining version for products')
