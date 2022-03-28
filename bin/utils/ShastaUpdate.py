@@ -133,6 +133,28 @@ def install(args):
             if location_dict[prod]['work_dir'] and not location_dict[prod]['installed']:
                 install_logger.info('  installing {}'.format(prod))
                 loc = location_dict[prod]['work_dir']
+                product = location_dict[prod]['product']
+
+                # workaround LINUX-3213
+                if product == 'sles':
+                    problems = [
+                        '[[ -t 1 ]] || return',
+                        '[[ -n "$ncolors" && $ncolors -ge 8 ]] || return'
+                        ]
+                    color_file = os.path.join(loc, 'lib', 'color.sh')
+                    try:
+                        with open(color_file, "r") as color_fh:
+                            origial_color_data = color_fh.read()
+                        color_data = origial_color_data
+                        for pattern in problems:
+                            color_data = color_data.replace(pattern + '\n', pattern + ' 0\n')
+                        with open(color_file, "w") as color_fh:
+                            color_fh.write(color_data)
+                        if color_data != origial_color_data:
+                            install_logger.info('    patched extracted install for LINUX-3213')
+                    except Exception as err:
+                        install_logger.debug('failed to patch LINUX-3213 due to {}, perhaps obsolete?'.format(err))
+
                 cmd = './install.sh'
                 try:
                     result = connection.sudo(cmd, cwd=loc, timeout=900)
