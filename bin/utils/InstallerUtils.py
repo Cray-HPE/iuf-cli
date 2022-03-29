@@ -7,20 +7,19 @@ Common utility and helper functions used by the CI.
 import base64
 import datetime
 import json
-import yaml
 import os
 import re
 import shlex
 import shutil
-import stat
 import subprocess
 import sys
 import textwrap
 import time
 import urllib
 import shlex
-import socket
 import shutil
+
+import yaml
 
 from utils.InstallLogger import get_install_logger
 from utils.vars import *
@@ -166,22 +165,38 @@ def wait_for_pod(connection, pod_name, timeout=1200, delete=False):
 
     time_waited = 0
     sleep_time = 10
-    alert_time = 60
+    alert_freq = 6
+
+    found = False
+    namespace = None
+    pods = connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods -Ao wide").stdout.splitlines()
+
+    # Get the namespace, so that querying the pod is simple.
+    for pod_line in pods:
+        if pod_name in pod_line:
+            found = True
+            namespace = pod_line.split()[0]
+
     install_logger.info("  Waiting for pod {} to complete.".format(pod_name))
+
+    # Return if the pod is not found
+    if found:
+        pod_cmd = "kubectl get pods -n {} --no-headers {}".format(namespace, pod_name)
+    if not found:
+        install_logger.info("pod {} not found ==> not waiting".format(pod_name))
+
+    start_time = datetime.datetime.now()
+    counter = 0
     while True:
-        pods = connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods -Ao wide").stdout.splitlines()
-        found = False
-        for pod in pods:
-            if pod_name in pod:
-                found = True
-                fields = pod.split()
-                running = fields[3]
+        pod_status = connection.sudo(pod_cmd).stdout
+        running = pod_status.split()[2]
+
         if found and delete is False:
-            install_logger.debug("found running and delete == False ...")
-            if 'running' in running.lower() or 'completed' in running.lower():
+            install_logger.debug("found running and delete == False, running={}".format(running))
+            if running.lower() in ["running", "completed"]:
                 break
-            elif running.lower() =='imagepullbackoff':
-                install_logger.warning("    WARNING: pod {} in error state: {}".format(pod_name, running))
+            elif running.lower() in ["imagepullbackoff","failed"] or "error" in running.lower():
+                install_logger.warning("pod {} in error state: {}".format(pod_name, running))
                 break
             else:
                 install_logger.debug("(else) running={} ... no action performed".format(running))
@@ -190,12 +205,14 @@ def wait_for_pod(connection, pod_name, timeout=1200, delete=False):
             break
         if time_waited >= timeout:
             action_str = "delete" if delete else "complete"
-            install_logger.warning("    WARNING: Timed out waiting {} seconds for pod {} to {}".format(time_waited, pod_name, action_str))
+            install_logger.warning("    Timed out waiting {} seconds for pod {} to {}".format(time_waited, pod_name, action_str))
             break
-        if time_waited % alert_time == 0:
-            install_logger.info("    Waited {} of {} seconds".format(time_waited, timeout))
+        if counter % alert_freq == 0:
+            install_logger.info("Waiting for pod {} to complete. Waited {} of {} seconds".format(pod_name, int(time_waited), timeout))
+        counter += 1
         time.sleep(sleep_time)
-        time_waited += sleep_time
+        tdiff = datetime.datetime.now() - start_time
+        time_waited = tdiff.total_seconds()
 
 
 def download_artifacts(connection, repo, version, release_dist=None,
@@ -252,15 +269,17 @@ def wait_for_ncn_personalization(connection, xnames, timeout=600, sleep_time=10)
 
     keep_waiting = True
     start = datetime.datetime.now()
+    bad_nodes = set()
     while keep_waiting:
         found_pending = False
         for xname in xnames:
             desc = json.loads(connection.sudo("cray cfs components describe {} --format json".format(xname)).stdout)
-            if desc["configurationStatus"].lower() != "configured":
+            if desc["configurationStatus"].lower() != "configured" and desc["errorCount"] == 0:
                 install_logger.debug("waiting on {}".format(xname))
                 found_pending = True
-            if desc["errorCount"] != 0:
+            elif desc["errorCount"] != 0:
                 install_logger.warning("WARNING: Found error on node {} while querying the NCN personalization process".format(xname))
+                bad_nodes.add(xname)
 
         tdiff = datetime.datetime.now() - start
         seconds_waited = tdiff.total_seconds()
@@ -271,12 +290,14 @@ def wait_for_ncn_personalization(connection, xnames, timeout=600, sleep_time=10)
             keep_waiting = False
 
         if seconds_waited >= timeout:
-            install_logger.warning("WARNING: timed out waiting for components to go from a "
+            install_logger.warning("Timed out waiting for components to go from a "
                    "pending to configured status during ncn personalization")
             keep_waiting = False
         else:
             install_logger.debug("(else, bottom of loop) waited={} seconds, keep_waiting={}, found_pending={}".format(seconds_waited, keep_waiting, found_pending))
-        sys.stdout.flush()
+
+
+    return bad_nodes
 
 class _CmdInterface:
     """Wrapper around the subprocess interface to simplify usage."""
