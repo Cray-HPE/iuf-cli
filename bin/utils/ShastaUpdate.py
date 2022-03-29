@@ -14,6 +14,7 @@ import copy
 import datetime
 import json
 import os
+import platform
 import re
 import stat
 import sys
@@ -881,6 +882,25 @@ def check_analytics_mount(node, analytics_dir):
             install_logger.warning("WARNING: Could not unmount the dvs analytics mounts on {}".format(node))
             keep_waiting = False
 
+def get_system_name(dryrun=False):
+    if dryrun:
+        return platform.node()
+
+    host = None
+    host_shortname = None
+
+    system_json = subprocess.run("sat showrev --system --format json".split(), stdout=subprocess.PIPE).stdout
+    showrev = json.loads(system_json)["System Revision Information"]
+
+    for component in showrev:
+        if component["component"] == "System name":
+            host_shortname = component["data"].lower()
+            break
+
+    if host_shortname is not None:
+        host = "{}-{}".format(host_shortname, platform.node())
+
+    return host
 
 def unload_dvs_and_lnet(args):
     """Unload the DVS and LNET modules."""
@@ -911,6 +931,7 @@ def unload_dvs_and_lnet(args):
         connection.sudo("cray cfs components update {} --enabled false".format(w_xname))
 
         # FIXME: We should remove the reference to lemondrop.
+        host = get_system_name(args["dryrun"])
         if host == "lemondrop-ncn-m001":
             install_logger.debug("lemondrop has no lustre mounts ==> skip configure_fs_unload.yml play")
         else:

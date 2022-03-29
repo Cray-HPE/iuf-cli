@@ -3,7 +3,6 @@
 import datetime
 import os
 import logging
-import platform
 import json
 import subprocess
 
@@ -75,16 +74,3 @@ LOG_LEVELS = {
 # better way to deal with them.
 ANALYTICS_BRANCH = "cray/analytics/1.1.24"
 
-host = None
-host_shortname = None
-
-system_json = subprocess.run("sat showrev --system --format json".split(), stdout=subprocess.PIPE).stdout
-showrev = json.loads(system_json)["System Revision Information"]
-
-for component in showrev:
-    if component["component"] == "System name":
-        host_shortname = component["data"].lower()
-        break
-
-if host_shortname is not None:
-    host = "{}-{}".format(host_shortname, platform.node())

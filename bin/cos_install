@@ -282,8 +282,9 @@ def main():
     # install stage.  The install stage needs to install what was unpacked.
 
     subparsers = parser.add_subparsers(title="subcommands")
+    stage_list = format_tabbed_list(STAGES)
 
-    install_sp = subparsers.add_parser("install")
+    install_sp = subparsers.add_parser("install", epilog="Valid stages:\n{}".format(stage_list), formatter_class=argparse.RawDescriptionHelpFormatter)
 
     install_sp.add_argument("-b", "--begin-stage", action="store",
         help="The first stage to execute")
