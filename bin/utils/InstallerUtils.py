@@ -18,7 +18,6 @@ import time
 import urllib
 import shlex
 import shutil
-
 import yaml
 
 from utils.InstallLogger import get_install_logger
@@ -50,7 +49,6 @@ class productVersions():
             self.versions[product] = version(short_version, full_version)
     def has(self, product):
         return product in self.versions
-
 
 def getenv(var):
     """Get an environment variable"""
