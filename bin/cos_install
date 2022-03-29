@@ -198,11 +198,13 @@ def process_install(args_dict):
 
             try:
                 STAGES[stage](args_dict)
-            except Exception as e:
-                install_logger.log(log_level,"Exception occured while executing {}".format(stage), exc_info=True)
-                if log_level == LOG_LEVELS["ERROR"]:
-                    install_logger.critical("Fatal error occured, aborting.")
-                    sys.exit(1)
+            except Exception as err:
+                print("")
+                install_logger.debug("Exception while executing {}".format(stage), exc_info=True)
+                install_logger.critical("A '{}' error occured while executing {}".format(err, stage))
+                install_logger.critical("Cannot continue, exiting.")
+                print("")
+                sys.exit(1)
 
 def process_branch_update(args):
     """Process the arguments to the branch subparser"""
