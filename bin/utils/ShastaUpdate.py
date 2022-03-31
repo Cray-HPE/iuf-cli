@@ -866,7 +866,10 @@ def check_analytics_mount(args, node):
         try:
            analytics_data = yaml.safe_load(product_catalog["analytics"])
         except KeyError:
-            raise NCNPersonalization("Could not find analytics import_branch in the product catalog")
+            errmsg = utils.formatted("""
+                Could not find analytics import_branch in the product catalog.
+                Analytics will --NOT-- be unmounted.""")
+            return
 
         versions = analytics_data.keys()
         highest_version = sorted(versions, key=LooseVersion)[-1]
@@ -876,12 +879,17 @@ def check_analytics_mount(args, node):
             errmsg = utils.formatted("""
                 Unable to get the analytics data from the product catalog.
                 There should be something like the following lines in the product catalog:
+
                 analytics: 2.14
                     configuration:
                         import_branch: feature/2.14
                         ...
+
+                As a result of this, analytics will --NOT-- be umounted.
                 """)
-            raise NCNPersonalization(errmsg)
+            install_logger.warning(errmsg)
+            # Return early if the analytics data isn't found.
+            return
         git = utils.git(args, connection)
         repo = "analytics-config-management"
         check_analytics_mount.cloned_dir = git.clone(repo)
@@ -894,7 +902,7 @@ def check_analytics_mount(args, node):
     waited = 0
 
     # Unmount Analytics contents on the worker.
-    connection.sudo("scp roles/analyticsdeploy/files/forcecleanup.sh {}:/tmp".format(w_node), cwd=check_analytics_mount.cloned_dir)
+    connection.sudo("scp roles/analyticsdeploy/files/forcecleanup.sh {}:/tmp".format(node), cwd=check_analytics_mount.cloned_dir)
 
     while keep_waiting:
         # Sometimes it takes multiple tries for forceleanup, so only warn if
@@ -909,7 +917,7 @@ def check_analytics_mount(args, node):
             keep_waiting = False
 
         if waited >= timeout:
-            install_logger.warning("WARNING: Could not unmount the dvs analytics mounts on {}".format(node))
+            install_logger.warning("Could not unmount the dvs analytics mounts on {}".format(node))
             keep_waiting = False
 
 def get_system_name(dryrun=False):
