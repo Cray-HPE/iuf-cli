@@ -857,14 +857,44 @@ def build_cos_compute_image(args): #pylint: disable=unused-argument
     install_logger.info("  Resulting image id {}".format(resultant_image_id))
 
 
-def check_analytics_mount(node, analytics_dir):
+def check_analytics_mount(args, node):
     """Check the analytics mount.  It occassionally takes a few tries."""
+
+    if not hasattr(check_analytics_mount, "cloned_dir"):
+        install_logger.info("  Cloning the analytics dir for node {}".format(node))
+        product_catalog =utils.get_product_catalog(connection)
+        try:
+           analytics_data = yaml.safe_load(product_catalog["analytics"])
+        except KeyError:
+            raise NCNPersonalization("Could not find analytics import_branch in the product catalog")
+
+        versions = analytics_data.keys()
+        highest_version = sorted(versions, key=LooseVersion)[-1]
+        try:
+            analytics_branch = analytics_data[highest_version]["configuration"]["import_branch"]
+        except KeyError:
+            errmsg = utils.formatted("""
+                Unable to get the analytics data from the product catalog.
+                There should be something like the following lines in the product catalog:
+                analytics: 2.14
+                    configuration:
+                        import_branch: feature/2.14
+                        ...
+                """)
+            raise NCNPersonalization(errmsg)
+        git = utils.git(args, connection)
+        repo = "analytics-config-management"
+        check_analytics_mount.cloned_dir = git.clone(repo)
+        git.checkout(repo, analytics_branch)
+        git.pull(repo, quiet=True)
+
     keep_waiting = True
     timeout = 60
     sleep_time = 10
     waited = 0
+
     # Unmount Analytics contents on the worker.
-    connection.sudo("scp roles/analyticsdeploy/files/forcecleanup.sh {}:/tmp".format(w_node), cwd=analytics_dir)
+    connection.sudo("scp roles/analyticsdeploy/files/forcecleanup.sh {}:/tmp".format(w_node), cwd=check_analytics_mount.cloned_dir)
 
     while keep_waiting:
         # Sometimes it takes multiple tries for forceleanup, so only warn if
@@ -889,8 +919,8 @@ def get_system_name(dryrun=False):
     host = None
     host_shortname = None
 
-    system_json = subprocess.run("sat showrev --system --format json".split(), stdout=subprocess.PIPE).stdout
-    showrev = json.loads(system_json)["System Revision Information"]
+    system_yaml = connection.sudo("sat showrev --system --format yaml").stdout
+    showrev = yaml.load(system_yaml, yaml.SafeLoader)["System Revision Information"]
 
     for component in showrev:
         if component["component"] == "System name":
@@ -901,6 +931,12 @@ def get_system_name(dryrun=False):
         host = "{}-{}".format(host_shortname, platform.node())
 
     return host
+
+
+def has_lustre_fs(node):
+    mounts = connection.sudo("ssh {} mount -t lustre".format(node)).stdout
+    return "lustre" in mounts
+
 
 def unload_dvs_and_lnet(args):
     """Unload the DVS and LNET modules."""
@@ -915,13 +951,6 @@ def unload_dvs_and_lnet(args):
 
     statedir = get_dirs(args, "state")
 
-    # Clone the analytics repo.  It will be used to unmount analytics on the worker.
-    git = utils.git(args, connection)
-    repo = "analytics-config-management"
-    analytics_dir = git.clone(repo)
-    git.checkout(repo, ANALYTICS_BRANCH)
-    git.pull(repo, quiet=True)
-
     k8s_job_line = None
 
     for w_xname, w_node in worker_tuples:
@@ -930,14 +959,14 @@ def unload_dvs_and_lnet(args):
         install_logger.debug("disable cfs on {}".format(w_node))
         connection.sudo("cray cfs components update {} --enabled false".format(w_xname))
 
-        # FIXME: We should remove the reference to lemondrop.
-        host = get_system_name(args["dryrun"])
-        if host == "lemondrop-ncn-m001":
-            install_logger.debug("lemondrop has no lustre mounts ==> skip configure_fs_unload.yml play")
-        else:
+        # If there are lustre mounts, unmount them via a dvs_reload_ncn.
+        if has_lustre_fs(w_node):
             install_logger.debug("call dvs_reload_ncn...configure_fs_unload.yaml...")
             k8s_job_line = connection.sudo("/tmp/dvs_reload_ncn -c ncn-personalization -p configure_fs_unload.yml {}".format(w_xname),
                 timeout=120).stdout.splitlines()
+        else:
+            install_logger.debug("{} has no lustre mounts ==> skip configure_fs_unload.yml play".format(w_node))
+
         if k8s_job_line:
             k8s_job = k8s_job_line.split()[1].strip()
             install_logger.debug("k8sjob={}  wait for the pod...".format(k8s_job))
@@ -979,7 +1008,7 @@ def unload_dvs_and_lnet(args):
         connection.sudo("ssh {} /tmp/unmount_pe.sh".format(w_node))
 
         # check_analytics will run forcecleanup.sh until dvs unmounts cleanly
-        check_analytics_mount(w_node, analytics_dir)
+        check_analytics_mount(args, w_node)
 
         # Make sure the reference count for dvs is 0.
         lsmods = connection.sudo("ssh {} lsmod".format(w_node)).stdout.splitlines()

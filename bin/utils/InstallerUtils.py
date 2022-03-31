@@ -182,12 +182,20 @@ def wait_for_pod(connection, pod_name, timeout=1200, delete=False):
         pod_cmd = "kubectl get pods -n {} --no-headers {}".format(namespace, pod_name)
     if not found:
         install_logger.info("pod {} not found ==> not waiting".format(pod_name))
+        return
 
     start_time = datetime.datetime.now()
     counter = 0
     while True:
         pod_status = connection.sudo(pod_cmd).stdout
-        running = pod_status.split()[2]
+        try:
+            running = pod_status.split()[2]
+        except IndexError:
+            if delete:
+                break
+            else:
+                # This case shouldn't be hit.  Allow for it for debugging purposes.
+                install_logger.warning("Could not find pod {}".format(pod_name))
 
         if found and delete is False:
             install_logger.debug("found running and delete == False, running={}".format(running))
@@ -744,7 +752,7 @@ class git:
 
         return vcs_url
 
-def get_product_catalog(connection, products):
+def get_product_catalog(connection, products=None):
     """
     update product dictionary with gitea urls
     """
@@ -753,7 +761,11 @@ def get_product_catalog(connection, products):
     command = 'kubectl get cm -n services cray-product-catalog -o json'
     product_cat_json = connection.sudo(command, dryrun=False).stdout
     product_cat  = json.loads(product_cat_json)
-    all_product_data=product_cat['data']
+    all_product_data = product_cat['data']
+
+    if not products:
+        return all_product_data
+
     for product in products:
         product_version = products[product]['version']
         try:
