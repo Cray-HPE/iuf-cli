@@ -3,8 +3,6 @@
 import datetime
 import os
 import logging
-import json
-import subprocess
 
 class VMConnectionException(Exception):
     """A pass-through class."""
@@ -69,8 +67,3 @@ LOG_LEVELS = {
         "INFO": logging.INFO,
         "DEBUG": logging.DEBUG
 }
-
-# FIXME The constants below this should not be constants; we should find a
-# better way to deal with them.
-ANALYTICS_BRANCH = "cray/analytics/1.1.24"
-
