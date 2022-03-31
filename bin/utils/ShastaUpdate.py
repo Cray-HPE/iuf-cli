@@ -408,14 +408,16 @@ def update_working_branches(args):
     update_prods(args, utils.get_product_catalog(connection, location_dict))
 
 
-
 def get_cos_recipe_name(args):
     # if cos_recipe_name was supplied on the command line, just return it
     if "cos_recipe_name" in args:
-        return args['cos_recipe_name']
+        if args["cos_recipe_name"]:
+            install_logger.debug("recipe name found in args {}".format(repr(args['cos_recipe_name'])))
+            return args['cos_recipe_name']
 
     cos_version = get_prod_version(args, 'cos', False)
     product = "cos-" + cos_version
+    install_logger.debug("using product {}".format(product))
 
     # if not, lets see if we can find it
     # load previously discovered produts
@@ -431,6 +433,7 @@ def get_cos_recipe_name(args):
         return None
 
     # return what we've got
+    install_logger.debug("recipe found in product catalog {}".format(location_dict[product]["recipe"]))
     return location_dict[product]["recipe"]
 
 
