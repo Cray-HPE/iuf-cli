@@ -46,6 +46,7 @@ BOOT_TIMOUT_SECS = 3600
 
 BOS_INFO_FILENAME = "bos-info.json"
 IMAGE_INFO = "image_info.yaml"
+BOS_SESSIONTEMPLATE_FILENAME = "bos_sessiontemplate.json"
 
 NCNP_VARS = "ncnp-vars.yaml"
 

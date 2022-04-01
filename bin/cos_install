@@ -29,7 +29,6 @@ import utils.ShastaUpdate as main_ctrl
 install_logger = get_install_logger()
 
 STAGES = OrderedDict({
-    "hello": main_ctrl.hello,
     "process_product_media": main_ctrl.get_prods,
     "validate_products": main_ctrl.validate_products,
     "install_products": main_ctrl.install,
@@ -41,13 +40,10 @@ STAGES = OrderedDict({
     "check_services": main_ctrl.check_services,
     "build_cos_compute_image": main_ctrl.build_cos_compute_image,
     "customize_cos_compute_image": main_ctrl.customize_cos_compute_image,
-    "boot_computes": main_ctrl.boot_cos,
-    "run_slurm_hello_world": main_ctrl.run_hello_world,
+    "create_bos_session_template": main_ctrl.create_bos_session_template
 })
 
 NOABORT_STAGES = [
-    "boot_cos",
-    "run_hello_world"
 ]
 
 def format_tabbed_list(alist):
