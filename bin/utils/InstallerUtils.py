@@ -284,7 +284,7 @@ def wait_for_ncn_personalization(connection, xnames, timeout=600, sleep_time=10)
                 install_logger.debug("waiting on {}".format(xname))
                 found_pending = True
             elif desc["errorCount"] != 0:
-                install_logger.warning("WARNING: Found error on node {} while querying the NCN personalization process".format(xname))
+                install_logger.warning("      Found error on node {} while querying the NCN personalization process".format(xname))
                 bad_nodes.add(xname)
 
         tdiff = datetime.datetime.now() - start

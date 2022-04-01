@@ -952,7 +952,7 @@ def has_lustre_fs(node):
 def unload_dvs_and_lnet(args):
     """Unload the DVS and LNET modules."""
 
-    worker_tuples = utils.get_hosts(connection, "w00")
+    worker_tuples = utils.get_hosts(connection, "ncn-w")
     install_logger.debug("worker_tuples={}".format(worker_tuples))
 
     connection.sudo("scp ncn-w001:/opt/cray/dvs/default/sbin/dvs_reload_ncn /tmp")
@@ -962,9 +962,10 @@ def unload_dvs_and_lnet(args):
 
     statedir = get_dirs(args, "state")
 
-    k8s_job_line = None
-
     for w_xname, w_node in worker_tuples:
+
+        k8s_job_line = None
+
         install_logger.info("  Unloading DVS and LNET on node: {}".format(w_node))
         # Disable cfs.
         install_logger.debug("disable cfs on {}".format(w_node))
@@ -975,15 +976,14 @@ def unload_dvs_and_lnet(args):
             install_logger.debug("    Running fs_unload")
             k8s_job_line = connection.sudo("/tmp/dvs_reload_ncn -c ncn-personalization -p configure_fs_unload.yml {}".format(w_xname),
                 timeout=120).stdout.splitlines()
+            if k8s_job_line:
+                k8s_job = k8s_job_line.split()[1].strip()
+                install_logger.debug("k8sjob={}  wait for the pod...".format(k8s_job))
+                utils.wait_for_pod(connection, k8s_job)
+            else:
+                install_logger.debug("WARNING: Unable to get the K8S job name.")
         else:
             install_logger.info("    {} has no Lustre mounts ==> skipping fs_unload".format(w_node))
-
-        if k8s_job_line:
-            k8s_job = k8s_job_line.split()[1].strip()
-            install_logger.debug("k8sjob={}  wait for the pod...".format(k8s_job))
-            utils.wait_for_pod(connection, k8s_job)
-        else:
-            install_logger.debug("WARNING: Unable to get the K8S job name.")
 
         # I think we still need to run dvs_reload_ncn to unmount the DVS mounts.
 
@@ -1093,7 +1093,9 @@ def unload_dvs_and_lnet(args):
             --error-count 0 {} --format json".format(w_xname))
 
         # wait for ncn-personalization to finish.
-        utils.wait_for_ncn_personalization(connection, [w_xname])
+        bad_nodes = utils.wait_for_ncn_personalization(connection, [w_xname])
+        if bad_nodes:
+            raise NCNPersonalization("NCN Personalization failed for {}".format(w_xname))
 
         rpms = connection.sudo("ssh {} rpm -qa".format(w_node)).stdout.splitlines()
         new_rpms = []
