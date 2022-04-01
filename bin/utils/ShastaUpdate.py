@@ -119,6 +119,21 @@ def get_prods(args):
     with open(filepath, "w", encoding="UTF-8") as fhandle:
         yaml.dump(location_dict, fhandle)
 
+    # print summary of products
+    installable_products = []
+    uninstallable_products = []
+    for product in location_dict:
+        if location_dict[product]['product'] and location_dict[product]['work_dir']:
+            installable_products.append(product)
+        else:
+            uninstallable_products.append(product)
+    install_logger.info("  Installable products:")
+    for item in installable_products:
+        install_logger.info("    {}".format(item))
+    install_logger.info("  Ignoring:")
+    for item in uninstallable_products:
+        install_logger.info("    {}".format(item))
+
 
 def install(args):
     """Install COS, Slingshot-host, or SLE"""

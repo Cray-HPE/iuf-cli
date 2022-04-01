@@ -887,7 +887,6 @@ def get_products( connection,
                     'wlm-pbs': 'pbs',
                     'cpe-pbs': 'pbs',
                     'sma': 'sma',
-                    'csm': 'csm',
                     'sat': 'sat',
                     'cray-sdu-rda': 'sdu',
                     'cpe': 'cpe'
