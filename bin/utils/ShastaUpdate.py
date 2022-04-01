@@ -228,7 +228,6 @@ def check_pods(args): #pylint: disable=unused-argument
     in this context.
     """
 
-
     time_to_wait = 60 * 20 # Wait 20 minutes.
     total_time = 0
     sleep_time = 10
@@ -237,14 +236,13 @@ def check_pods(args): #pylint: disable=unused-argument
     get_jobs_cmd = "kubectl --kubeconfig=/etc/kubernetes/admin.conf get jobs -A"
     get_pods_cmd = "kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods -A"
 
-
     while True:
 
         jobs_list = connection.sudo(get_jobs_cmd).stdout.splitlines()
-        jobs_list = [job for job in jobs_list if 'cos' in job]
+        jobs_list = [job for job in jobs_list if 'import' in job]
 
         pods_list = connection.sudo(get_pods_cmd).stdout.splitlines()
-        pods_list = [pod for pod in pods_list if 'cos' in pod]
+        pods_list = [pod for pod in pods_list if 'import' in pod]
 
         if args['dryrun']:
             return
@@ -259,7 +257,7 @@ def check_pods(args): #pylint: disable=unused-argument
         for job in jobs_list:
             fields = job.split()
             job_name = fields[1]
-            if 'cos-config' in job_name or 'cos-image' in job_name:
+            if 'config-import' in job_name or 'recipe-import' in job_name:
                 completions = fields[2]
                 if not is_ready(completions):
                     install_logger.debug("found the following job --not-- running:{}".format(fields))
@@ -268,7 +266,7 @@ def check_pods(args): #pylint: disable=unused-argument
         for pod in pods_list:
             fields = pod.split()
             pod_name = fields[1]
-            if 'cos-config' in pod_name or 'cos-image' in pod_name:
+            if 'config-import' in pod_name or 'recipe-import' in pod_name:
                 if not 'completed' in fields[3].lower():
                     install_logger.debug("found the following pod --not-- running:{}".format(fields))
                     pods_not_running.append(pod_name)
@@ -277,15 +275,15 @@ def check_pods(args): #pylint: disable=unused-argument
             install_logger.debug("jobs_not_running={} ==> sleep".format(jobs_not_running))
             install_logger.debug("pods_not_running={} ==> sleep".format(pods_not_running))
             if total_time % alert_time == 0:
-                install_logger.info("Waiting for {}/{} jobs and {}/{} pods".format(
+                install_logger.info("  Waiting for {} outstanding import jobs out of {} and {} outstanding import pods out of {}".format(
                                      len(jobs_not_running), len(jobs_list),
                                      len(pods_not_running), len(pods_list)))
             total_time+=sleep_time
             time.sleep(sleep_time)
         else:
-            install_logger.info("Finished waiting for {}/{} jobs and {}/{} pods".format(
-                                     len(jobs_not_running), len(jobs_list),
-                                     len(pods_not_running), len(pods_list)))
+            install_logger.info("  Finished waiting for {} import jobs and {} import pods".format(
+                                     len(jobs_list),
+                                     len(pods_list)))
             break
 
         if total_time > time_to_wait:
@@ -293,8 +291,6 @@ def check_pods(args): #pylint: disable=unused-argument
                 WARNING: the following job/pods have not completed booting: {}/{}
                 """.format(','.join(jobs_not_running), ','.join(pods_not_running)))
             raise TimeOut(msg)
-
-        sys.stdout.flush()
 
 
 def check_services(args): #pylint: disable=unused-argument
@@ -378,7 +374,10 @@ def update_working_branches(args):
 
             import_branch = location_dict[product]['import_branch']
             product_name = location_dict[product]['product']
-            prod_version = location_dict[product]['product_version']
+            if location_dict[product]['import_version']:
+                prod_version = location_dict[product]['import_version']
+            else:
+                prod_version = location_dict[product]['product_version']
             repo = repos[product_name]
             cos_checkout_dir = git.clone(repo)
 

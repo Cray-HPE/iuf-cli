@@ -767,15 +767,24 @@ def get_product_catalog(connection, products=None):
         return all_product_data
 
     for product in products:
-        product_version = products[product]['version']
+        if products[product]['import_version']:
+            product_version = products[product]['import_version']
+        else:
+            product_version = products[product]['version']
+        install_logger.debug('using product_version {}'.format(product_version))
         try:
             working_type = products[product]['product']
             product_data = yaml.safe_load(all_product_data[working_type])
             matching_versions = []
             # find all keys in the product catalog that match the supplied product
-            for item in product_data.keys():
-                if str(product_version).startswith(str(item)):
-                    matching_versions.append(item)
+            if product_version in product_data.keys():
+                install_logger.debug('{} is an exact match'.format(product_version))
+                matching_versions.append(product_version)
+            else:
+                install_logger.debug('looking for matching version')
+                for item in product_data.keys():
+                    if str(product_version).startswith(str(item)):
+                        matching_versions.append(item)
             # if there is only one match, we consider this the "real" version
             if len(matching_versions) == 1:
                 working_version = matching_versions[0]
@@ -901,6 +910,7 @@ def get_products( connection,
                         'archive_check': None,
                         'version': None,
                         'product_version': None,
+                        'import_version': None,
                         'clone_url': None,
                         'import_branch': None,
                         'installed': None,
@@ -1168,6 +1178,30 @@ def get_products( connection,
                         install_logger.debug('working_name {} matched prefix {}'.format(
                             working_name, prefix))
                         products[product]['version'] = working_version
+        # see if an alternate version is used for gitea
+        work_dir = products[product]['work_dir']
+        if work_dir:
+            manifest_dir = os.path.join(products[product]['work_dir'], 'manifests')
+            if os.path.isdir(manifest_dir):
+                files = os.listdir(manifest_dir)
+                for file_name in files:
+                    if file_name.endswith('.yaml'):
+                        yaml_file = os.path.join(manifest_dir, file_name)
+                        with open(yaml_file, 'r') as fhandle:
+                            try:
+                                yaml_data = yaml.safe_load(fhandle)
+                            except Exception as err:
+                                yaml_data = None
+                        if yaml_data:
+                            try:
+                                if yaml_data['spec']['charts']:
+                                    chart_data = yaml_data['spec']['charts']
+                                    for chart in chart_data:
+                                        import_job = chart['values']['cray-import-config']['import_job']
+                                        import_version = import_job['CF_IMPORT_PRODUCT_VERSION']
+                                        products[product]['import_version'] = import_version
+                            except Exception as err:
+                                pass
 
     install_logger.info('    OK')
     return products
