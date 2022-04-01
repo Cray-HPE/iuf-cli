@@ -408,14 +408,16 @@ def update_working_branches(args):
     update_prods(args, utils.get_product_catalog(connection, location_dict))
 
 
-
 def get_cos_recipe_name(args):
     # if cos_recipe_name was supplied on the command line, just return it
     if "cos_recipe_name" in args:
-        return args['cos_recipe_name']
+        if args["cos_recipe_name"]:
+            install_logger.debug("recipe name found in args {}".format(repr(args['cos_recipe_name'])))
+            return args['cos_recipe_name']
 
     cos_version = get_prod_version(args, 'cos', False)
     product = "cos-" + cos_version
+    install_logger.debug("using product {}".format(product))
 
     # if not, lets see if we can find it
     # load previously discovered produts
@@ -431,6 +433,7 @@ def get_cos_recipe_name(args):
         return None
 
     # return what we've got
+    install_logger.debug("recipe found in product catalog {}".format(location_dict[product]["recipe"]))
     return location_dict[product]["recipe"]
 
 
@@ -861,7 +864,7 @@ def check_analytics_mount(args, node):
     """Check the analytics mount.  It occassionally takes a few tries."""
 
     if not hasattr(check_analytics_mount, "cloned_dir"):
-        install_logger.info("  Cloning the analytics dir for node {}".format(node))
+        install_logger.debug("Cloning the analytics dir for node {}".format(node))
         product_catalog =utils.get_product_catalog(connection)
         try:
            analytics_data = yaml.safe_load(product_catalog["analytics"])
@@ -917,7 +920,7 @@ def check_analytics_mount(args, node):
             keep_waiting = False
 
         if waited >= timeout:
-            install_logger.warning("Could not unmount the dvs analytics mounts on {}".format(node))
+            install_logger.warning("    Could not unmount the Analytics mounts on {}".format(node))
             keep_waiting = False
 
 def get_system_name(dryrun=False):
@@ -949,7 +952,7 @@ def has_lustre_fs(node):
 def unload_dvs_and_lnet(args):
     """Unload the DVS and LNET modules."""
 
-    worker_tuples = utils.get_hosts(connection, "w00")
+    worker_tuples = utils.get_hosts(connection, "ncn-w")
     install_logger.debug("worker_tuples={}".format(worker_tuples))
 
     connection.sudo("scp ncn-w001:/opt/cray/dvs/default/sbin/dvs_reload_ncn /tmp")
@@ -959,28 +962,28 @@ def unload_dvs_and_lnet(args):
 
     statedir = get_dirs(args, "state")
 
-    k8s_job_line = None
-
     for w_xname, w_node in worker_tuples:
-        install_logger.info("Unloading DVS and LNET on node: {}".format(w_node))
+
+        k8s_job_line = None
+
+        install_logger.info("  Unloading DVS and LNET on node: {}".format(w_node))
         # Disable cfs.
         install_logger.debug("disable cfs on {}".format(w_node))
         connection.sudo("cray cfs components update {} --enabled false".format(w_xname))
 
         # If there are lustre mounts, unmount them via a dvs_reload_ncn.
         if has_lustre_fs(w_node):
-            install_logger.debug("call dvs_reload_ncn...configure_fs_unload.yaml...")
+            install_logger.debug("    Running fs_unload")
             k8s_job_line = connection.sudo("/tmp/dvs_reload_ncn -c ncn-personalization -p configure_fs_unload.yml {}".format(w_xname),
                 timeout=120).stdout.splitlines()
+            if k8s_job_line:
+                k8s_job = k8s_job_line.split()[1].strip()
+                install_logger.debug("k8sjob={}  wait for the pod...".format(k8s_job))
+                utils.wait_for_pod(connection, k8s_job)
+            else:
+                install_logger.debug("WARNING: Unable to get the K8S job name.")
         else:
-            install_logger.debug("{} has no lustre mounts ==> skip configure_fs_unload.yml play".format(w_node))
-
-        if k8s_job_line:
-            k8s_job = k8s_job_line.split()[1].strip()
-            install_logger.debug("k8sjob={}  wait for the pod...".format(k8s_job))
-            utils.wait_for_pod(connection, k8s_job)
-        else:
-            install_logger.debug("WARNING: Unable to get the K8S job name.")
+            install_logger.info("    {} has no Lustre mounts ==> skipping fs_unload".format(w_node))
 
         # I think we still need to run dvs_reload_ncn to unmount the DVS mounts.
 
@@ -989,6 +992,7 @@ def unload_dvs_and_lnet(args):
         cps_cm_pm_pods = [cps for cps in all_pods if 'cray-cps-cm-pm' in cps and w_node in cps]
         install_logger.debug("(unload_dvs_and_lnet)cps_cm_pods={}".format(cps_cm_pm_pods))
         if  cps_cm_pm_pods:
+            install_logger.info("    Deleting CPS deployment")
             connection.sudo("cray cps deployment delete --nodes {}".format(w_node))
             pod_line = cps_cm_pm_pods[0]
             fields = pod_line.split()
@@ -1001,7 +1005,7 @@ def unload_dvs_and_lnet(args):
         for uai in uais:
             fields = uai.split()
             uai_name = fields[1]
-            install_logger.debug("Migrating UAI {} off the workder {}".format(uai_name, w_node))
+            install_logger.info("    Migrating UAI {} off the worker {}".format(uai_name, w_node))
             connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf delete pod -n user {}".format(uai_name))
             install_logger.debug("Waiting for UAI {} to migrate".format(uai_name))
             utils.wait_for_pod(connection, uai_name)
@@ -1011,11 +1015,12 @@ def unload_dvs_and_lnet(args):
         time.sleep(60)
 
         # Unmount PE
-        install_logger.debug("Unmount PE ...")
+        install_logger.info("    Unmounting PE")
         connection.sudo("scp ../src/tools/unmount_pe.sh {}:/tmp/unmount_pe.sh".format(w_node))
         connection.sudo("ssh {} /tmp/unmount_pe.sh".format(w_node))
 
         # check_analytics will run forcecleanup.sh until dvs unmounts cleanly
+        install_logger.info("    Unmounting Analytics")
         check_analytics_mount(args, w_node)
 
         # Make sure the reference count for dvs is 0.
@@ -1036,7 +1041,7 @@ def unload_dvs_and_lnet(args):
                 raise InstallError(error_str)
 
         # Unload previous COS release’s DVS and LNet services.
-        install_logger.debug("call dvs_reload_ncn...cray_dvs_unload.yml")
+        install_logger.info("    Running dvs_unload")
         output = connection.sudo("/tmp/dvs_reload_ncn -D -c ncn-personalization -p cray_dvs_unload.yml {}".format(w_xname)
                                      ).stdout.splitlines()
 
@@ -1051,7 +1056,7 @@ def unload_dvs_and_lnet(args):
             install_logger.debug("k8sjob={}.  wait for the pod...".format(k8s_job))
             utils.wait_for_pod(connection, k8s_job)
         else:
-            install_logger.warning("(unload_dvs_and_lnet): Unable to get the K8S job name.")
+            install_logger.warning("    (unload_dvs_and_lnet): Unable to get the K8S job name.")
 
         # Note the 'for' loop below is only for record-keeping.  The dvs,
         # lustre, and craytrace rpms need to be uninstalled in a specific
@@ -1072,6 +1077,7 @@ def unload_dvs_and_lnet(args):
                          r"cray-lustre-client-devel-\d+",
                          r"cray-craytrace-kmp-default-\d+"]
 
+        install_logger.info("    Removing DVS, Lustre and Craytrace RPMs")
         for pkg in pkg_order_res:
             rpm_names = [r for r in old_rpms if re.match(pkg, r)]
             if len(rpm_names) > 1:
@@ -1082,11 +1088,14 @@ def unload_dvs_and_lnet(args):
                 connection.sudo("ssh {} rpm -e {}".format(w_node, rpm))
 
         # Enable and run NCN personalization on the worker.
+        install_logger.info("    Running NCN personalization")
         connection.sudo("cray cfs components update --enabled true --state '[]' \
             --error-count 0 {} --format json".format(w_xname))
 
         # wait for ncn-personalization to finish.
-        utils.wait_for_ncn_personalization(connection, [w_xname])
+        bad_nodes = utils.wait_for_ncn_personalization(connection, [w_xname])
+        if bad_nodes:
+            raise NCNPersonalization("NCN Personalization failed for {}".format(w_xname))
 
         rpms = connection.sudo("ssh {} rpm -qa".format(w_node)).stdout.splitlines()
         new_rpms = []
@@ -1096,18 +1105,23 @@ def unload_dvs_and_lnet(args):
 
         old_rpms = sorted(old_rpms)
         new_rpms = sorted(new_rpms)
-        install_logger.debug("Old dvs, lustre, and craytrace rpms on {}: {}".format(w_node, ','.join(old_rpms)))
-        install_logger.debug("New dvs, lustre, and craytrace rpms on {}: {}".format(w_node, ','.join(new_rpms)))
+        install_logger.debug("Previous RPMs {}: {}".format(w_node, ','.join(old_rpms)))
+        install_logger.debug("Current RPMs {}: {}".format(w_node, ','.join(new_rpms)))
 
         # Add cps back to the worker if they were deleted
-        if  cps_cm_pm_pods:
-            connection.sudo("cray cps deployment update --nodes {}".format(w_node))
+        install_logger.info("    Adding CPS deployment")
+        connection.sudo("cray cps deployment update --nodes {}".format(w_node))
 
         # Add the UAIs back to the worker.  Note this is done earlier in the guide
         # (at https://stash.us.cray.com/projects/SHASTA-OS/repos/cos-docs/browse/portal/developer-portal/install/Upgrade_and_Configure_COS.md)
         # But since it's not done for each particular worker, it needs to be done out of order.
+        install_logger.info("    Adding UAS label")
         connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf label node {} uas-".format(w_node))
 
+        install_logger.info("    {} OK".format(w_node))
+
+    install_logger.info("  OK")
+        
 
 def session_templates_sort(element):
     """A function to pass to sort."""
@@ -1282,7 +1296,7 @@ def validate_products(args):
         cos_product = valid_products['cos'][cos_key]
         cos_workdir = cos_product['work_dir']
 
-        install_logger.info('  Performing compatability check for COS {} on running NCN'.format(cos_key))
+        install_logger.info('  Performing compatibility check for COS {} on running NCN'.format(cos_key))
 
         # get the os release version (ie, 15-sp2)
         os_release = utils.get_os().lower()

@@ -175,22 +175,22 @@ def wait_for_pod(connection, pod_name, timeout=1200, delete=False):
             found = True
             namespace = pod_line.split()[0]
 
-    install_logger.info("  Waiting for pod {} to complete.".format(pod_name))
+    install_logger.info("      Waiting for pod {} to complete.".format(pod_name))
 
     # Return if the pod is not found
     if found:
         pod_cmd = "kubectl get pods -n {} --no-headers {}".format(namespace, pod_name)
     if not found:
-        install_logger.info("pod {} not found ==> not waiting".format(pod_name))
+        install_logger.info("        Pod {} not found ==> not waiting".format(pod_name))
         return
 
     start_time = datetime.datetime.now()
     counter = 0
     while True:
-        pod_status = connection.sudo(pod_cmd).stdout
         try:
+            pod_status = connection.sudo(pod_cmd).stdout
             running = pod_status.split()[2]
-        except IndexError:
+        except Exception as err:
             if delete:
                 break
             else:
@@ -211,10 +211,10 @@ def wait_for_pod(connection, pod_name, timeout=1200, delete=False):
             break
         if time_waited >= timeout:
             action_str = "delete" if delete else "complete"
-            install_logger.warning("    Timed out waiting {} seconds for pod {} to {}".format(time_waited, pod_name, action_str))
+            install_logger.warning("        Timed out waiting {} seconds for pod {} to {}".format(time_waited, pod_name, action_str))
             break
         if counter % alert_freq == 0:
-            install_logger.info("Waiting for pod {} to complete. Waited {} of {} seconds".format(pod_name, int(time_waited), timeout))
+            install_logger.info("        Waited {} of {} seconds".format(int(time_waited), timeout))
         counter += 1
         time.sleep(sleep_time)
         tdiff = datetime.datetime.now() - start_time
@@ -284,7 +284,7 @@ def wait_for_ncn_personalization(connection, xnames, timeout=600, sleep_time=10)
                 install_logger.debug("waiting on {}".format(xname))
                 found_pending = True
             elif desc["errorCount"] != 0:
-                install_logger.warning("WARNING: Found error on node {} while querying the NCN personalization process".format(xname))
+                install_logger.warning("      Found error on node {} while querying the NCN personalization process".format(xname))
                 bad_nodes.add(xname)
 
         tdiff = datetime.datetime.now() - start
