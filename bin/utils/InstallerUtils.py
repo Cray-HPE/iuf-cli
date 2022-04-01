@@ -214,7 +214,7 @@ def wait_for_pod(connection, pod_name, timeout=1200, delete=False):
             install_logger.warning("        Timed out waiting {} seconds for pod {} to {}".format(time_waited, pod_name, action_str))
             break
         if counter % alert_freq == 0:
-            install_logger.info("        Waited {} of {} seconds".format(pod_name, int(time_waited), timeout))
+            install_logger.info("        Waited {} of {} seconds".format(int(time_waited), timeout))
         counter += 1
         time.sleep(sleep_time)
         tdiff = datetime.datetime.now() - start_time
