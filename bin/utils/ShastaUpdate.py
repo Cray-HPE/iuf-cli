@@ -1294,7 +1294,7 @@ def validate_products(args):
         cos_product = valid_products['cos'][cos_key]
         cos_workdir = cos_product['work_dir']
 
-        install_logger.info('  Performing compatability check for COS {} on running NCN'.format(cos_key))
+        install_logger.info('  Performing compatibility check for COS {} on running NCN'.format(cos_key))
 
         # get the os release version (ie, 15-sp2)
         os_release = utils.get_os().lower()
