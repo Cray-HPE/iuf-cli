@@ -1123,14 +1123,7 @@ def unload_dvs_and_lnet(args):
     install_logger.info("  OK")
         
 
-def session_templates_sort(element):
-    """A function to pass to sort."""
-    return element["name"]
-
-
-def boot_cos(args):
-    """Boot a COS image"""
-
+def create_bos_session_template(args):
     # load the image id information
     bos_file = os.path.join(get_dirs(args, "state"), BOS_INFO_FILENAME)
     if not os.path.exists(bos_file):
@@ -1138,43 +1131,46 @@ def boot_cos(args):
         WARNING: the bos information file {} does not exist.  Cannot boot COS.
         """.format(bos_file))
         raise COSProblem(msg)
-    else:
-        with open(bos_file, 'r', encoding='UTF-8') as bos_fh:
-            bos_info = json.load(bos_fh)
+    
+    with open(bos_file, 'r', encoding='UTF-8') as bos_fh:
+        bos_info = json.load(bos_fh)
 
     if "source_bos_sessiontemplate" not in args:
         msg = utils.formatted("""
             When booting the compute nodes, a bos sessiontemplate
             (-t or --source-bos-sessiontemplate) is required""")
         raise COSProblem(msg)
-    else:
-        # FIXME: Do we need some error-handling if the bos sessiontemplate does not exist?
-        install_logger.debug("found source_bos_sessiontemplate in args")
-        source_template_name = args["source_bos_sessiontemplate"]
+    
+    install_logger.debug("found source_bos_sessiontemplate in args")
+    source_template_name = args["source_bos_sessiontemplate"]
 
     install_logger.info("  Using BOS sessiontemplate {} as a template".format(source_template_name))
-
     working_template = json.loads(connection.sudo("cray bos sessiontemplate describe {} --format json".format(source_template_name)).stdout)
 
     working_template.pop('name')
     working_template["boot_sets"]["compute"]["etag"] = bos_info["etag"]
     working_template["boot_sets"]["compute"]["path"] = "s3://boot-images/{}/manifest.json".format(bos_info["image_id"])
-    #working_template["cfs"]["configuration"] = bos_info["configuration"]
 
-    bos_file = os.path.join(get_dirs(args, "state"), "bos_sessiontemplate.json")
+    bos_session_file = os.path.join(get_dirs(args, "state"), BOS_SESSIONTEMPLATE_FILENAME)
 
     date = datetime.datetime.today().strftime("%Y%m%d")
     sessiontemplate_name = "cos-sessiontemplate-{}-{}".format(get_prod_version(args, 'cos'), date)
 
-    with open(bos_file, 'w', encoding='UTF-8') as fhandle:
+    with open(bos_session_file, 'w', encoding='UTF-8') as fhandle:
         json.dump(working_template, fhandle)
 
-    install_logger.info("  Generated BOS sessiontemplate saved as {}".format(bos_file))
+    install_logger.info("  Generated BOS sessiontemplate saved as {}".format(bos_session_file))
 
     connection.sudo("cray bos sessiontemplate create --file {} --name {} ".format(
-        bos_file, sessiontemplate_name))
+        bos_session_file, sessiontemplate_name))
 
     install_logger.info("  Created BOS sessiontemplate {}".format(sessiontemplate_name))
+
+def boot_cos(args):
+    """Boot a COS image"""
+
+    #TODO figure out what sessiontemplate to boot with
+    # sessiontemplate_name = ???
 
     boot_start_time = datetime.datetime.now()
     # Now reboot the compute nodes
