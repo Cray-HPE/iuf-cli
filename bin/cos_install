@@ -31,7 +31,7 @@ install_logger = get_install_logger()
 STAGES = OrderedDict({
     "process_product_media": {
         "func" : main_ctrl.get_prods,
-        "description" : "Extract product archives and write product information to {}.".format(LOCATION_DICT)
+        "description" : "Inventory and extract products in the media directory for use in subsequent stages."
         },
     "validate_products":  {
         "func" : main_ctrl.validate_products,
@@ -39,11 +39,11 @@ STAGES = OrderedDict({
         },
     "install_products": {
         "func" : main_ctrl.install,
-        "description" : "Install all extracted products."
+        "description" : "Install products identified in the process_product_media stage."
         },
     "verify_product_import": {
         "func" : main_ctrl.check_pods,
-        "description" : "Verify all product import PODS are running."
+        "description" : "Verify all product import PODS and Jobs have completed."
         },
     "update_working_branches": {
         "func" : main_ctrl.update_working_branches,
@@ -51,7 +51,7 @@ STAGES = OrderedDict({
         },
     "update_ncnp_config": {
         "func" : main_ctrl.update_ncnp_config,
-        "description" : "Update configs used for NCN personalization."
+        "description" : "Update the NCN personalization configuration."
         },
     "ncn_personalization": {
         "func" : main_ctrl.ncn_personalization,
@@ -59,7 +59,7 @@ STAGES = OrderedDict({
         },
     "unload_dvs_and_lnet": {
         "func" : main_ctrl.unload_dvs_and_lnet,
-        "description" : "Unload and reload the DVS and LNET modules on all hosts."
+        "description" : "Unload and reload the DVS and LNET modules on NCN worker nodes."
         },
     "check_services": {
         "func" : main_ctrl.check_services,
@@ -75,7 +75,7 @@ STAGES = OrderedDict({
         },
     "create_bos_session_template": {
         "func" : main_ctrl.create_bos_session_template,
-        "description" : "Clone BOS session template and update it with information about the new image."
+        "description" : "Create a BOS session template derived from --source-bos-sessiontemplate.",
         }
 })
 
