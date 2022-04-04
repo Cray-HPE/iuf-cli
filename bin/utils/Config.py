@@ -72,7 +72,9 @@ class Config:
                     del file_defaults[section][arg]
 
         # update the internal storage to include all file updates
-        self.all_parser_options.update(**file_defaults)
+        for section in self.all_parser_options:
+            if section in file_defaults:
+                self.all_parser_options[section].update(**file_defaults[section])
 
         # now that we've done all that, insert the config file defaults into the parser
         defaults = file_defaults.get("global",dict())
