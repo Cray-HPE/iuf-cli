@@ -29,18 +29,54 @@ import utils.ShastaUpdate as main_ctrl
 install_logger = get_install_logger()
 
 STAGES = OrderedDict({
-    "process_product_media": main_ctrl.get_prods,
-    "validate_products": main_ctrl.validate_products,
-    "install_products": main_ctrl.install,
-    "verify_product_import": main_ctrl.check_pods,
-    "update_working_branches": main_ctrl.update_working_branches,
-    "update_ncnp_config": main_ctrl.update_ncnp_config,
-    "ncn_personalization": main_ctrl.ncn_personalization,
-    "unload_dvs_and_lnet": main_ctrl.unload_dvs_and_lnet,
-    "check_services": main_ctrl.check_services,
-    "build_cos_compute_image": main_ctrl.build_cos_compute_image,
-    "customize_cos_compute_image": main_ctrl.customize_cos_compute_image,
-    "create_bos_session_template": main_ctrl.create_bos_session_template
+    "process_product_media": {
+        "func" : main_ctrl.get_prods,
+        "description" : "Extract product archives and write product information to {}.".format(LOCATION_DICT)
+        },
+    "validate_products":  {
+        "func" : main_ctrl.validate_products,
+        "description" : "Perform product sanity checks."
+        },
+    "install_products": {
+        "func" : main_ctrl.install,
+        "description" : "Install all extracted products."
+        },
+    "verify_product_import": {
+        "func" : main_ctrl.check_pods,
+        "description" : "Verify all product import PODS are running."
+        },
+    "update_working_branches": {
+        "func" : main_ctrl.update_working_branches,
+        "description" : "Update the working copy of the product configs with latest installed updates."
+        },
+    "update_ncnp_config": {
+        "func" : main_ctrl.update_ncnp_config,
+        "description" : "Update configs used for NCN personalization."
+        },
+    "ncn_personalization": {
+        "func" : main_ctrl.ncn_personalization,
+        "description" : "Perform NCN personalization."
+        },
+    "unload_dvs_and_lnet": {
+        "func" : main_ctrl.unload_dvs_and_lnet,
+        "description" : "Unload and reload the DVS and LNET modules on all hosts."
+        },
+    "check_services": {
+        "func" : main_ctrl.check_services,
+        "description" : "Check cps, dvs, lnet. and nmd services."
+        },
+    "build_cos_compute_image": {
+        "func" : main_ctrl.build_cos_compute_image,
+        "description" : "Build the COS compute image."
+        },
+    "customize_cos_compute_image": {
+        "func" : main_ctrl.customize_cos_compute_image,
+        "description" : "Customize the COS compute image."
+        },
+    "create_bos_session_template": {
+        "func" : main_ctrl.create_bos_session_template,
+        "description" : "Clone BOS session template and update it with information about the new image."
+        }
 })
 
 NOABORT_STAGES = [
@@ -51,12 +87,9 @@ def format_tabbed_list(alist):
     a list needs to be displayed to a user."""
     retstr = ""
     for elt in alist:
-        # hide the hello stage
-        if elt != 'hello':
-            retstr += "  {}\n".format(elt)
+        retstr += "  {}\n".format(elt)
 
     return retstr
-
 
 def is_option(option, cmdline_args):
     """Check if an option passed in via the input deck is a valid option."""
@@ -102,15 +135,37 @@ def get_input_deck(cmdline_args):
 
     return return_dict
 
+def get_stages(long=False, all=False):
+    ret = []
+
+    longest = max(map(len, STAGES.keys()))
+
+    for stage in STAGES.keys():
+        display = STAGES[stage].get("display", True)
+        if not display and not all:
+            continue
+        stagestr = stage
+        if long:
+            description = STAGES[stage].get("description", False)
+            if description:
+                stagestr = "{stage:{width}} : {description}".format(stage=stage, width=longest, description=description)
+
+        ret.append(stagestr)
+
+    if long:
+        return format_tabbed_list(ret)
+    else:
+        return ret
+
 def validate_stages(args_dict):
     """Validate that all of the various stage related args passed in are valid"""
     # Do some error-handling with the stage-related args
-    stages_list = list(STAGES.keys())
+    stages_list = get_stages(all=True)
     skip_stages = args_dict.get('skip_stages')
     if skip_stages is None:
         skip_stages = dict()
 
-    stages_formatted = format_tabbed_list(stages_list)
+    stages_formatted = get_stages(long=True)
 
     # wait to exit until we process all the stages
     error=False
@@ -166,7 +221,7 @@ def validate_stages(args_dict):
 
 def process_install(args_dict):
     """Run the install"""
-    stages_list = list(STAGES.keys())
+    stages_list = get_stages(all=True)
     skip_stages = args_dict.get('skip_stages')
     if skip_stages is None:
         skip_stages = dict()
@@ -193,7 +248,7 @@ def process_install(args_dict):
                 log_level=LOG_LEVELS["ERROR"]
 
             try:
-                STAGES[stage](args_dict)
+                STAGES[stage]["func"](args_dict)
             except Exception as err:
                 print("")
                 install_logger.debug("Exception while executing {}".format(stage), exc_info=True)
@@ -208,7 +263,7 @@ def process_branch_update(args):
 
 def process_list(args): #pylint: disable=unused-argument
     """Process the arguments to the list subparser"""
-    stages = format_tabbed_list(STAGES)
+    stages = get_stages(long=True)
     print(stages)
 
 def process_debug_level(cmdline_args):
@@ -278,7 +333,7 @@ def main():
     # install stage.  The install stage needs to install what was unpacked.
 
     subparsers = parser.add_subparsers(title="subcommands")
-    stage_list = format_tabbed_list(STAGES)
+    stage_list = get_stages(long=True)
 
     install_sp = subparsers.add_parser("install", epilog="Valid stages:\n{}".format(stage_list), formatter_class=argparse.RawDescriptionHelpFormatter)
 
