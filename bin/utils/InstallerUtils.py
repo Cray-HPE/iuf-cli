@@ -142,19 +142,46 @@ def flushprint(txt):
     sys.stdout.flush()
 
 def get_hosts(connection, host_str):
-    """Get hosts matching a string; for example 'get_hosts(connection, "w0")'
-    will get all worker nodes."""
+    """
+    Get hosts matching a string or regular expression; for example
+    'get_hosts(connection, "ncn-w")' will get all worker nodes.
+    """
     sat_stat = json.loads(connection.sudo("sat status --format json").stdout)
     hosts = []
 
     def ncn_sort(tup):
         return tup[1]
 
+    host_re = re.compile(r"{}".format(host_str))
     for elt in sat_stat:
-        if  host_str in elt["xname"] or host_str in elt["Aliases"]:
+        if  re.match(host_re, elt["xname"]) or re.match(host_re, elt["Aliases"]):
             hosts.append((elt["xname"], elt["Aliases"]))
 
     return sorted(hosts, key=ncn_sort)
+
+
+def get_ncn_tuples(connection, args, just_workers=False):
+    """
+    By default, will return list of worker and managment node tuples,
+    such as:
+        [('x3000c0s1b0n0', 'ncn-m001'), ('x3000c0s3b0n0', 'ncn-m002')]
+    The `--worker-nodes`/`-wn` argument affects which nodes are returned.
+    """
+
+    # Get a list of all worker and manaagement ncns. We need to skip the
+    # ncn-s00* nodes for now.  So use the m_ncn_tuples + w_ncn_tuples and
+    # consider that to be all the ncns.
+    if "worker_nodes" in args and args["worker_nodes"]:
+        all_ncn_tuples = get_hosts(connection, args["worker_nodes"])
+    else:
+        w_ncn_tuples = get_hosts(connection, "w0")
+        if just_workers:
+            all_ncn_tuples =  w_ncn_tuples
+        else:
+            m_ncn_tuples = get_hosts(connection, "m0")
+            all_ncn_tuples = w_ncn_tuples + m_ncn_tuples
+
+    return all_ncn_tuples
 
 
 

@@ -339,10 +339,10 @@ def check_services(args): #pylint: disable=unused-argument
                 break
 
         if not found_dvs:
-            install_logger.warning("WARNING: dvs not found in kernel modules on node {}!".format(node))
+            install_logger.warning("dvs not found in kernel modules on node {}!".format(node))
 
         if not found_lnet:
-            install_logger.warning("WARNING: lnet not found in kernel modules on node {}!".format(node))
+            install_logger.warning("lnet not found in kernel modules on node {}!".format(node))
 
 
 def get_catalog_list(custom_columns, import_type):
@@ -531,9 +531,7 @@ def ncn_personalization(args): #pylint: disable=unused-argument
     # Get a list of all worker and manaagement ncns. We need to skip the
     # ncn-s00* nodes for now.  So use the m_ncn_tuples + w_ncn_tuples and
     # consider that to be all the ncns.
-    m_ncn_tuples = utils.get_hosts(connection, "m0")
-    w_ncn_tuples = utils.get_hosts(connection, "w0")
-    all_ncn_tuples = w_ncn_tuples + m_ncn_tuples
+    all_ncn_tuples = utils.get_ncn_tuples(connection, args)
 
     ncn_list_xnames = [n[0] for n in all_ncn_tuples]
 
@@ -963,11 +961,63 @@ def has_lustre_fs(node):
     return "lustre" in mounts
 
 
+
+def worker_health_check(args):
+    """
+    Ensure the worker nodes are in a good state prior to starting
+    NCN Personalization
+    """
+    #cps_deployment_data = json.loads(connection.sudo("cray cps deployment list --format json").stdout)
+    with open("/admin/ltordsen/install_testing/bin/cps_deployment.json", "r") as fhandle:
+        cps_deployment_data = json.load(fhandle)
+
+    worker_tuples = utils.get_ncn_tuples(connection, args, just_workers=True)
+    worker_nodes = [wt[1] for wt in worker_tuples]
+    bad_cps_nodes = []
+    for pod in cps_deployment_data:
+        node = pod["node"]
+        if node.startswith("ncn-w") and not pod["cpspods"] and node in worker_nodes:
+            bad_cps_nodes.append(node)
+
+    #sat_status = json.loads(connection.sudo("sat status --format json").stdout)
+    with open("/admin/ltordsen/install_testing/bin/sat_stat.json", "r") as fhandle:
+        sat_status = json.load(fhandle)
+
+    bad_status_nodes = []
+    for stat in sat_status:
+        if stat["Aliases"] in worker_nodes and "ncn-w" in stat["Aliases"] and stat["State"].lower() != "ready":
+            bad_status_nodes.append(stat["Aliases"])
+
+    if bad_cps_nodes or bad_status_nodes:
+        msgs = []
+        if bad_cps_nodes:
+            msg = utils.formatted("""
+                The following nodes do not have cps pods running:
+                {}""".format(",".join(bad_cps_nodes)))
+            msgs.append(msg)
+
+        if bad_status_nodes:
+            msg = utils.formatted("""
+                The following nodes are not in a ready state:
+                {}""".format(",".join(bad_status_nodes)))
+            msgs.append(msg)
+        raise  NCNPersonalization("\n".join(msgs))
+
+
+
 def unload_dvs_and_lnet(args):
     """Unload the DVS and LNET modules."""
 
-    worker_tuples = utils.get_hosts(connection, "ncn-w")
-    install_logger.debug("worker_tuples={}".format(worker_tuples))
+    worker_tuples = utils.get_ncn_tuples(connection, args, just_workers=True)
+
+    # This stage is only ran on the worker nodes.  Make sure no other node
+    # type was specified.
+    bad_nodes = [wt[1] for wt in worker_tuples if "ncn-w" not in wt[1]]
+    if bad_nodes:
+        raise NCNPersonalization(utils.formatted("""
+            DVS can only be reloaded on worker nodes.  The following nodes are not
+            worker nodes:
+            {}""".format(",".join(bad_nodes))))
 
     connection.sudo("scp ncn-w001:/opt/cray/dvs/default/sbin/dvs_reload_ncn /tmp")
 
@@ -1135,7 +1185,7 @@ def unload_dvs_and_lnet(args):
         install_logger.info("    {} OK".format(w_node))
 
     install_logger.info("  OK")
-        
+
 
 def create_bos_session_template(args):
     # load the image id information
