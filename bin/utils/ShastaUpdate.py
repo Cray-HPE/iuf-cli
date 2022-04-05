@@ -130,9 +130,10 @@ def get_prods(args):
     install_logger.info("  Installable products:")
     for item in installable_products:
         install_logger.info("    {}".format(item))
-    install_logger.info("  Ignoring:")
-    for item in uninstallable_products:
-        install_logger.info("    {}".format(item))
+    if uninstallable_products:
+        install_logger.info("  Ignoring:")
+        for item in uninstallable_products:
+            install_logger.info("    {}".format(item))
 
 
 def install(args):
@@ -339,10 +340,10 @@ def check_services(args): #pylint: disable=unused-argument
                 break
 
         if not found_dvs:
-            install_logger.warning("WARNING: dvs not found in kernel modules on node {}!".format(node))
+            install_logger.warning("dvs not found in kernel modules on node {}!".format(node))
 
         if not found_lnet:
-            install_logger.warning("WARNING: lnet not found in kernel modules on node {}!".format(node))
+            install_logger.warning("lnet not found in kernel modules on node {}!".format(node))
 
 
 def get_catalog_list(custom_columns, import_type):
@@ -472,11 +473,19 @@ def update_cfs_commits(args, cfs_template_arg):
     # `cray cfs configurations update ...`.
     repos = get_mergeable_repos(args)
     for product, repo in repos.items():
+        install_logger.debug("processing {} {}".format(product, repo))
         prod_version = get_prod_version(args, product)
+        install_logger.debug("prod_ver {}".format(prod_version))
         commit, branch = current_repo_branch(args, repo, prod_version)
+        install_logger.debug("commit {} branch {}".format(commit,branch))
         indices = find_substr(repo)
         for layer_i in indices:
             cfs_template["layers"][layer_i]["commit"] = commit
+            install_logger.info("  Updating {} layer of {} with commit {}".format(
+                product,
+                cfs_template_arg["name"],
+                commit
+                ))
 
     return cfs_template
 
@@ -531,9 +540,7 @@ def ncn_personalization(args): #pylint: disable=unused-argument
     # Get a list of all worker and manaagement ncns. We need to skip the
     # ncn-s00* nodes for now.  So use the m_ncn_tuples + w_ncn_tuples and
     # consider that to be all the ncns.
-    m_ncn_tuples = utils.get_hosts(connection, "m0")
-    w_ncn_tuples = utils.get_hosts(connection, "w0")
-    all_ncn_tuples = w_ncn_tuples + m_ncn_tuples
+    all_ncn_tuples = utils.get_ncn_tuples(connection, args)
 
     ncn_list_xnames = [n[0] for n in all_ncn_tuples]
 
@@ -963,11 +970,76 @@ def has_lustre_fs(node):
     return "lustre" in mounts
 
 
+def worker_health_check(args):
+    """
+    Ensure the worker nodes are in a good state prior to starting
+    NCN Personalization
+    """
+
+    worker_tuples = utils.get_ncn_tuples(connection, args)
+    worker_nodes = [wt[1] for wt in worker_tuples]
+
+    # CPS deployment check
+    install_logger.info("  Checking CPS Deployments")
+    cps_deployment_data = json.loads(connection.sudo("cray cps deployment list --format json").stdout)
+
+    bad_cps_nodes = []
+    good_cps_nodes = []
+    for pod in cps_deployment_data:
+        node = pod["node"]
+        podname = pod["podname"]
+        install_logger.info("    Node {}: CPS podname: {}".format(node, podname))
+        if not podname:
+            bad_cps_nodes.append(node)
+        else:
+            good_cps_nodes.append(node)
+
+    # Configuration Check
+    install_logger.info("  Checking CFS Component Status")
+
+    bad_status_nodes = []
+    for worker in worker_tuples:
+        w_xname, w_hname = worker
+        cmd = "cray cfs components describe --format json {}".format(w_xname)
+        component = json.loads(connection.sudo(cmd).stdout)
+        w_status = component["configurationStatus"]
+        w_err = component["errorCount"]
+        w_cfg = component["desiredConfig"]
+        if w_status != "configured":
+            bad_status_nodes.append(w_hname)
+
+        install_logger.info("    Node {} ({}): {} with {}".format(
+            w_hname,
+            w_xname,
+            w_status,
+            w_cfg
+            ))
+
+    if bad_cps_nodes:
+        install_logger.warning("Check nodes {}".format(bad_cps_nodes))
+
+    if len(good_cps_nodes) - len(bad_cps_nodes) <3:
+        install_logger.error("Need at least three CPS deployments")
+        raise NCNPersonalization("Too few CPS deployments")
+
+    if bad_status_nodes:
+        install_logger.error("Fix CFS component configuration errors before proceeding")
+        raise NCNPersonalization("NCN nodes not starting in configured state")
+
+
 def unload_dvs_and_lnet(args):
     """Unload the DVS and LNET modules."""
 
-    worker_tuples = utils.get_hosts(connection, "ncn-w")
-    install_logger.debug("worker_tuples={}".format(worker_tuples))
+    worker_tuples = utils.get_ncn_tuples(connection, args, just_workers=True)
+
+    # This stage is only ran on the worker nodes.  Make sure no other node
+    # type was specified.
+    bad_nodes = [wt[1] for wt in worker_tuples if "ncn-w" not in wt[1]]
+    if bad_nodes:
+        raise NCNPersonalization(utils.formatted("""
+            DVS can only be reloaded on worker nodes.  The following nodes are not
+            worker nodes:
+            {}""".format(",".join(bad_nodes))))
 
     connection.sudo("scp ncn-w001:/opt/cray/dvs/default/sbin/dvs_reload_ncn /tmp")
 
@@ -1135,7 +1207,7 @@ def unload_dvs_and_lnet(args):
         install_logger.info("    {} OK".format(w_node))
 
     install_logger.info("  OK")
-        
+
 
 def create_bos_session_template(args):
     # load the image id information
