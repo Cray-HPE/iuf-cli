@@ -961,48 +961,61 @@ def has_lustre_fs(node):
     return "lustre" in mounts
 
 
-
 def worker_health_check(args):
     """
     Ensure the worker nodes are in a good state prior to starting
     NCN Personalization
     """
-    #cps_deployment_data = json.loads(connection.sudo("cray cps deployment list --format json").stdout)
-    with open("/admin/ltordsen/install_testing/bin/cps_deployment.json", "r") as fhandle:
-        cps_deployment_data = json.load(fhandle)
 
-    worker_tuples = utils.get_ncn_tuples(connection, args, just_workers=True)
+    worker_tuples = utils.get_ncn_tuples(connection, args)
     worker_nodes = [wt[1] for wt in worker_tuples]
+
+    # CPS deployment check
+    install_logger.info("  Checking CPS Deployments")
+    cps_deployment_data = json.loads(connection.sudo("cray cps deployment list --format json").stdout)
+
     bad_cps_nodes = []
+    good_cps_nodes = []
     for pod in cps_deployment_data:
         node = pod["node"]
-        if node.startswith("ncn-w") and not pod["cpspods"] and node in worker_nodes:
+        podname = pod["podname"]
+        install_logger.info("    Node {}: CPS podname: {}".format(node, podname))
+        if not podname:
             bad_cps_nodes.append(node)
+        else:
+            good_cps_nodes.append(node)
 
-    #sat_status = json.loads(connection.sudo("sat status --format json").stdout)
-    with open("/admin/ltordsen/install_testing/bin/sat_stat.json", "r") as fhandle:
-        sat_status = json.load(fhandle)
+    # Configuration Check
+    install_logger.info("  Checking CFS Component Status")
 
     bad_status_nodes = []
-    for stat in sat_status:
-        if stat["Aliases"] in worker_nodes and "ncn-w" in stat["Aliases"] and stat["State"].lower() != "ready":
-            bad_status_nodes.append(stat["Aliases"])
+    for worker in worker_tuples:
+        w_xname, w_hname = worker
+        cmd = "cray cfs components describe --format json {}".format(w_xname)
+        component = json.loads(connection.sudo(cmd).stdout)
+        w_status = component["configurationStatus"]
+        w_err = component["errorCount"]
+        w_cfg = component["desiredConfig"]
+        if w_status != "configured":
+            bad_status_nodes.append(w_hname)
 
-    if bad_cps_nodes or bad_status_nodes:
-        msgs = []
-        if bad_cps_nodes:
-            msg = utils.formatted("""
-                The following nodes do not have cps pods running:
-                {}""".format(",".join(bad_cps_nodes)))
-            msgs.append(msg)
+        install_logger.info("    Node {} ({}): {} with {}".format(
+            w_hname,
+            w_xname,
+            w_status,
+            w_cfg
+            ))
 
-        if bad_status_nodes:
-            msg = utils.formatted("""
-                The following nodes are not in a ready state:
-                {}""".format(",".join(bad_status_nodes)))
-            msgs.append(msg)
-        raise  NCNPersonalization("\n".join(msgs))
+    if bad_cps_nodes:
+        install_logger.warning("Check nodes {}".format(bad_cps_nodes))
 
+    if len(good_cps_nodes) - len(bad_cps_nodes) <3:
+        install_logger.error("Need at least three CPS deployments")
+        raise NCNPersonalization("Too few CPS deployments")
+
+    if bad_status_nodes:
+        install_logger.error("Fix CFS component configuration errors before proceeding")
+        raise NCNPersonalization("NCN nodes not starting in configured state")
 
 
 def unload_dvs_and_lnet(args):

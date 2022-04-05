@@ -364,7 +364,7 @@ def main():
         help="The name of the ncn personalization config to update.  Defaults to 'ncn-personalization'")
 
     install_sp.add_argument("-wn", "--worker-nodes", action="store",
-        help="Nodes to perform NCN Personalization on.  Can be a regular expression or text string.")
+        help="Override worker list used in DVS reload stage to assist with repairing broken nodes.  Can be a regular expression or text string.")
 
     install_sp.set_defaults(func=process_install, skip_stages=list(), run_stages=list())
 

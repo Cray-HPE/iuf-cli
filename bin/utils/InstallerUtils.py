@@ -168,18 +168,19 @@ def get_ncn_tuples(connection, args, just_workers=False):
     The `--worker-nodes`/`-wn` argument affects which nodes are returned.
     """
 
-    # Get a list of all worker and manaagement ncns. We need to skip the
-    # ncn-s00* nodes for now.  So use the m_ncn_tuples + w_ncn_tuples and
-    # consider that to be all the ncns.
-    if "worker_nodes" in args and args["worker_nodes"]:
-        all_ncn_tuples = get_hosts(connection, args["worker_nodes"])
-    else:
-        w_ncn_tuples = get_hosts(connection, "w0")
-        if just_workers:
-            all_ncn_tuples =  w_ncn_tuples
+    # Get a list of worker and management NCN nodes.  If they have asked
+    # for just_workers, honor the worker_nodes arg, if specified, otherwise
+    # just use the hostname pattern.
+    if just_workers:
+        if "worker_nodes" in args and args["worker_nodes"]:
+            all_ncn_tuples = get_hosts(connection, args["worker_nodes"])
         else:
-            m_ncn_tuples = get_hosts(connection, "m0")
-            all_ncn_tuples = w_ncn_tuples + m_ncn_tuples
+            w_ncn_tuples = get_hosts(connection, "ncn-w")
+            all_ncn_tuples =  w_ncn_tuples
+    else:
+        w_ncn_tuples = get_hosts(connection, "ncn-w")
+        m_ncn_tuples = get_hosts(connection, "ncn-m")
+        all_ncn_tuples = w_ncn_tuples + m_ncn_tuples
 
     return all_ncn_tuples
 
@@ -291,7 +292,7 @@ def download_artifacts(connection, repo, version, release_dist=None,
     return locations
 
 
-def wait_for_ncn_personalization(connection, xnames, timeout=600, sleep_time=10):
+def wait_for_ncn_personalization(connection, xnames, timeout=600, sleep_time=30):
     """Wait for ncn personalization to complete.
     xnames: a list of xnames to wait for
     timeout: maximum amount of time to wait for NCN personalization to
@@ -305,14 +306,23 @@ def wait_for_ncn_personalization(connection, xnames, timeout=600, sleep_time=10)
     bad_nodes = set()
     while keep_waiting:
         found_pending = False
+        pending_nodes = []
+        configured_nodes = []
         for xname in xnames:
             desc = json.loads(connection.sudo("cray cfs components describe {} --format json".format(xname)).stdout)
-            if desc["configurationStatus"].lower() != "configured" and desc["errorCount"] == 0:
-                install_logger.debug("waiting on {}".format(xname))
-                found_pending = True
-            elif desc["errorCount"] != 0:
-                install_logger.warning("      Found error on node {} while querying the NCN personalization process".format(xname))
-                bad_nodes.add(xname)
+
+            if desc["configurationStatus"].lower() == "configured":
+                install_logger.debug("node {} configured".format(xname))
+                found_pending = False
+                configured_nodes.append(xname)
+            else:
+                if desc["errorCount"] == 0:
+                    install_logger.debug("waiting on {}".format(xname))
+                    found_pending = True
+                    pending_nodes.append(xname)
+                elif desc["errorCount"] != 0:
+                    install_logger.warning("      Found error on node {} while querying the NCN personalization process".format(xname))
+                    bad_nodes.add(xname)
 
         tdiff = datetime.datetime.now() - start
         seconds_waited = tdiff.total_seconds()
@@ -329,8 +339,14 @@ def wait_for_ncn_personalization(connection, xnames, timeout=600, sleep_time=10)
         else:
             install_logger.debug("(else, bottom of loop) waited={} seconds, keep_waiting={}, found_pending={}".format(seconds_waited, keep_waiting, found_pending))
 
+        install_logger.info("      Waited {} seconds, Configured {}, Pending {}, Error {}".format(
+            int(seconds_waited),
+            len(configured_nodes),
+            len(pending_nodes),
+            len(bad_nodes)))
 
     return bad_nodes
+
 
 class _CmdInterface:
     """Wrapper around the subprocess interface to simplify usage."""
