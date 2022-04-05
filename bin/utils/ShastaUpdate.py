@@ -130,9 +130,10 @@ def get_prods(args):
     install_logger.info("  Installable products:")
     for item in installable_products:
         install_logger.info("    {}".format(item))
-    install_logger.info("  Ignoring:")
-    for item in uninstallable_products:
-        install_logger.info("    {}".format(item))
+    if uninstallable_products:
+        install_logger.info("  Ignoring:")
+        for item in uninstallable_products:
+            install_logger.info("    {}".format(item))
 
 
 def install(args):
