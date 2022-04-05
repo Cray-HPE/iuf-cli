@@ -473,11 +473,19 @@ def update_cfs_commits(args, cfs_template_arg):
     # `cray cfs configurations update ...`.
     repos = get_mergeable_repos(args)
     for product, repo in repos.items():
+        install_logger.debug("processing {} {}".format(product, repo))
         prod_version = get_prod_version(args, product)
+        install_logger.debug("prod_ver {}".format(prod_version))
         commit, branch = current_repo_branch(args, repo, prod_version)
+        install_logger.debug("commit {} branch {}".format(commit,branch))
         indices = find_substr(repo)
         for layer_i in indices:
             cfs_template["layers"][layer_i]["commit"] = commit
+            install_logger.info("  Updating {} layer of {} with commit {}".format(
+                product,
+                cfs_template_arg["name"],
+                commit
+                ))
 
     return cfs_template
 
