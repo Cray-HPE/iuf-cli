@@ -1126,6 +1126,7 @@ def get_products( connection,
 
                     if dist_sum:
 
+                        install_logger.info('    validating md5 sum for {}'.format(products[product]['archive']))
                         # check archive md5
                         cmd = 'md5sum {}'.format(archive)
                         msg = connection.sudo(cmd)
@@ -1133,7 +1134,7 @@ def get_products( connection,
 
                         if dist_sum == checked_sum:
 
-                            install_logger.info('    sum validates {}'.format(checked_sum))
+                            install_logger.info('      sum validates {}'.format(checked_sum))
 
                             # extract tarfile
                             install_logger.info('    extracting {}'.format(archive))
