@@ -67,57 +67,6 @@ def formatted(text):
     return msg
 
 
-def split_strip(string_list):
-    """
-    Handle strings that contain items that are either comma separated or space
-    separated.  Strip whitespace off of the items.  Return the items as a list.
-
-    :param string string_list: A string containing one or more items separated
-                               by either spaces or commas
-    :return: a list
-    """
-    if "," in string_list:  #pylint: disable=no-else-return
-        return [n.strip() for n in string_list.split(',')]
-    else:
-        return string_list.split()
-
-
-def download_file(url, whereto, mode='wb'):
-    """
-    Download a file from $url to $whereto.  Default $perms are wb
-
-    :param url: Where to download the file from.
-    :param whereto: Where the file is saved locally.
-    :param mode: How to open the file for writing.  Defaults to 'wb'.
-
-    :return: None
-    """
-
-    # One megabyte chunk size.
-    chunk_size = 1024 * 1024
-    req = urllib.request.urlopen(url)
-    file_size = int(req.length)
-    with open(whereto, mode, encoding="UTF-8") as fhandle:
-        total_bytes_read = 0
-        while True:
-            read_result = req.read(chunk_size)
-            bytes_read = len(read_result)
-            total_bytes_read += bytes_read
-            fhandle.write(read_result)
-            if bytes_read < chunk_size or total_bytes_read >= file_size:
-                break
-
-    return total_bytes_read
-
-
-def download_to_mgt_node(connection, url, whereto):
-    """Download a file to the management node."""
-
-    filename = os.path.basename(url)
-    target = os.path.join(whereto, filename)
-    connection.sudo("wget  {} --quiet -O {}".format(url, target))
-
-
 def check_repos(connection, product, filename):
     """Verify the repos.  This should work for cos and slingshot"""
 
@@ -134,12 +83,6 @@ def check_repos(connection, product, filename):
     repos = connection.sudo(curl_cmd).stdout.split()
 
     return (len(repos) > 0, prod_name_version, repos)
-
-
-def flushprint(txt):
-    """Print to stdout and flush it to avoid buffering."""
-    print(txt)
-    sys.stdout.flush()
 
 def get_hosts(connection, host_str):
     """
@@ -247,49 +190,6 @@ def wait_for_pod(connection, pod_name, timeout=1200, delete=False):
         time.sleep(sleep_time)
         tdiff = datetime.datetime.now() - start_time
         time_waited = tdiff.total_seconds()
-
-
-def download_artifacts(connection, repo, version, release_dist=None,
-        whereto=None, onepackage=True):
-    """
-    Download artifacts from artifactory.
-
-    :param repo: The repo; for example
-        https://arti.dev.cray.com/ui/native/shasta-distribution-stable-local/cos
-    :param version: The version of the artifacts to filter on.
-    :param release_dist: the suse service pack to filter on; e.g, '15-SP2'.
-
-    :return: None
-    """
-
-    # Keep imports local so that jobs not needing them won't hit a
-    # ModuleNotFoundError if artifactory is not installed.
-    from artifactory import ArtifactoryPath #pylint: disable=import-outside-toplevel
-
-    path = ArtifactoryPath(repo.replace("ui/native", "artifactory"))
-    locations = []
-
-    if release_dist is not None:
-        version_re = re.compile(r".*{}.*{}.*.gz$".format(release_dist, version))
-    else:
-        version_re = re.compile(r".*{}.*.gz$".format(version))
-
-    dl_urls = [str(p) for p in path if re.match(version_re, str(p))]
-
-    if onepackage:
-        dl_urls = [sorted(dl_urls)[-1]]
-
-    if whereto is None:
-        location = os.getcwd()
-    else:
-        location = whereto
-
-    for dl_url in dl_urls:
-        download_to_mgt_node(connection, dl_url, location)
-        locations.append(os.path.join(location, os.path.basename(dl_url)))
-        install_logger.debug("downloaded {} to {}".format(dl_url, location))
-
-    return locations
 
 
 def wait_for_ncn_personalization(connection, xnames, timeout=600, sleep_time=30):
