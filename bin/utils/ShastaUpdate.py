@@ -1403,8 +1403,7 @@ def validate_products(args):
                 install_logger.error('    COS NCN content does NOT match running NCN kernel {}'.format(running_kernel))
                 install_logger.error('    It is not recommended to proceed as packages such as DVS which have')
                 install_logger.error('    a kernel module will not work correctly on your NCN worker nodes.')
-                sys.exit(1)
-                raise InstallError('    COS NCN content does NOT match running NCN kernel {}'.format(running_kernel))
+                raise InstallError('COS NCN content does NOT match running NCN kernel {}'.format(running_kernel))
         else:
             install_logger.warning('    Cannot perform check due to unexpected number of RPM matches')
             install_logger.debug(rpms)

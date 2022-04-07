@@ -14,6 +14,8 @@ import os
 import sys
 import yaml
 import logging
+import textwrap
+import subprocess
 
 from utils.vars import *
 from utils.InstallLogger import *
@@ -253,13 +255,38 @@ def process_install(args_dict):
 
             try:
                 STAGES[stage]["func"](args_dict)
-            except Exception as err:
-                print("")
+
+            except subprocess.CalledProcessError as err:
+                # if this was an unhandled, failed command, print details
                 install_logger.debug("Exception while executing {}".format(stage), exc_info=True)
-                install_logger.critical("A '{}' error occured while executing {}".format(err, stage))
+                print("")
+                install_logger.critical("The following command failed while executing {}:".format(stage))
+                print("")
+                cmd = " ".join(err.cmd)
+                install_logger.error("   CMD: {}".format(cmd))
+                for item in ["stdout", "stderr", "returncode"]:
+                    if hasattr(err, item):
+                        rawmsg = str(eval("err."+item))
+                        msglines = rawmsg.splitlines()
+                        for line in msglines:
+                            if line:
+                                install_logger.error("{}: {}".format(item, line))
+                print("")
                 install_logger.critical("Cannot continue, exiting.")
                 print("")
                 sys.exit(1)
+
+            except Exception as err:
+                install_logger.debug("Exception while executing {}".format(stage), exc_info=True)
+                print("")
+                install_logger.critical("A '{}' error".format(err))
+                install_logger.critical("occured while executing {}".format(stage))
+
+                print("")
+                install_logger.critical("Cannot continue, exiting.")
+                print("")
+                sys.exit(1)
+
 
 def process_branch_update(args):
     """Process the arguments to the branch subparser"""
