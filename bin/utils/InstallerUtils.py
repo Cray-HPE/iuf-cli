@@ -1261,3 +1261,14 @@ def get_os():
         if line.startswith('VERSION='):
             release = line.split('"')[1]
     return release
+
+
+def elapsed_time(start_time):
+    """
+    return elapsed time in H:M:S format
+    """
+    dt_diff = datetime.datetime.now() - start_time
+    seconds_waited = int(dt_diff.total_seconds())
+    time_waited = str(datetime.timedelta(seconds=seconds_waited))
+
+    return time_waited

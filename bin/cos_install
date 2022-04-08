@@ -16,11 +16,13 @@ import yaml
 import logging
 import textwrap
 import subprocess
+import datetime
 
 from utils.vars import *
 from utils.InstallLogger import *
 
 from utils.InstallerUtils import CmdMgr
+from utils.InstallerUtils import elapsed_time
 from utils.Config import Config
 from utils.Config import InvertableArgument
 
@@ -243,6 +245,7 @@ def process_install(args_dict):
     install_logger.debug("(begin,end)_idx = ({},{})".format(begin_idx, end_idx))
     args_dict["stages"] = stages
 
+    installer_start = datetime.datetime.now()
     for stage in stages_list:
         if stage in stages:
             install_logger.info("Beginning stage: {}".format(stage))
@@ -254,10 +257,13 @@ def process_install(args_dict):
                 log_level=LOG_LEVELS["ERROR"]
 
             try:
+                stage_start = datetime.datetime.now()
                 STAGES[stage]["func"](args_dict)
+                install_logger.info("  stage completed in {}".format(elapsed_time(stage_start)))
 
             except subprocess.CalledProcessError as err:
                 # if this was an unhandled, failed command, print details
+                install_logger.info("  aborting stage after {}".format(elapsed_time(stage_start)))
                 install_logger.debug("Exception while executing {}".format(stage), exc_info=True)
                 print("")
                 install_logger.critical("The following command failed while executing {}:".format(stage))
@@ -272,21 +278,23 @@ def process_install(args_dict):
                             if line:
                                 install_logger.error("{}: {}".format(item, line))
                 print("")
-                install_logger.critical("Cannot continue, exiting.")
+                install_logger.info("Aborting install after {}".format(elapsed_time(installer_start)))
                 print("")
                 sys.exit(1)
 
             except Exception as err:
+                install_logger.info("  aborting stage after {}".format(elapsed_time(stage_start)))
                 install_logger.debug("Exception while executing {}".format(stage), exc_info=True)
                 print("")
                 install_logger.critical("A '{}' error".format(err))
                 install_logger.critical("occured while executing {}".format(stage))
 
                 print("")
-                install_logger.critical("Cannot continue, exiting.")
+                install_logger.info("Aborting install after {}".format(elapsed_time(installer_start)))
                 print("")
                 sys.exit(1)
 
+    install_logger.info("Install completed in {}".format(elapsed_time(installer_start)))
 
 def process_branch_update(args):
     """Process the arguments to the branch subparser"""
