@@ -1,13 +1,7 @@
 #!/usr/bin/env python3
 
-# Copyright 2022 Hewlett Packard Enterprise Development LP
-
 """
-This is a Jenkins job fab file. These job fab files are downloaded by the
-jenkins server and executed in order to test certain functionality, or to
-perform integration tests against actual Cray hardware.
-
-Copyright 2021 Hewlett Packard Enterprise Development LP
+Copyright 2022 Hewlett Packard Enterprise Development LP
 """
 
 import copy
@@ -41,35 +35,6 @@ from utils.InstallerUtils import getenv #pylint: disable=wrong-import-position,i
 
 connection = utils.CmdMgr.get_cmd_interface()
 install_logger = get_install_logger(__name__)
-
-def get_binaries(args):
-    """Get the cos, sle, and slingshot-host packages."""
-
-    product = args.product
-    prod_version = {"cos": getenv("COS_VERSION"),
-                    "sle": getenv("SLE_VERSION"),
-                    "slingshot_host": getenv("SLINGSHOT_HOST_VERSION")}
-    dist = None if product != "sle" else getenv("RELEASE_DIST")
-    prod_url = getenv("%s_URL" % product.upper())
-    install_logger.debug("Working here: {}".format(os.getcwd()))
-
-    if product == "sle":
-        onepackage = False
-    else:
-        onepackage = True
-
-    packages = utils.download_artifacts(connection, prod_url,
-                                        prod_version[product], dist,
-                                        whereto=get_dirs(args, "media"),
-                                        onepackage=onepackage)
-    packages_dict = {"packages": packages}
-    outfile = os.path.join(get_dirs(args, "state"),
-                           "{}-packages.yaml".format(product))
-
-    install_logger.debug("dumping {} to {}".format(packages_dict, outfile))
-
-    with open(outfile, 'w', encoding='UTF-8') as fhandle:
-        yaml.dump(packages_dict, fhandle)
 
 
 def get_dirs(args,which=None):
@@ -345,13 +310,6 @@ def check_services(args): #pylint: disable=unused-argument
         if not found_lnet:
             install_logger.warning("lnet not found in kernel modules on node {}!".format(node))
 
-
-def get_catalog_list(custom_columns, import_type):
-    clone_re = re.compile(r"\s+{}:\s+".format(import_type))
-    allout = connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf get cm -n services cray-product-catalog -o custom-columns={}".format(custom_columns)).stdout.splitlines()
-    repos = [allo for allo in allout if import_type in allo]
-    repos = sorted(set([re.sub(clone_re, '', repo) for repo in repos]))
-    return repos
 
 def get_mergeable_repos(args):
 
@@ -943,26 +901,6 @@ def check_analytics_mount(args, node):
         if waited >= timeout:
             install_logger.warning("    Could not unmount the Analytics mounts on {}".format(node))
             keep_waiting = False
-
-def get_system_name(dryrun=False):
-    if dryrun:
-        return platform.node()
-
-    host = None
-    host_shortname = None
-
-    system_yaml = connection.sudo("sat showrev --system --format yaml").stdout
-    showrev = yaml.load(system_yaml, yaml.SafeLoader)["System Revision Information"]
-
-    for component in showrev:
-        if component["component"] == "System name":
-            host_shortname = component["data"].lower()
-            break
-
-    if host_shortname is not None:
-        host = "{}-{}".format(host_shortname, platform.node())
-
-    return host
 
 
 def has_lustre_fs(node):

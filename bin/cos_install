@@ -95,50 +95,6 @@ def format_tabbed_list(alist):
 
     return retstr
 
-def is_option(option, cmdline_args):
-    """Check if an option passed in via the input deck is a valid option."""
-
-    return option in cmdline_args.keys()
-
-
-def get_input_deck(cmdline_args):
-    """Process the input deck.  The keys need to be converted to the
-    argparse naming convention (i.e, replace '-' with '_')."""
-
-    args_dict = {}
-
-    format_type = cmdline_args.get("format", "json")
-    if format_type is None:
-        format_type = "json"
-
-    if format_type not in ["json", "yaml"]:
-        install_logger.error("The '-f/--format' argument needs to be either json or yaml")
-        sys.exit(1)
-
-    in_arg = cmdline_args.get("input_file")
-    if in_arg and not os.path.exists(in_arg):
-        install_logger.error("Input file {} does not exist".format(in_arg))
-        sys.exit(1)
-    elif in_arg:
-        with open(in_arg, 'r', encoding='UTF-8') as fhandle:
-            try:
-                if format_type == 'yaml':
-                    args_dict = yaml.load(fhandle, yaml.SafeLoader)
-                else:
-                    args_dict = json.load(fhandle)
-            except (json.decoder.JSONDecodeError, yaml.scanner.ScannerError) as synerr:
-                raise SyntaxError("Encountered an error loading {}: {}".format(in_arg, synerr)) from None
-
-    return_dict = {}
-    for arg in args_dict:
-        new_key = arg.replace('-', '_')
-        if not is_option(new_key, cmdline_args):
-            install_logger.warning("WARNING: {} is not a valid key.  It will be ignored!".format(arg))
-        else:
-            return_dict[new_key] = args_dict[arg]
-
-    return return_dict
-
 def get_stages(long=False, all=False):
     ret = []
 
@@ -261,10 +217,6 @@ def process_install(args_dict):
                 print("")
                 sys.exit(1)
 
-def process_branch_update(args):
-    """Process the arguments to the branch subparser"""
-    install_logger.debug("process_branch_update, args={} ", args)
-
 def process_list(args): #pylint: disable=unused-argument
     """Process the arguments to the list subparser"""
     stages = get_stages(long=True)
@@ -367,11 +319,6 @@ def main():
         help="Override worker list used in DVS reload stage to assist with repairing broken nodes.  Can be a regular expression or text string.")
 
     install_sp.set_defaults(func=process_install, skip_stages=list(), run_stages=list())
-
-    bu_sp = subparsers.add_parser("branch-update", aliases=["bu"])
-    bu_sp.add_argument("branches", nargs="+", action="store", default=["integration"],
-        help="Branches to update.")
-    bu_sp.set_defaults(func=process_branch_update)
 
     list_sp = subparsers.add_parser("list-stages", aliases=["ls"])
     list_sp.set_defaults(func=process_list)
