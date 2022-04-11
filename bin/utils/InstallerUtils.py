@@ -1026,6 +1026,7 @@ def get_products( connection,
 
                     if dist_sum:
 
+                        install_logger.info('    validating md5 sum for {}'.format(products[product]['archive']))
                         # check archive md5
                         cmd = 'md5sum {}'.format(archive)
                         msg = connection.sudo(cmd)
@@ -1033,7 +1034,7 @@ def get_products( connection,
 
                         if dist_sum == checked_sum:
 
-                            install_logger.info('    sum validates {}'.format(checked_sum))
+                            install_logger.info('      sum validates {}'.format(checked_sum))
 
                             # extract tarfile
                             install_logger.info('    extracting {}'.format(archive))
@@ -1160,3 +1161,14 @@ def get_os():
         if line.startswith('VERSION='):
             release = line.split('"')[1]
     return release
+
+
+def elapsed_time(start_time):
+    """
+    return elapsed time in H:M:S format
+    """
+    dt_diff = datetime.datetime.now() - start_time
+    seconds_waited = int(dt_diff.total_seconds())
+    time_waited = str(datetime.timedelta(seconds=seconds_waited))
+
+    return time_waited
