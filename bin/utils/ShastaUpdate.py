@@ -995,19 +995,15 @@ def unload_dvs_and_lnet(args):
         install_logger.debug("disable cfs on {}".format(w_node))
         connection.sudo("cray cfs components update {} --enabled false".format(w_xname))
 
-        # If there are lustre mounts, unmount them via a dvs_reload_ncn.
-        if has_lustre_fs(w_node):
-            install_logger.debug("    Running fs_unload")
-            k8s_job_line = connection.sudo("/tmp/dvs_reload_ncn -c ncn-personalization -p configure_fs_unload.yml {}".format(w_xname),
-                timeout=120).stdout.splitlines()
-            if k8s_job_line:
-                k8s_job = k8s_job_line.split()[1].strip()
-                install_logger.debug("k8sjob={}  wait for the pod...".format(k8s_job))
-                utils.wait_for_pod(connection, k8s_job)
-            else:
-                install_logger.debug("WARNING: Unable to get the K8S job name.")
+        install_logger.debug("    Running fs_unload")
+        k8s_job_line = connection.sudo("/tmp/dvs_reload_ncn -c ncn-personalization -p configure_fs_unload.yml {}".format(w_xname),
+            timeout=120).stdout.splitlines()
+        if k8s_job_line:
+            k8s_job = k8s_job_line[1].strip()
+            install_logger.debug("k8sjob={}  wait for the pod...".format(k8s_job))
+            utils.wait_for_pod(connection, k8s_job)
         else:
-            install_logger.info("    {} has no Lustre mounts ==> skipping fs_unload".format(w_node))
+            install_logger.debug("WARNING: Unable to get the K8S job name.")
 
         # I think we still need to run dvs_reload_ncn to unmount the DVS mounts.
 
