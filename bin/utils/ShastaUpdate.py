@@ -925,7 +925,10 @@ def worker_health_check(args):
     good_cps_nodes = []
     for pod in cps_deployment_data:
         node = pod["node"]
-        podname = pod["podname"]
+        if pod["podname"] == "NA":
+            podname = None
+        else:
+            podname = pod["podname"]
         install_logger.info("    Node {}: CPS podname: {}".format(node, podname))
         if not podname:
             bad_cps_nodes.append(node)
@@ -988,24 +991,7 @@ def unload_dvs_and_lnet(args):
 
     for w_xname, w_node in worker_tuples:
 
-        k8s_job_line = None
-
         install_logger.info("  Unloading DVS and LNET on node: {}".format(w_node))
-        # Disable cfs.
-        install_logger.debug("disable cfs on {}".format(w_node))
-        connection.sudo("cray cfs components update {} --enabled false".format(w_xname))
-
-        install_logger.debug("    Running fs_unload")
-        k8s_job_line = connection.sudo("/tmp/dvs_reload_ncn -c ncn-personalization -p configure_fs_unload.yml {}".format(w_xname),
-            timeout=120).stdout.splitlines()
-        if k8s_job_line:
-            k8s_job = k8s_job_line[1].strip()
-            install_logger.debug("k8sjob={}  wait for the pod...".format(k8s_job))
-            utils.wait_for_pod(connection, k8s_job)
-        else:
-            install_logger.debug("WARNING: Unable to get the K8S job name.")
-
-        # I think we still need to run dvs_reload_ncn to unmount the DVS mounts.
 
         # Unmount PE and Analytics on the worker.
         # Check if cps-cm-pm pod is running on the worker.  Delete it if so.
@@ -1030,28 +1016,56 @@ def unload_dvs_and_lnet(args):
             install_logger.debug("Waiting for UAI {} to migrate".format(uai_name))
             utils.wait_for_pod(connection, uai_name)
 
+        # enable cfs.  while the health check verifies a node needs to be configured
+        # before you get here, if someone is trying to fix a configuration they may
+        # well be re-running this stage and in that case they may have gotten to the
+        # point where we disable cfs and that will mean cfs won't schedule anything
+        # that uses cfs, ie the unload scripts
+        install_logger.debug("enabling cfs on {}".format(w_node))
+        connection.sudo("cray cfs components update {} --enabled true --error-count 0".format(w_xname))
+
+        # check for conflicting (outstanding) cfs session
+        try:
+            conflicting_session = connection.sudo("cray cfs sessions describe configure-fs-unload-yml --format json")
+            raise UnexpectedState("Found cfs session 'configure-fs-unload-yml' already exists")
+        except Exception as err:
+            pass
+
+        install_logger.info("    Running fs_unload")
+        k8s_job_line = None
+        output = connection.sudo("/tmp/dvs_reload_ncn -c ncn-personalization -p configure_fs_unload.yml {}".format(w_xname),
+            timeout=120).stdout.splitlines()
+
+        # I don't think the k8s jobline not being found should be fatal.
+        try:
+            k8s_job_line = [line for line in output if line.lower().startswith('services')][0]
+        except Exception as err:
+            k8s_job_line = None
+
+        if k8s_job_line:
+            k8s_job = k8s_job_line.split()[1].strip()
+            install_logger.debug("k8sjob={}  wait for the pod...".format(k8s_job))
+            utils.wait_for_pod(connection, k8s_job)
+        else:
+            install_logger.debug("WARNING: Unable to get the K8S job name.")
+
         # Sleep for a minute before unmounting PE.
-        install_logger.debug("Let the system settle prior to unmounting PE")
+        install_logger.debug("Let the system settle prior to unmounting Analytics")
         time.sleep(60)
+
+        # check_analytics will run forcecleanup.sh until dvs unmounts cleanly
+        install_logger.info("    Unmounting Analytics")
+        check_analytics_mount(args, w_node)
 
         # Unmount PE
         install_logger.info("    Unmounting PE")
         connection.sudo("scp ../src/tools/unmount_pe.sh {}:/tmp/unmount_pe.sh".format(w_node))
         connection.sudo("ssh {} /tmp/unmount_pe.sh".format(w_node))
 
-        # check_analytics will run forcecleanup.sh until dvs unmounts cleanly
-        install_logger.info("    Unmounting Analytics")
-        check_analytics_mount(args, w_node)
-
         # Make sure the reference count for dvs is 0.
         lsmods = connection.sudo("ssh {} lsmod".format(w_node)).stdout.splitlines()
-        skip_reload = False
         try:
             dvs_mod = [m for m in lsmods if m.startswith('dvs ')][0]
-        except IndexError:
-            skip_reload = True
-
-        if not skip_reload:
             fields = dvs_mod.split()
             if fields[2] != '0':
                 error_str = utils.formatted("""
@@ -1059,6 +1073,11 @@ def unload_dvs_and_lnet(args):
                     Because of this, the COS Software cannot complete on this
                     worker.  the reference count is {} (should be 0)""".format(fields[0], w_node, fields[2]))
                 raise InstallError(error_str)
+            else:
+                install_logger.info("    DVS module reference count is 0 (OK)")
+        except Exception as err:
+            # there were no dvs modules loaded
+            install_logger.info("    No DVS modules loaded (OK)")
 
         # Unload previous COS release’s DVS and LNet services.
         install_logger.info("    Running dvs_unload")
@@ -1068,7 +1087,7 @@ def unload_dvs_and_lnet(args):
         # I don't think the k8s jobline not being found should be fatal.
         try:
             k8s_job_line = [line for line in output if line.lower().startswith('services')][0]
-        except Exception as IndexError:
+        except Exception as err:
             k8s_job_line = None
 
         if k8s_job_line:
@@ -1077,6 +1096,27 @@ def unload_dvs_and_lnet(args):
             utils.wait_for_pod(connection, k8s_job)
         else:
             install_logger.warning("    (unload_dvs_and_lnet): Unable to get the K8S job name.")
+
+        # make sure dvs and lnet unload succeeded
+        lsmods = connection.sudo("ssh {} lsmod".format(w_node)).stdout.splitlines()
+        try:
+            dvs_mods = None
+            dvs_mods = [m for m in lsmods if m.startswith('dvs ')]
+            raise UnexpectedState("DVS modules still loaded after running cray_dvs_unload.yml")
+        except Exception as err:
+            pass
+        try:
+            lnet_mods = None
+            lnet_mods = [m for m in lsmods if m.startswith('lnet ')]
+            raise UnexpectedState("LNET modules still loaded after running cray_dvs_unload.yml")
+        except Exception as err:
+            pass
+
+        # move the lnet config aside, if exists
+        try:
+            connection.sudo("ssh {} mv /etc/lnet.conf /etc/lnet.conf.previous")
+        except Exception as err:
+            pass
 
         # Note the 'for' loop below is only for record-keeping.  The dvs,
         # lustre, and craytrace rpms need to be uninstalled in a specific
