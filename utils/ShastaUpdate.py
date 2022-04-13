@@ -1059,7 +1059,7 @@ def unload_dvs_and_lnet(args):
 
         # Unmount PE
         install_logger.info("    Unmounting PE")
-        connection.sudo("scp ../src/tools/unmount_pe.sh {}:/tmp/unmount_pe.sh".format(w_node))
+        connection.sudo("scp tools/unmount_pe.sh {}:/tmp/unmount_pe.sh".format(w_node))
         connection.sudo("ssh {} /tmp/unmount_pe.sh".format(w_node))
 
         # Make sure the reference count for dvs is 0.
