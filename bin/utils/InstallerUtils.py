@@ -142,11 +142,16 @@ def wait_for_pod(connection, pod_name, timeout=1200, delete=False):
 
     # Get the namespace, so that querying the pod is simple.
     for pod_line in pods:
-        if pod_name in pod_line:
+        install_logger.debug("checking {} against {}".format(pod_name, pod_line))
+        pod_list = pod_line.split()
+        if pod_name == pod_list[1]:
+            install_logger.debug("  match")
             found = True
             namespace = pod_line.split()[0]
+        else:
+            install_logger.debug("  doesn't match")
 
-    install_logger.info("      Waiting for pod {} to complete.".format(pod_name))
+    install_logger.info("      Waiting for pod '{}' to complete.".format(pod_name))
 
     # Return if the pod is not found
     if found:
@@ -351,6 +356,7 @@ class CmdMgr:
         if CmdMgr.connection == None:
             CmdMgr.connection = _CmdInterface()
         return CmdMgr.connection
+
 
 class git:
     """
@@ -694,6 +700,7 @@ class git:
         vcs_url = "https://{}@{}/vcs/cray/{}.git".format(self.vcs_user, self.vcs, repo)
 
         return vcs_url
+
 
 def get_product_catalog(connection, products=None):
     """
