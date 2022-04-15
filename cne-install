@@ -46,15 +46,15 @@ STAGES = OrderedDict({
         "description" : "Install products identified in the process_product_media stage."
         },
     "verify_product_import": {
-        "func" : main_ctrl.check_pods,
+        "func" : main_ctrl.verify_product_import,
         "description" : "Verify all product import PODS and Jobs have completed."
         },
     "update_working_branches": {
         "func" : main_ctrl.update_working_branches,
         "description" : "Update the working copy of the product configs with latest installed updates."
         },
-    "update_ncnp_config": {
-        "func" : main_ctrl.update_ncnp_config,
+    "update_ncn_config": {
+        "func" : main_ctrl.update_ncn_config,
         "description" : "Update the NCN personalization configuration."
         },
     "worker_health_check": {

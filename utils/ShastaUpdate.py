@@ -200,7 +200,7 @@ def is_ready(ready):
         return True
 
 
-def check_pods(args): #pylint: disable=unused-argument
+def verify_product_import(args): #pylint: disable=unused-argument
     """
     Check the status of the pods for a given product.  Assume COS for now.
 
@@ -448,7 +448,7 @@ def update_cfs_commits(args, cfs_template_arg):
     return cfs_template
 
 
-def update_ncnp_config(args):
+def update_ncn_config(args):
     """Update the config used for NCN Personalization."""
 
     repos = get_mergeable_repos(args)
@@ -988,6 +988,7 @@ def unload_dvs_and_lnet(args):
     all_pods = connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods -Ao wide").stdout.splitlines()
 
     statedir = get_dirs(args, "state")
+    ncnp_cfg = args.get("ncn_personalization")
 
     for w_xname, w_node in worker_tuples:
 
@@ -1033,7 +1034,7 @@ def unload_dvs_and_lnet(args):
 
         install_logger.info("    Running fs_unload")
         k8s_job_line = None
-        output = connection.sudo("/tmp/dvs_reload_ncn -c ncn-personalization -p configure_fs_unload.yml {}".format(w_xname),
+        output = connection.sudo("/tmp/dvs_reload_ncn -c {} -p configure_fs_unload.yml {}".format(ncnp_cfg, w_xname),
             timeout=120).stdout.splitlines()
 
         # I don't think the k8s jobline not being found should be fatal.
@@ -1059,7 +1060,7 @@ def unload_dvs_and_lnet(args):
 
         # Unmount PE
         install_logger.info("    Unmounting PE")
-        connection.sudo("scp ../src/tools/unmount_pe.sh {}:/tmp/unmount_pe.sh".format(w_node))
+        connection.sudo("scp tools/unmount_pe.sh {}:/tmp/unmount_pe.sh".format(w_node))
         connection.sudo("ssh {} /tmp/unmount_pe.sh".format(w_node))
 
         # Make sure the reference count for dvs is 0.
@@ -1081,7 +1082,7 @@ def unload_dvs_and_lnet(args):
 
         # Unload previous COS release’s DVS and LNet services.
         install_logger.info("    Running dvs_unload")
-        output = connection.sudo("/tmp/dvs_reload_ncn -D -c ncn-personalization -p cray_dvs_unload.yml {}".format(w_xname)
+        output = connection.sudo("/tmp/dvs_reload_ncn -D -c {} -p cray_dvs_unload.yml {}".format(ncnp_cfg, w_xname)
                                      ).stdout.splitlines()
 
         # I don't think the k8s jobline not being found should be fatal.
