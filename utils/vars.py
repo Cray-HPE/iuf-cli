@@ -53,13 +53,13 @@ NCNP_VARS = "ncnp-vars.yaml"
 LOG_DEFAULT_CONSOLE_LEVEL = logging.INFO
 LOG_DEFAULT_DIR = os.path.join(os.getcwd(), "log")
 LOG_DEFAULT_FILE_LEVEL = logging.DEBUG
-LOG_DEFAULT_FILENAME = "cos_install.log"
-LOG_SESSION_FILENAME = "cos_install.{}.log".format(datetime.datetime.now().strftime("%Y%m%d%H%M%S"))
+LOG_DEFAULT_FILENAME = "install.log"
+LOG_SESSION_FILENAME = "install.{}.log".format(datetime.datetime.now().strftime("%Y%m%d%H%M%S"))
 LOG_DEFAULT_FILE_FORMAT = '%(asctime)s %(levelname)s %(message)s'
 LOG_DEFAULT_CONSOLE_FORMAT = '%(levelname)s %(message)s'
 LOG_DEFAULT_FILE_FORMAT_VERBOSE = '%(asctime)s %(levelname)s %(module)s.%(funcName)s:%(lineno)d %(message)s'
 LOG_DEFAULT_CONSOLE_FORMAT_VERBOSE = '%(levelname)s %(module)s.%(funcName)s:%(lineno)d %(message)s'
-LOG_DEFAULT_NAME = "cos_install"
+LOG_DEFAULT_NAME = "install"
 LOG_LEVELS = {
         "CRITICAL": logging.CRITICAL,
         "ERROR": logging.ERROR,
