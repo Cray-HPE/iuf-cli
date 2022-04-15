@@ -1,0 +1,423 @@
+#!/usr/bin/env python3
+
+# Copyright 2022 Hewlett Packard Enterprise Development LP
+
+
+# Note: We should be installing cos-2.3.38 or newer!  The older ones have a
+# CFS problem.
+"""The COS Installer"""
+
+import argparse
+from collections import OrderedDict
+import json
+import os
+import sys
+import yaml
+import logging
+import textwrap
+import subprocess
+import datetime
+
+from utils.vars import *
+from utils.InstallLogger import *
+
+from utils.InstallerUtils import CmdMgr
+from utils.InstallerUtils import elapsed_time
+from utils.Config import Config
+from utils.Config import InvertableArgument
+
+import utils.ShastaUpdate as main_ctrl
+
+# pylint: disable=consider-using-f-string
+
+install_logger = get_install_logger()
+
+STAGES = OrderedDict({
+    "process_product_media": {
+        "func" : main_ctrl.get_prods,
+        "description" : "Inventory and extract products in the media directory for use in subsequent stages."
+        },
+    "validate_products":  {
+        "func" : main_ctrl.validate_products,
+        "description" : "Perform product sanity checks."
+        },
+    "install_products": {
+        "func" : main_ctrl.install,
+        "description" : "Install products identified in the process_product_media stage."
+        },
+    "verify_product_import": {
+        "func" : main_ctrl.verify_product_import,
+        "description" : "Verify all product import PODS and Jobs have completed."
+        },
+    "update_working_branches": {
+        "func" : main_ctrl.update_working_branches,
+        "description" : "Update the working copy of the product configs with latest installed updates."
+        },
+    "update_ncn_config": {
+        "func" : main_ctrl.update_ncn_config,
+        "description" : "Update the NCN personalization configuration."
+        },
+    "worker_health_check": {
+        "func":  main_ctrl.worker_health_check,
+        "description": "Check the health of the workers prior to beginning NCN Personalization."
+    },
+    "ncn_personalization": {
+        "func" : main_ctrl.ncn_personalization,
+        "description" : "Perform NCN personalization."
+        },
+    "unload_dvs_and_lnet": {
+        "func" : main_ctrl.unload_dvs_and_lnet,
+        "description" : "Unload and reload the DVS and LNET modules on NCN worker nodes."
+        },
+    "check_services": {
+        "func" : main_ctrl.check_services,
+        "description" : "Check cps, dvs, lnet. and nmd services."
+        },
+    "build_cos_compute_image": {
+        "func" : main_ctrl.build_cos_compute_image,
+        "description" : "Build the COS compute image."
+        },
+    "customize_cos_compute_image": {
+        "func" : main_ctrl.customize_cos_compute_image,
+        "description" : "Customize the COS compute image."
+        },
+    "create_bos_session_template": {
+        "func" : main_ctrl.create_bos_session_template,
+        "description" : "Create a BOS session template derived from --source-bos-sessiontemplate.",
+        }
+})
+
+NOABORT_STAGES = [
+]
+
+def format_tabbed_list(alist):
+    """Format a list into text that's easier to read.  This is useful when
+    a list needs to be displayed to a user."""
+    retstr = ""
+    for elt in alist:
+        retstr += "  {}\n".format(elt)
+
+    return retstr
+
+def get_stages(long=False, all=False):
+    ret = []
+
+    longest = max(map(len, STAGES.keys()))
+
+    for stage in STAGES.keys():
+        display = STAGES[stage].get("display", True)
+        if not display and not all:
+            continue
+        stagestr = stage
+        if long:
+            description = STAGES[stage].get("description", False)
+            if description:
+                stagestr = "{stage:{width}} : {description}".format(stage=stage, width=longest, description=description)
+
+        ret.append(stagestr)
+
+    if long:
+        return format_tabbed_list(ret)
+    else:
+        return ret
+
+def validate_stages(args_dict):
+    """Validate that all of the various stage related args passed in are valid"""
+    # Do some error-handling with the stage-related args
+    stages_list = get_stages(all=True)
+    skip_stages = args_dict.get('skip_stages')
+    if skip_stages is None:
+        skip_stages = dict()
+
+    stages_formatted = get_stages(long=True)
+
+    # wait to exit until we process all the stages
+    error=False
+
+    begin_stage = args_dict.get('begin_stage')
+    if begin_stage is None:
+        begin_stage = stages_list[0]
+    end_stage = args_dict.get('end_stage')
+    if end_stage is None:
+        end_stage = stages_list[-1]
+
+    if begin_stage not in stages_list:
+        install_logger.error("invalid stage ({}) found in --begin-stage".format(begin_stage))
+        error=True
+
+    if end_stage not in stages_list:
+        install_logger.error("invalid stage ({}) found in --end-stage.".format(end_stage))
+        error=True
+
+    run_stages = args_dict.get('run_stages', None)
+    if run_stages:
+        for stage in run_stages:
+            if stage not in stages_list:
+                install_logger.error("invalid stage ({}) found in --run-stages".format(stage))
+                error=True
+
+    for sstage in skip_stages:
+        if sstage not in stages_list:
+            install_logger.error("invalid stage ({}) found in --skip-stages".format(sstage))
+            error=True
+
+    if error:
+        install_logger.error("All stages must be one of the following:\n{}".format(stages_formatted))
+        sys.exit(1)
+
+
+    # Let args_dict['run_stages'] override begin_stage and end_stage; that is,
+    # if all three were passed in, run_stages wins.  Loop against stages_list
+    # to preserve the execution order.
+    if run_stages:
+        got_first_stage = False
+        for stage in stages_list:
+            if stage in run_stages and not got_first_stage:
+                begin_stage = stage
+                end_stage = stage
+                got_first_stage = True
+            elif stage in run_stages:
+                end_stage = stage
+
+    install_logger.info("STAGE SUMMARY: begin_stage={}, end_stage={}".format(begin_stage, end_stage))
+
+    return begin_stage, end_stage
+
+def process_install(args_dict):
+    """Run the install"""
+    stages_list = get_stages(all=True)
+    skip_stages = args_dict.get('skip_stages')
+    if skip_stages is None:
+        skip_stages = dict()
+
+    begin_stage = args_dict.get('begin_stage')
+    end_stage = args_dict.get('end_stage')
+
+    begin_idx = stages_list.index(begin_stage)
+    end_idx = stages_list.index(end_stage)
+    install_logger.debug("begin_idx={}, end_idx={}, len(stages_list)={}".format(begin_idx, end_idx, len(stages_list)))
+    stages = [stages_list[i] for i in range(begin_idx, end_idx + 1) if stages_list[i] not in skip_stages]
+    install_logger.debug("stages={}".format(stages))
+    install_logger.debug("(begin,end)_idx = ({},{})".format(begin_idx, end_idx))
+    args_dict["stages"] = stages
+
+    installer_start = datetime.datetime.now()
+    for stage in stages_list:
+        if stage in stages:
+            install_logger.info("Beginning stage: {}".format(stage))
+            # a logging message using exc_info must be the very first thing called after the except
+            # block starts, so I can't make all these decisions there
+            if stage in NOABORT_STAGES:
+                log_level=LOG_LEVELS["WARNING"]
+            else:
+                log_level=LOG_LEVELS["ERROR"]
+
+            try:
+                stage_start = datetime.datetime.now()
+                STAGES[stage]["func"](args_dict)
+                install_logger.info("  stage completed in {}".format(elapsed_time(stage_start)))
+
+            except subprocess.CalledProcessError as err:
+                # if this was an unhandled, failed command, print details
+                install_logger.info("  aborting stage after {}".format(elapsed_time(stage_start)))
+                install_logger.debug("Exception while executing {}".format(stage), exc_info=True)
+                print("")
+                install_logger.critical("The following command failed while executing {}:".format(stage))
+                print("")
+                cmd = " ".join(err.cmd)
+                install_logger.error("   CMD: {}".format(cmd))
+                for item in ["stdout", "stderr", "returncode"]:
+                    if hasattr(err, item):
+                        rawmsg = str(eval("err."+item))
+                        msglines = rawmsg.splitlines()
+                        for line in msglines:
+                            if line:
+                                install_logger.error("{}: {}".format(item, line))
+                print("")
+                install_logger.info("Aborting install after {}".format(elapsed_time(installer_start)))
+                print("")
+                sys.exit(1)
+
+            except Exception as err:
+                install_logger.info("  aborting stage after {}".format(elapsed_time(stage_start)))
+                install_logger.debug("Exception while executing {}".format(stage), exc_info=True)
+                print("")
+                install_logger.critical("A '{}' error".format(err))
+                install_logger.critical("occured while executing {}".format(stage))
+
+                print("")
+                install_logger.info("Aborting install after {}".format(elapsed_time(installer_start)))
+                print("")
+                sys.exit(1)
+
+    install_logger.info("Install completed in {}".format(elapsed_time(installer_start)))
+
+def process_list(args): #pylint: disable=unused-argument
+    """Process the arguments to the list subparser"""
+    stages = get_stages(long=True)
+    print(stages)
+
+def process_debug_level(cmdline_args):
+    install_logger_file_init(verbose=cmdline_args.get("verbose", False))
+    if "level" in cmdline_args.keys() and cmdline_args["level"] != None:
+        if cmdline_args["level"] in LOG_LEVELS.keys():
+            level = LOG_LEVELS[cmdline_args["level"]]
+            install_logger_stream_init(level, cmdline_args.get("verbose", False))
+        else:
+            # when this runs we don't have a logger yet, just print and exit
+            print("ERROR: Unrecognized log level: {}".format(cmdline_args["level"]))
+            sys.exit(1)
+    else:
+        install_logger_stream_init(verbose=cmdline_args.get("verbose", False))
+
+    return
+
+def process_dryrun(cmdline_args):
+    """
+    Sets the static CmdInterface interface to "dryrun" mode
+    """
+    dryrun = cmdline_args.get("dryrun", False)
+    connection = CmdMgr.get_cmd_interface()
+    connection.dryrun = dryrun
+
+    if dryrun:
+        addLoggingLevel('DRYRUN', logging.INFO + 1)
+        install_logger.dryrun("Dryrun enabled")
+
+def main():
+    """Main entry point."""
+
+    parser = argparse.ArgumentParser(description=
+        """
+       The COS installer.
+        """
+    )
+
+    parser.add_argument("-i", "--input-file", action="store", help="""Input
+        file used to control the install.   Command line arguments will
+        override what is in the file.
+        Input file should be YAML.""")
+
+    parser.add_argument("-w", "--write-input-file", action="store_true",
+        help="""Write out a new config file to the input file specified with defaults+
+        any command line options specified and quit.""")
+
+    parser.add_argument("-s", "--state-dir", action="store",
+        help="A directory used to store the current state of stages.  Defaults to $PWD/state")
+
+    parser.add_argument("-m", "--media-dir", action="store",
+        help="Location of installation media.  Defaults to $PWD/media")
+
+    parser.add_argument("--dryrun", action=InvertableArgument, default=False,
+        help="Run without making any changes to the system to see what would happen")
+
+    parser.add_argument("-l", "--level", action="store", default='INFO',
+        help="Set the debug level to the console", choices=LOG_LEVELS.keys())
+
+    parser.add_argument("-v", "--verbose", action="store_true",
+        help="Generates more verbose messages")
+
+    # TODO: The stage-dir usage could use more verbiage. We might want to add
+    # this to the install docs.  Describing it in detail in the help section
+    # might be inappropriate.  Essentially, we need it because not all the stages
+    # are fully independent; for example, we have an unpack stage, and an
+    # install stage.  The install stage needs to install what was unpacked.
+
+    subparsers = parser.add_subparsers(title="subcommands")
+    stage_list = get_stages(long=True)
+
+    install_sp = subparsers.add_parser("install", epilog="Valid stages:\n{}".format(stage_list), formatter_class=argparse.RawDescriptionHelpFormatter)
+
+    install_sp.add_argument("-b", "--begin-stage", action="store",
+        help="The first stage to execute")
+
+    install_sp.add_argument("-e", "--end-stage", action="store",
+        help="The last stage to execute")
+
+    install_sp.add_argument("-r", "--run-stages", nargs="+", action="store",
+        help="Run only the specified stages")
+
+    install_sp.add_argument("-s", "--skip-stages", nargs="+", action="store",
+        help="Skip the execution of the specified stages.")
+
+    install_sp.add_argument("-t", "--source-bos-sessiontemplate", action="store",
+        help="BOS template to start from when booting COS")
+
+    install_sp.add_argument("-crn", "--cos-recipe-name", action="store",
+        help="The name of the recipe to build the COS compute image")
+
+    install_sp.add_argument("-ncnp", "--ncn-personalization", action="store",
+        default="ncn-personalization",
+        help="The name of the ncn personalization config to update.  Defaults to 'ncn-personalization'")
+
+    install_sp.add_argument("-wn", "--worker-nodes", action="store",
+        help="Override worker list used in DVS reload stage to assist with repairing broken nodes.  Can be a regular expression or text string.")
+
+    install_sp.set_defaults(func=process_install, skip_stages=list(), run_stages=list())
+
+    list_sp = subparsers.add_parser("list-stages", aliases=["ls"])
+    list_sp.set_defaults(func=process_list)
+
+    # create a config object to store all of the configured options in the parser
+    config = Config()
+    config.load_parser_defaults(parser)
+
+    # parse the arguments once to get input file
+    tmp_args = parser.parse_args()
+
+    # load any defaults from the input file
+    config.set_defaults(parser,vars(tmp_args))
+
+    # parse the command line for real
+    args = parser.parse_args()
+
+    # Convert the args to a dict, and use that rather than the argparse
+    # object.  This is so that we have a dictionary of all options, so that
+    # we can more easily determine which values can be passed via an input
+    # deck.
+    args_dict = vars(args)
+
+    if args_dict["media_dir"] is None:
+        media_default = os.path.join(os.getcwd(), "media")
+        args_dict["media_dir"] = media_default
+        if not os.path.exists(media_default):
+            os.mkdir(media_default)
+
+    if args_dict["state_dir"] is None:
+        state_default = os.path.join(os.getcwd(), "state")
+        args_dict["state_dir"] = state_default
+        if not os.path.exists(state_default):
+            os.mkdir(state_default)
+
+    process_debug_level(args_dict)
+    process_dryrun(args_dict)
+    install_logger.debug(args_dict)
+
+    if len(sys.argv) < 2:
+        install_logger.error("{} requires at least 1 argument".format(sys.argv[0]))
+        parser.print_help(sys.stderr)
+        sys.exit(1)
+
+    # some sanity testing
+    if not os.path.exists(args_dict["media_dir"]):
+        install_logger.error("Media directory {} does not exist.".format(args_dict["media_dir"]))
+        sys.exit(1)
+
+    if not os.path.exists(args_dict["state_dir"]):
+        install_logger.error("State directory {} does not exist.".format(args_dict["state_dir"]))
+        sys.exit(1)
+
+    # stage sanity testing.  Don't do this unless we're in the install section
+    if "begin_stage" in args_dict:
+        args_dict['begin_stage'], args_dict['end_stage'] = validate_stages(args_dict)
+
+    if args_dict["write_input_file"]:
+        config.write(args_dict)
+
+    try:
+        args.func(args_dict)
+    except AttributeError:
+        install_logger.error("A subcommand was not specified.")
+        sys.exit(1)
+if __name__ == "__main__":
+    main()
