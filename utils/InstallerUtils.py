@@ -868,8 +868,8 @@ def get_products( connection,
     # since media_dir defaults to PWD, let's just ignore
     # installer files
     SKIP_FILES=[
-        "cos_install",
-        "cos_install.log",
+        "cne-install",
+        "install.log",
         "utils",
         "location_dict.yaml"
         ]
@@ -992,7 +992,7 @@ def get_products( connection,
             install_logger.debug('setting archive to {}'.format(item))
 
         for prefix in prefixes:
-            if item.startswith(prefix) and item not in ['cos_install', 'cos_install.log']:
+            if item.startswith(prefix) and item not in ['cne-install', 'install.log']:
                 product_type = prefixes[prefix]
                 products[item_name]['product'] = product_type
                 install_logger.debug('prefix match found {}'.format(prefixes[prefix]))

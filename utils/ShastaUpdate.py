@@ -773,10 +773,9 @@ def build_cos_compute_image(args): #pylint: disable=unused-argument
 
     with open(local_config_path, 'w', encoding='UTF-8') as fhandle:
         json.dump(curr_config, fhandle)
-    connection.put(local_config_path, "/root{}".format(config_file))
 
     # Update Configuration Framework Service (CFS) Session With New COS Configuration.
-    connection.sudo("cray cfs configurations update cos-config-{}-nogpu-integration --file /root/{} --format json".format(cos_version, config_file))
+    connection.sudo("cray cfs configurations update cos-config-{}-nogpu-integration --file {} --format json".format(cos_version, local_config_path))
 
     recipe_list = json.loads(connection.sudo("cray ims recipes list --format json").stdout)
     recipes = [r for r in recipe_list if r['name'] == cos_recipe_name]
