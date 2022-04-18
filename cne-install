@@ -165,7 +165,6 @@ def validate_stages(args_dict):
         install_logger.error("All stages must be one of the following:\n{}".format(stages_formatted))
         sys.exit(1)
 
-
     # Let args_dict['run_stages'] override begin_stage and end_stage; that is,
     # if all three were passed in, run_stages wins.  Loop against stages_list
     # to preserve the execution order.
@@ -179,19 +178,10 @@ def validate_stages(args_dict):
             elif stage in run_stages:
                 end_stage = stage
 
-    install_logger.info("STAGE SUMMARY: begin_stage={}, end_stage={}".format(begin_stage, end_stage))
-
-    return begin_stage, end_stage
-
-def process_install(args_dict):
-    """Run the install"""
-    stages_list = get_stages(all=True)
+    # Determine which stages. to run or skip.
     skip_stages = args_dict.get('skip_stages')
     if skip_stages is None:
         skip_stages = dict()
-
-    begin_stage = args_dict.get('begin_stage')
-    end_stage = args_dict.get('end_stage')
 
     begin_idx = stages_list.index(begin_stage)
     end_idx = stages_list.index(end_stage)
@@ -200,6 +190,29 @@ def process_install(args_dict):
     install_logger.debug("stages={}".format(stages))
     install_logger.debug("(begin,end)_idx = ({},{})".format(begin_idx, end_idx))
     args_dict["stages"] = stages
+    install_logger.info("STAGE SUMMARY: begin_stage={}, end_stage={}".format(begin_stage, end_stage))
+
+    # Ensure BOS_INFO_FILE exists.
+    bos_file = os.path.join(main_ctrl.get_dirs(args_dict, "state"), BOS_INFO_FILENAME)
+    if not os.path.exists(bos_file):
+        msg = utils.formatted("""
+        WARNING: the bos information file {} does not exist.  Cannot boot COS.
+        """.format(bos_file))
+        raise COSProblem(msg)
+
+    if "source_bos_sessiontemplate" not in args_dict and "create_bos_session_template" in stages:
+        msg = utils.formatted("""
+            When creating a bos session template,  a source bos sessiontemplate
+            (-t or --source-bos-sessiontemplate) is required""")
+        raise COSProblem(msg)
+
+    return
+
+
+def process_install(args_dict):
+    """Run the install"""
+    stages_list = get_stages(all=True)
+    stages = args_dict["stages"]
 
     installer_start = datetime.datetime.now()
     for stage in stages_list:
@@ -252,10 +265,12 @@ def process_install(args_dict):
 
     install_logger.info("Install completed in {}".format(elapsed_time(installer_start)))
 
+
 def process_list(args): #pylint: disable=unused-argument
     """Process the arguments to the list subparser"""
     stages = get_stages(long=True)
     print(stages)
+
 
 def process_debug_level(cmdline_args):
     install_logger_file_init(verbose=cmdline_args.get("verbose", False))
@@ -271,6 +286,7 @@ def process_debug_level(cmdline_args):
         install_logger_stream_init(verbose=cmdline_args.get("verbose", False))
 
     return
+
 
 def process_dryrun(cmdline_args):
     """
@@ -377,6 +393,9 @@ def main():
     # deck.
     args_dict = vars(args)
 
+    # Set up the media and state directories.  This needs to be done prior
+    # to any real processing, since most of the functionality is dependent on
+    # them.
     if args_dict["media_dir"] is None:
         media_default = os.path.join(os.getcwd(), "media")
         args_dict["media_dir"] = media_default
@@ -407,9 +426,7 @@ def main():
         install_logger.error("State directory {} does not exist.".format(args_dict["state_dir"]))
         sys.exit(1)
 
-    # stage sanity testing.  Don't do this unless we're in the install section
-    if "begin_stage" in args_dict:
-        args_dict['begin_stage'], args_dict['end_stage'] = validate_stages(args_dict)
+    validate_stages(args_dict)
 
     if args_dict["write_input_file"]:
         config.write(args_dict)

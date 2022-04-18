@@ -791,9 +791,10 @@ def build_cos_compute_image(args): #pylint: disable=unused-argument
 
     created_public_keys = json.loads(connection.sudo("cray ims public-keys list --format json").stdout)
     ci_public_key_list = [k for k in created_public_keys if k["name"] == "ci_public_key"]
+    rsa_pub = os.path.join(os.path.expanduser("~"), ".ssh", "id_rsa.pub")
     if len(ci_public_key_list) <= 0:
-        pkey_dict = json.loads(connection.sudo('cray ims public-keys create --name "ci_public_key" --format json --public-key  ~/.ssh/id_rsa.pub').stdout)
-        public_key = pkey_dict["public_key"]
+        pkey_dict = json.loads(connection.sudo('cray ims public-keys create --name "ci_public_key" --format json --public-key {}'.format(rsa_pub)).stdout)
+        public_key = pkey_dict["id"]
     else:
         public_key = ci_public_key_list[0]
     ims_public_key_id = public_key['id']
@@ -1186,21 +1187,9 @@ def unload_dvs_and_lnet(args):
 def create_bos_session_template(args):
     # load the image id information
     bos_file = os.path.join(get_dirs(args, "state"), BOS_INFO_FILENAME)
-    if not os.path.exists(bos_file):
-        msg = utils.formatted("""
-        WARNING: the bos information file {} does not exist.  Cannot boot COS.
-        """.format(bos_file))
-        raise COSProblem(msg)
-    
     with open(bos_file, 'r', encoding='UTF-8') as bos_fh:
         bos_info = json.load(bos_fh)
 
-    if "source_bos_sessiontemplate" not in args:
-        msg = utils.formatted("""
-            When booting the compute nodes, a bos sessiontemplate
-            (-t or --source-bos-sessiontemplate) is required""")
-        raise COSProblem(msg)
-    
     install_logger.debug("found source_bos_sessiontemplate in args")
     source_template_name = args["source_bos_sessiontemplate"]
 
