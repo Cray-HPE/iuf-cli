@@ -125,19 +125,32 @@ def validate_stages(args_dict):
     """Validate that all of the various stage related args passed in are valid"""
     # Do some error-handling with the stage-related args
     stages_list = get_stages(all=True)
-    skip_stages = args_dict.get('skip_stages')
-    if skip_stages is None:
-        skip_stages = dict()
-
     stages_formatted = get_stages(long=True)
+
+    # load all of the stage variables
+    begin_stage = args_dict.get('begin_stage')
+    end_stage = args_dict.get('end_stage')
+    run_stages = args_dict.get('run_stages')
+    skip_stages = args_dict.get('skip_stages')
 
     # wait to exit until we process all the stages
     error=False
 
-    begin_stage = args_dict.get('begin_stage')
+    # if they've specified begin or end along with run_stages, we no longer have any idea
+    # what they're talking about.  Don't allow it.
+    if begin_stage is not None or end_stage is not None:
+        if run_stages:
+            install_logger.error("argument -r/--run-stages: not allowed with -b/--begin-stage or -e/--end-stage")
+            error=True
+
+    # run and skip at the same time is equally nonsensical
+    if run_stages and skip_stages:
+        install_logger.error("argument -r/--run-stages: not allowed with -s/--skip-stages")
+        error=True
+
     if begin_stage is None:
         begin_stage = stages_list[0]
-    end_stage = args_dict.get('end_stage')
+
     if end_stage is None:
         end_stage = stages_list[-1]
 
@@ -149,7 +162,6 @@ def validate_stages(args_dict):
         install_logger.error("invalid stage ({}) found in --end-stage.".format(end_stage))
         error=True
 
-    run_stages = args_dict.get('run_stages', None)
     if run_stages:
         for stage in run_stages:
             if stage not in stages_list:
@@ -161,8 +173,9 @@ def validate_stages(args_dict):
             install_logger.error("invalid stage ({}) found in --skip-stages".format(sstage))
             error=True
 
+    # don't need to log the help information, just print and exit
     if error:
-        install_logger.error("All stages must be one of the following:\n{}".format(stages_formatted))
+        print("\nAll stages must be one of the following:\n{}".format(stages_formatted))
         sys.exit(1)
 
 
