@@ -13,6 +13,7 @@ import re
 import stat
 import sys
 import time
+import jinja2
 
 from pprint import pformat
 
@@ -348,6 +349,7 @@ def update_working_branches(args):
 
             import_branch = location_dict[product]['import_branch']
             product_name = location_dict[product]['product']
+
             if location_dict[product]['import_version']:
                 prod_version = location_dict[product]['import_version']
             else:
@@ -355,11 +357,20 @@ def update_working_branches(args):
             repo = repos[product_name]
             cos_checkout_dir = git.clone(repo)
 
-            # second, see what branches we want to work with
-            _, integration_branch = current_repo_branch(args, repo, prod_version)
+            integration_branch = None
+            if "working_branch" in args:
+                if args["working_branch"]:
+                    integration_branch = render_jinja(args, product, args["working_branch"])
+                    install_logger.debug("using passed working branch {}".format(integration_branch))
 
-            if integration_branch is None:
-                raise UnexpectedState("ERROR: Could not determine {} branch".format(product))
+            if not integration_branch:
+                # second, see what branches we want to work with
+                install_logger.warning("  Using branch auto-lookup!  Use of --working-branch recommended!")
+
+                _, integration_branch = current_repo_branch(args, repo, prod_version)
+
+            if not integration_branch:
+                raise UnexpectedState("Could not determine working branch for product {}".format(product))
 
             # check out a local copy of the import_branch (release version)
             git.checkout(repo, import_branch)
@@ -1384,3 +1395,67 @@ def validate_products(args):
 
     else:
         install_logger.warning('  Cannot validate {} versions of COS, skipping validation check'.format(num_cos_products))
+
+
+def render_jinja(args, product_key=None, jinja_string=None):
+    """
+    render jinja2 string
+    """
+
+    install_logger.debug("jinja_string='{}'".format(jinja_string))
+
+    # we need the location_dict to lookup up information about the product
+    location_dict = utils.get_product_catalog(connection, load_prods(args))
+
+    try:
+        product = location_dict[product_key]
+        product_type = product["product"]
+
+        # try to figure the "best" version to consider the "full"
+        # version
+        if product["import_version"]:
+            version_full = product["import_version"]
+        elif product["product_version"]:
+            version_full = product["product_version"]
+        else:
+            version_full = product["version"]
+
+        # derive a strict x.y.z version from our full version
+        x = y = z = 0
+        version_list = version_full.split(".")
+        try:
+            x = version_list[0].split("-")[0]
+            y = version_list[1].split("-")[0]
+            z = version_list[2].split("-")[0]
+        except InstallError:
+            pass
+
+        version_x_y = "{}.{}".format(x, y)
+        version_x_y_z = "{}.{}.{}".format(x, y, z)
+
+        install_logger.debug("AVAIL JINJA2 VARS")
+        install_logger.debug("  product_key = {}".format(product_key))
+        install_logger.debug("  product_type = {}".format(product_type))
+        install_logger.debug("  version_full = {}".format(version_full))
+        install_logger.debug("  version_x_y = {}".format(version_x_y))
+        install_logger.debug("  version_x_y_z = {}".format(version_x_y_z))
+
+        t = jinja2.Template(jinja_string, undefined=jinja2.StrictUndefined)
+
+        rendered_string = t.render(
+            product_key=product_key,
+            product_type=product_type,
+            version_full=version_full,
+            version_x_y=version_x_y,
+            version_x_y_z=version_x_y_z
+            )
+
+        install_logger.debug("rendered_string='{}'".format(rendered_string))
+
+        return rendered_string
+
+    except Exception as err:
+
+        install_logger.debug("encountered {} when rendering jinja".format(err))
+        install_logger.error("Couldn't perform subsitutions in '{}' for product '{}'!".format(jinja_string, product_key))
+        raise InstallError("Please check your --working-branch value")
