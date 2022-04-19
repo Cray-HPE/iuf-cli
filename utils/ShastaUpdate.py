@@ -687,7 +687,7 @@ def customize_cos_compute_image(args):
         if session_name not in existing_sessions:
             break
 
-    configuration_name = "cos-{}-nogpu-integration".format(cos_version)
+    configuration_name = args.get("cfs_config")
     install_logger.debug("(customize_cos_compute_image)session_name={}, cos_version={}, configuration_name={}".format(
         session_name, cos_version, configuration_name))
     install_logger.info("  Customizing image with CFS configuration {}".format(configuration_name))
@@ -762,12 +762,12 @@ def build_cos_compute_image(args): #pylint: disable=unused-argument
         raise COSProblem("WARNING: Could not determine COS branch, so cannot build a compute image")
 
     # Update the configuration.
-    config_file = "cos-config-{}-nogpu-integration.json".format(cos_version)
+    config_file = "cos-config-{}.json".format(cos_version)
     local_config_path = os.path.join(get_dirs(args, "state"), config_file)
+    cfs_config = args.get("cfs_config")
 
     # Retrieve And Modify An Existing Configuration For COS.
     errout = connection.sudo("cray cfs configurations describe {} --format json".format(intbranch))
-    install_logger.debug("out={}, err={}".format(errout.stdout, errout.stderr))
     curr_config = json.loads(errout.stdout)
     curr_config = update_cfs_commits(args, curr_config)
 
@@ -775,7 +775,7 @@ def build_cos_compute_image(args): #pylint: disable=unused-argument
         json.dump(curr_config, fhandle)
 
     # Update Configuration Framework Service (CFS) Session With New COS Configuration.
-    connection.sudo("cray cfs configurations update cos-config-{}-nogpu-integration --file {} --format json".format(cos_version, local_config_path))
+    connection.sudo("cray cfs configurations update {} --file {} --format json".format(cfs_config, local_config_path))
 
     recipe_list = json.loads(connection.sudo("cray ims recipes list --format json").stdout)
     recipes = [r for r in recipe_list if r['name'] == cos_recipe_name]
@@ -790,13 +790,13 @@ def build_cos_compute_image(args): #pylint: disable=unused-argument
     ims_recipe_id = recipes[0]['id']
 
     created_public_keys = json.loads(connection.sudo("cray ims public-keys list --format json").stdout)
-    ci_public_key_list = [k for k in created_public_keys if k["name"] == "ci_public_key"]
+    inst_pkey_list = [k for k in created_public_keys if k["name"] == "installer_public_key"]
     rsa_pub = os.path.join(os.path.expanduser("~"), ".ssh", "id_rsa.pub")
-    if len(ci_public_key_list) <= 0:
-        pkey_dict = json.loads(connection.sudo('cray ims public-keys create --name "ci_public_key" --format json --public-key {}'.format(rsa_pub)).stdout)
-        public_key = pkey_dict["id"]
+    if len(inst_pkey_list) <= 0:
+        pkey_dict = json.loads(connection.sudo('cray ims public-keys create --name "installer_public_key" --format json --public-key {}'.format(rsa_pub)).stdout)
+        public_key = pkey_dict
     else:
-        public_key = ci_public_key_list[0]
+        public_key = inst_pkey_list[0]
     ims_public_key_id = public_key['id']
 
     install_logger.info("  Creating image from recipe {} id {}".format(cos_recipe_name, ims_recipe_id))
@@ -1185,8 +1185,17 @@ def unload_dvs_and_lnet(args):
 
 
 def create_bos_session_template(args):
-    # load the image id information
+    """Create a BOS Session Template."""
+
+    # Ensure BOS_INFO_FILE exists.
     bos_file = os.path.join(get_dirs(args, "state"), BOS_INFO_FILENAME)
+    if not os.path.exists(bos_file):
+        msg = formatted("""
+        WARNING: the bos information file {} does not exist.  Cannot boot COS.
+        """.format(bos_file))
+        raise COSProblem(msg)
+
+    # load the image id information
     with open(bos_file, 'r', encoding='UTF-8') as bos_fh:
         bos_info = json.load(bos_fh)
 
@@ -1199,6 +1208,7 @@ def create_bos_session_template(args):
     working_template.pop('name')
     working_template["boot_sets"]["compute"]["etag"] = bos_info["etag"]
     working_template["boot_sets"]["compute"]["path"] = "s3://boot-images/{}/manifest.json".format(bos_info["image_id"])
+    working_template["cfs"]["configuration"] = args.get("cfs_config")
 
     bos_session_file = os.path.join(get_dirs(args, "state"), BOS_SESSIONTEMPLATE_FILENAME)
 
