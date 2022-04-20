@@ -89,7 +89,7 @@ def get_hosts(connection, host_str):
     Get hosts matching a string or regular expression; for example
     'get_hosts(connection, "ncn-w")' will get all worker nodes.
     """
-    sat_stat = json.loads(connection.sudo("sat status --format json").stdout)
+    sat_stat = json.loads(connection.sudo("sat status --format json", dryrun=False).stdout)
     hosts = []
 
     def ncn_sort(tup):
@@ -99,6 +99,8 @@ def get_hosts(connection, host_str):
     for elt in sat_stat:
         if  re.match(host_re, elt["xname"]) or re.match(host_re, elt["Aliases"]):
             hosts.append((elt["xname"], elt["Aliases"]))
+
+    install_logger.debug("Found hosts matching {}: {}".format(host_str, hosts))
 
     return sorted(hosts, key=ncn_sort)
 

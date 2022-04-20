@@ -277,20 +277,26 @@ def verify_product_import(args): #pylint: disable=unused-argument
 
 def check_services(args): #pylint: disable=unused-argument
     """Check the cps and nmd services.  Also check dvs and lnet"""
-    services = connection.sudo('kubectl  --kubeconfig=/etc/kubernetes/admin.conf get pods -A').stdout.splitlines()
+    services = connection.sudo('kubectl  --kubeconfig=/etc/kubernetes/admin.conf get pods -A', dryrun=False).stdout.splitlines()
     services = [s for s in services if 'nmd' in s or 'cray-cps' in s]
+    fatal = False
+    dryrun = args.get("dryrun")
 
     for service in services:
         service_list = service.split()
         name, status = service_list[1], service_list[3]
         if not status.lower() in ["running", "completed"]:
-            install_logger.warning("WARNING: service {} is not ready.  It's status is:\n\t{}".format(name, service))
+            install_logger.error("Service {} is not ready, status is:\n\t{}".format(name, service))
+            fatal = True
 
-    w_ncn_tuples = utils.get_hosts(connection, 'w0')
+    w_ncn_tuples = utils.get_hosts(connection, 'ncn-w')
     w_ncns = [w[1] for w in w_ncn_tuples]
 
     for node in w_ncns:
-        all_lines = connection.sudo("ssh {} lsmod".format(node)).stdout.splitlines()
+        if dryrun:
+            all_lines = ["dvs","lnet"]
+        else:
+            all_lines = connection.sudo("ssh {} lsmod".format(node)).stdout.splitlines()
 
         modules = [line.split()[0].strip() for line in all_lines]
 
@@ -306,11 +312,17 @@ def check_services(args): #pylint: disable=unused-argument
                 break
 
         if not found_dvs:
-            install_logger.warning("dvs not found in kernel modules on node {}!".format(node))
+            install_logger.error("DVS not found in kernel modules on node {}!".format(node))
+            fatal = True
 
         if not found_lnet:
-            install_logger.warning("lnet not found in kernel modules on node {}!".format(node))
+            install_logger.error("lnet not found in kernel modules on node {}!".format(node))
+            fatal = True
 
+    if fatal:
+        raise UnexpectedState("One or more required services are unavailable.")
+    else:
+        install_logger.info("DVS, lnet, cps, and nmd services are available on all worker nodes.")
 
 def get_mergeable_repos(args):
 
