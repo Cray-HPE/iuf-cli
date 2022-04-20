@@ -2,10 +2,7 @@
 
 # Copyright 2022 Hewlett Packard Enterprise Development LP
 
-
-# Note: We should be installing cos-2.3.38 or newer!  The older ones have a
-# CFS problem.
-"""The COS Installer"""
+"""The Compute Node Environment (CNE) Installer"""
 
 import argparse
 from collections import OrderedDict
@@ -51,11 +48,15 @@ STAGES = OrderedDict({
         },
     "update_working_branches": {
         "func" : main_ctrl.update_working_branches,
-        "description" : "Update the working copy of the product configs with latest installed updates."
+        "description" : """Update config managment branches identified by --working-branch with the product
+                                release branch content for each product being installed that contains a
+                                config management repo.  See help for --working-branch for details on
+                                setting the working branch."""
         },
     "update_ncn_config": {
         "func" : main_ctrl.update_ncn_config,
-        "description" : "Update the NCN personalization configuration."
+        "description" : """Update the NCN personalization configuration.  Defaults to 'ncn-personalization',
+                                use --ncn-personalization to over-ride."""
         },
     "worker_health_check": {
         "func":  main_ctrl.worker_health_check,
@@ -67,11 +68,11 @@ STAGES = OrderedDict({
         },
     "unload_dvs_and_lnet": {
         "func" : main_ctrl.unload_dvs_and_lnet,
-        "description" : "Unload and reload the DVS and LNET modules on NCN worker nodes."
+        "description" : "Perform a rolling unload, upgrade and reload of DVS and LNET on worker nodes."
         },
     "check_services": {
         "func" : main_ctrl.check_services,
-        "description" : "Check cps, dvs, lnet. and nmd services."
+        "description" : "Check CPS, DVS, LNET. and NMD services."
         },
     "build_cos_compute_image": {
         "func" : main_ctrl.build_cos_compute_image,
@@ -302,7 +303,7 @@ def main():
 
     parser = argparse.ArgumentParser(description=
         """
-       The COS installer.
+       The Compute Node Environment (CNE) installer.
         """
     )
 
@@ -319,7 +320,7 @@ def main():
         help="A directory used to store the current state of stages.  Defaults to $PWD/state")
 
     parser.add_argument("-m", "--media-dir", action="store",
-        help="Location of installation media.  Defaults to $PWD/media")
+        help="Location of installation media you would like to install.  Defaults to $PWD/media")
 
     parser.add_argument("--dryrun", action=InvertableArgument, default=False,
         help="Run without making any changes to the system to see what would happen")
@@ -339,7 +340,8 @@ def main():
     subparsers = parser.add_subparsers(title="subcommands")
     stage_list = get_stages(long=True)
 
-    install_sp = subparsers.add_parser("install", epilog="Valid stages:\n{}".format(stage_list), formatter_class=argparse.RawDescriptionHelpFormatter)
+    install_sp = subparsers.add_parser("install", epilog="Valid stages:\n{}".format(stage_list),
+        formatter_class=argparse.RawTextHelpFormatter)
 
     install_sp.add_argument("-b", "--begin-stage", action="store",
         help="The first stage to execute")
@@ -353,6 +355,36 @@ def main():
     install_sp.add_argument("-s", "--skip-stages", nargs="+", action="store",
         help="Skip the execution of the specified stages.")
 
+    install_sp.add_argument("-B", "--working-branch", action="store",
+        help="""String representing the working branch in each product config
+management repo that the product release branch will be merged to.
+
+The following substitutions may be used:
+
+    {{product_key}}    Product name + version formatted per distribution media
+                       ex: slingshot-host-software-1.7.1-32-cos-2.2
+    {{product_type}}   Type of product.
+                       ex: 'cos', 'slingshot-host-software', 'sles'
+    {{version_full}}   Full product version as it appears in the product catalog.
+                       ex: 1.7.1-32-1.0.19
+    {{version_x_y_z}}  x.y.z version of the product
+    {{version_x_y}}    x.y version of the product
+
+For example, if the following value was used for COS 2.2.93 and SHS 1.7.1:
+
+    --working-branch '{{product_type}}-{{version_x_y_z}}-integration'
+
+Then the following would be the branches used:
+
+    For COS: 'cos-2.2.93-integration'
+    For SHS: 'slingshot-host-software-1.7.1-integration'
+
+As a result, the update_working_branches stage would perform the following merges:
+
+    cray/cos/2.2.93 --> cos-2.2.93-integration
+    cray/slingshot-host-software/1.7.1 --> slingshot-host-software-1.7.1-integration
+        """)
+
     install_sp.add_argument("-t", "--source-bos-sessiontemplate", action="store",
         help="BOS template to start from when booting COS")
 
@@ -364,7 +396,11 @@ def main():
         help="The name of the ncn personalization config to update.  Defaults to 'ncn-personalization'")
 
     install_sp.add_argument("-wn", "--worker-nodes", action="store",
-        help="Override worker list used in DVS reload stage to assist with repairing broken nodes.  Can be a regular expression or text string.")
+        help="""Override worker list used in DVS reload stage to assist with repairing broken nodes.
+Can be a regular expression or text string.
+For example, --worker-nodes ncn-w003 would cause the ncn_personalization stage to only
+reload ncn-w003.
+""")
 
     install_sp.set_defaults(func=process_install, skip_stages=list(), run_stages=list())
 
