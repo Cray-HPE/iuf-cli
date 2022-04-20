@@ -200,22 +200,19 @@ def validate_stages(args_dict):
             (-t or --source-bos-sessiontemplate) is required""")
         raise COSProblem(msg)
     elif "source_bos_sessiontemplate" in args_dict and args_dict["source_bos_sessiontemplate"]:
-        install_logger.debug("in elif 1...")
-
         bos_template = json.loads(main_ctrl.connection.sudo("cray bos sessiontemplate describe {} --format json".format(
             args_dict["source_bos_sessiontemplate"])).stdout)
         bos_cfs_config_name = bos_template["cfs"]["configuration"]
-        install_logger.debug("bos_cfs_config_name={}".format(bos_cfs_config_name))
 
         if "cfs_config" not in args_dict or args_dict["cfs_config"] is None:
-            install_logger.debug("in if 2...")
             args_dict["cfs_config"] = bos_cfs_config_name
         elif "cfs_config" in args_dict and args_dict["cfs_config"] is not None:
-            install_logger.debug("in elif 2 ...")
             if args_dict["cfs_config"] != bos_cfs_config_name:
                 msg = formatted("""
-                    The cfs-config argument passed in ({}) differs from the
-                    one found in the bos sessiontemplate ({}).  The one found in {} was {}""".format(
+                    The cfs-config argument passed in ({}) will be used in
+                    image building and creating the bos  sessiontemplate.
+                    This differs from the one found in the bos
+                    sessiontemplate ({}).  The one found in {} was {}""".format(
                     args_dict["cfs_config"],
                     args_dict["source_bos_sessiontemplate"],
                     args_dict["source_bos_sessiontemplate"],

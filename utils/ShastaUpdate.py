@@ -1190,7 +1190,7 @@ def create_bos_session_template(args):
     # Ensure BOS_INFO_FILE exists.
     bos_file = os.path.join(get_dirs(args, "state"), BOS_INFO_FILENAME)
     if not os.path.exists(bos_file):
-        msg = formatted("""
+        msg = utils.formatted("""
         WARNING: the bos information file {} does not exist.  Cannot boot COS.
         """.format(bos_file))
         raise COSProblem(msg)
