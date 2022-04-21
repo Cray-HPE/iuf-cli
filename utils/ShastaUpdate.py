@@ -210,16 +210,28 @@ def verify_product_import(args): #pylint: disable=unused-argument
     in this context.
     """
 
-    time_to_wait = 60 * 20 # Wait 20 minutes.
-    total_time = 0
-    sleep_time = 10
-    alert_time = 60
-
     get_jobs_cmd = "kubectl --kubeconfig=/etc/kubernetes/admin.conf get jobs -A"
     get_pods_cmd = "kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods -A"
 
+    # When we track the jobs running we will only classify them "Running" or "Completed"
+    jobs_running = {"Completed":[], "Running":[]}
+    # The pods could be in a number of various states, but these are the states we know/care about most
+    # If the pod is in another state, it will be added to the dict later
+    pods_running = {"Completed":[], "Running":[], "Error":[]}  
+
+    total_seconds = 0
+    timeout_seconds = 1200
+    sleep_seconds = 10
+    alert_freq = 6
+    alert_count = 0
+
+    start_time = datetime.datetime.now()
+
     while True:
 
+        finished = True        
+
+        # Initailly we're gatering a superset of the jobs/pods to monitor
         jobs_list = connection.sudo(get_jobs_cmd).stdout.splitlines()
         jobs_list = [job for job in jobs_list if 'import' in job]
 
@@ -229,50 +241,113 @@ def verify_product_import(args): #pylint: disable=unused-argument
         if args['dryrun']:
             return
 
-        if not (jobs_list or pods_list):
-            msg = "Cannot find any related pods or jobs to monitor."
-            raise Exception(msg)
+        # Reset these dicts every loop, since we only care about the current state
+        jobs_running = {"Completed":[], "Running":[]}
+        pods_running = {"Completed":[], "Running":[], "Error":[]}
 
-        jobs_not_running = []
-        pods_not_running = []
-
+        # Here we loop through the superset of jobs, and narrow down the list of jobs
+        # by checking the job name field specifically. The jobs are either considered
+        # "Completed or "Running" based on the "Completions" column. 
+        # e.g. 0/2 or 1/2 are considered "Running" and 2/2 is considered "Completed"
         for job in jobs_list:
             fields = job.split()
             job_name = fields[1]
             if 'config-import' in job_name or 'recipe-import' in job_name:
                 completions = fields[2]
                 if not is_ready(completions):
-                    install_logger.debug("found the following job --not-- running:{}".format(fields))
-                    jobs_not_running.append(job_name)
+                    jobs_running["Running"] += [job_name]
+                    finished = False
+                else:
+                    jobs_running["Completed"] += [job_name]
 
+        # Pods can be in any number of states, but we will consider any pod that is "Completed"
+        # or "Error" to be finsished running. Pods in other states will be waited for, until
+        # the timeout expires
         for pod in pods_list:
             fields = pod.split()
             pod_name = fields[1]
             if 'config-import' in pod_name or 'recipe-import' in pod_name:
-                if not 'completed' in fields[3].lower():
-                    install_logger.debug("found the following pod --not-- running:{}".format(fields))
-                    pods_not_running.append(pod_name)
+                pod_state = fields[3]
+                if pod_state not in pods_running.keys():
+                    pods_running[pod_state] = []
+                if pod_state != "Completed" and pod_state != "Error":
+                    finished = False
+                pods_running[pod_state] += [pod_name]
 
-        if jobs_not_running or pods_not_running:
-            install_logger.debug("jobs_not_running={} ==> sleep".format(jobs_not_running))
-            install_logger.debug("pods_not_running={} ==> sleep".format(pods_not_running))
-            if total_time % alert_time == 0:
-                install_logger.info("  Waiting for {} outstanding import jobs out of {} and {} outstanding import pods out of {}".format(
-                                     len(jobs_not_running), len(jobs_list),
-                                     len(pods_not_running), len(pods_list)))
-            total_time+=sleep_time
-            time.sleep(sleep_time)
-        else:
-            install_logger.info("  Finished waiting for {} import jobs and {} import pods".format(
-                                     len(jobs_list),
-                                     len(pods_list)))
+        total_seconds = int((datetime.datetime.now() - start_time).total_seconds())
+
+        # Exit the loop if any of the following are true:
+        # - All the jobs are "Completed" and all of the pods are in "Completed" or "Error" states
+        # - There were no jobs/pods found to begin with
+        # - the timeout has expired.
+        if finished or total_seconds > timeout_seconds:
             break
 
-        if total_time > time_to_wait:
-            msg = utils.formatted("""
-                WARNING: the following job/pods have not completed booting: {}/{}
-                """.format(','.join(jobs_not_running), ','.join(pods_not_running)))
-            raise TimeOut(msg)
+        # Send info to the user every alert_freq number of loops
+        # Only show them jobs and pods that haven't finished yet.
+        if alert_count % alert_freq == 0:
+            # Count all the import jobs and figure out how many are running
+            total_jobs_count = len(jobs_running["Running"]) + len(jobs_running["Completed"])
+            jobs_running_count = len(jobs_running["Running"])
+            msg = "    Waiting for {} of {} jobs".format(jobs_running_count, total_jobs_count)
+            install_logger.info(msg)
+            for job_name in jobs_running["Running"]:
+                msg = "        {} {:.>32}".format(job_name, "Running")
+                install_logger.info(msg)
+
+            # Count all the import pods and figure out how many are running
+            total_pods_count = sum([len(v) for v in pods_running.values()])
+            pods_running_count = total_pods_count - len(pods_running["Completed"]) - len(pods_running["Error"])
+            msg = "    Waiting for {} of {} pods".format(pods_running_count, total_pods_count)
+            install_logger.info(msg)
+            for pod_state, pod_names in pods_running.items():
+                if pod_state == "Completed":
+                    continue
+                for pod_name in pod_names:
+                    msg = "        {} {:.>32}".format(pod_name, pod_state)
+                    install_logger.info(msg)
+
+            msg = "    Time elaspsed: {} second(s)".format(total_seconds)
+            install_logger.info(msg)
+
+        alert_count += 1     
+        time.sleep(sleep_seconds)   
+
+    msg = "Total time spent waiting for import jobs and pods was {} second(s)".format(total_seconds)
+    install_logger.info(msg)
+    
+    # finished should only be True if all the jobs/pods are in "Completed" or "Error" states,
+    # or if there were no jobs/pods found at all
+    if finished:
+        failed = False
+        total_jobs_count = len(jobs_running["Completed"])
+        total_pods_count = len(pods_running["Completed"]) + len(pods_running["Error"])
+        msg = "Finished waiting for {} job(s) and {} pod(s).".format(total_jobs_count, total_pods_count)
+        install_logger.info(msg)
+        for job_state, job_names in jobs_running.items():
+            for job_name in job_names:
+                msg = "        {}{:.>32}".format(job_name, job_state)
+                install_logger.info(msg)
+                if job_state != "Completed":
+                    # This shouldn't happen unless we add more states to the job_running dict
+                    failed = True
+        for pod_state, pod_names in pods_running.items():
+            for pod_name in pod_names:
+                msg = "        {}{:.>32}".format(pod_name, pod_state)
+                install_logger.info(msg)
+                if pod_state != "Completed":
+                    # Some pod has reported an "Error"
+                    failed = True
+        if failed:
+            msg = "There are jobs/pods that failed to complete"
+            raise COSProblem(msg)
+        
+    elif total_seconds > timeout_seconds:
+        msg = "Timed out waiting for import jobs and pods to finish"
+        raise TimeOut(msg)
+    else:
+        msg = "Something went wrong while waiting for the import jobs and pods to finish."
+        raise UnexpectedState(msg)
 
 
 def check_services(args): #pylint: disable=unused-argument
@@ -323,6 +398,7 @@ def check_services(args): #pylint: disable=unused-argument
         raise UnexpectedState("One or more required services are unavailable.")
     else:
         install_logger.info("DVS, lnet, cps, and nmd services are available on all worker nodes.")
+
 
 def get_mergeable_repos(args):
 
