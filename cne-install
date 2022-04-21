@@ -209,7 +209,7 @@ def validate_stages(args_dict):
     install_logger.debug("stages={}".format(stages))
     install_logger.debug("(begin,end)_idx = ({},{})".format(begin_idx, end_idx))
     args_dict["stages"] = stages
-    if args_dict["func"] == process_install:
+    if "func" in args_dict and args_dict["func"] == process_install:
         install_logger.info("STAGE SUMMARY: begin_stage={}, end_stage={}".format(begin_stage, end_stage))
 
     if "source_bos_sessiontemplate" in args_dict and args_dict["source_bos_sessiontemplate"] is None \
