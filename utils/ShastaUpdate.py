@@ -766,13 +766,12 @@ def customize_cos_compute_image(args):
     elif os.path.exists(bos_file):
         os.remove(bos_file)
 
-def write_cfs_config(args):
+def create_cos_cfs_config(args):
     """
     Write a CFS config based on args, and update the commits to the most recent.
     """
     cos_version = get_prod_version(args, 'cos')
     _, intbranch = current_repo_branch(args, 'cos-config-management', cos_version)
-
 
     if intbranch is None:
         raise COSProblem("WARNING: Could not determine COS branch, so cannot build a compute image")
