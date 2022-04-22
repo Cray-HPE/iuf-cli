@@ -45,6 +45,7 @@ BOOT_POLL_SECS = 60
 BOOT_TIMOUT_SECS = 3600
 
 BOS_INFO_FILENAME = "bos-info.json"
+CFS_CONFIG_FILENAME = "cfs-config.json"
 IMAGE_INFO = "image_info.yaml"
 BOS_SESSIONTEMPLATE_FILENAME = "bos_sessiontemplate.json"
 

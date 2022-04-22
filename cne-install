@@ -75,6 +75,10 @@ STAGES = OrderedDict({
         "func" : main_ctrl.check_services,
         "description" : "Check CPS, DVS, LNET. and NMD services."
         },
+    "write_cfs_config": {
+        "func" : main_ctrl.write_cfs_config,
+        "description" : "Write the CFS config used for building the COS image."
+        },
     "build_cos_compute_image": {
         "func" : main_ctrl.build_cos_compute_image,
         "description" : "Build the COS compute image."

@@ -766,27 +766,19 @@ def customize_cos_compute_image(args):
     elif os.path.exists(bos_file):
         os.remove(bos_file)
 
-
-def build_cos_compute_image(args): #pylint: disable=unused-argument
+def write_cfs_config(args):
     """
-    Create a Configuration Framework Service (CFS) session configuration
-    for COS.
+    Write a CFS config based on args, and update the commits to the most recent.
     """
-
     cos_version = get_prod_version(args, 'cos')
-    cos_recipe_name = get_cos_recipe_name(args)
-
-    if not cos_recipe_name:
-        raise COSProblem("A recipe name is needed to build the COS compute image.")
-
     _, intbranch = current_repo_branch(args, 'cos-config-management', cos_version)
+
 
     if intbranch is None:
         raise COSProblem("WARNING: Could not determine COS branch, so cannot build a compute image")
 
     # Update the configuration.
-    config_file = "cos-config-{}.json".format(cos_version)
-    local_config_path = os.path.join(get_dirs(args, "state"), config_file)
+    local_config_path = os.path.join(get_dirs(args, "state"), CFS_CONFIG_FILENAME)
     cfs_config = args.get("cfs_config")
 
     # Retrieve And Modify An Existing Configuration For COS.
@@ -797,7 +789,27 @@ def build_cos_compute_image(args): #pylint: disable=unused-argument
     with open(local_config_path, 'w', encoding='UTF-8') as fhandle:
         json.dump(curr_config, fhandle)
 
+
+def build_cos_compute_image(args): #pylint: disable=unused-argument
+    """
+    Create a Configuration Framework Service (CFS) session configuration
+    for COS.
+    """
+
     # Update Configuration Framework Service (CFS) Session With New COS Configuration.
+    local_config_path = os.path.join(get_dirs(args, "state"), CFS_CONFIG_FILENAME)
+    if not os.path.exists(local_config_path):
+        errmsg = utils.formatted("""
+            The CFS config file {} could not be found.
+            Was the write_cfs_config state ran?""".format(local_config_path))
+        raise UnexpectedState(errmsg)
+
+    cfs_config = args.get("cfs_config")
+    cos_recipe_name = get_cos_recipe_name(args)
+
+    if not cos_recipe_name:
+        raise COSProblem("A recipe name is needed to build the COS compute image.")
+
     connection.sudo("cray cfs configurations update {} --file {} --format json".format(cfs_config, local_config_path))
 
     recipe_list = json.loads(connection.sudo("cray ims recipes list --format json").stdout)
