@@ -438,27 +438,20 @@ def update_working_branches(args):
             import_branch = location_dict[product]['import_branch']
             product_name = location_dict[product]['product']
 
+            install_logger.debug("processing product {} import_branch {}".format(
+                product_name, import_branch))
+
             if location_dict[product]['import_version']:
                 prod_version = location_dict[product]['import_version']
+                install_logger.debug("using import_version")
             else:
                 prod_version = location_dict[product]['product_version']
+                install_logger.debug("using product_version")
             repo = repos[product_name]
             cos_checkout_dir = git.clone(repo)
 
-            integration_branch = None
-            if "working_branch" in args:
-                if args["working_branch"]:
-                    integration_branch = render_jinja(args, product, args["working_branch"])
-                    install_logger.debug("using passed working branch {}".format(integration_branch))
-
-            if not integration_branch:
-                # second, see what branches we want to work with
-                install_logger.warning("  Using branch auto-lookup!  Use of --working-branch recommended!")
-
-                _, integration_branch = current_repo_branch(args, repo, prod_version)
-
-            if not integration_branch:
-                raise UnexpectedState("Could not determine working branch for product {}".format(product))
+            # get integration branch with product key and --working-branch
+            integration_branch = get_integration_branch(args, product)
 
             # check out a local copy of the import_branch (release version)
             git.checkout(repo, import_branch)
@@ -630,34 +623,61 @@ def ncn_personalization(args): #pylint: disable=unused-argument
         raise(NCNPersonalization(err_msg))
 
 
-def current_repo_branch(args, repo, version):
-    """Find the integration branch corresponding to the current COS version"""
+def get_integration_branch(args, product_key):
 
-    version_list = version.split('.')
-    maj_min_v = version_list[0] + '.' + version_list[1]
+    integration_branch = None
+    if "working_branch" in args:
+        if args["working_branch"]:
+            integration_branch = render_jinja(args, product_key, args["working_branch"])
+            install_logger.debug("using passed working branch {}".format(integration_branch))
+        else:
+            raise InstallError("You must supply --working-branch")
+    else:
+        raise InstallError("You must supply --working-branch")
+
+    if integration_branch:
+        return integration_branch
+    else:
+        raise UnexpectedState("Could not determine working branch for product {} using --working branch '{}' with".format(
+            product_key,
+            integration_branch))
+
+
+def current_repo_branch(args, repo, version):
+    """
+    Find the integration branch corresponding to the passed repo
+
+    Note version is not used at the moment as get_prod_keys() simply
+    sorts the key results.  Optimally this section would be re-worked
+    so callers provided a specific product_key.
+    """
+
+    install_logger.debug("in current_repo_branch with {}".format(repo))
+
+    # this isn't optimal, but derive the product_name from the repo name
+    product_name = repo.replace("-config-management", "")
+    install_logger.debug("product_name is {}".format(product_name))
+
+    # we don't have a product key here, so look one up based on whats in location_dict
+    integration_branch = get_integration_branch(args, get_prod_key(args, product_name))
+    install_logger.debug("determined branch is {}".format(integration_branch))
+
     git = utils.git(args, connection)
     branches = git.ls_remote(repo)
     found_branch = None
 
-    # Convention dictates to name the branch
-    # <COS MAJOR VERSION>.<COS MINOR VERSION>-integration.  This may be
-    # overly zealous.  If not, maybe there is a better way than the 3 'for'
-    # loops.
     for branch in branches:
-        # It's a bit hoaky, but I don't think we want to pick up the rocm branches for now.
-        if maj_min_v in branch and 'integration' in branch.lower() and 'rocm' not in branch:
+        commit, raw_branch_name = branch.split()
+        munged_branch_name = raw_branch_name.replace("refs/heads/", "")
+        if integration_branch == munged_branch_name:
             found_branch = branch
+            install_logger.debug("found branch match {}".format(found_branch))
             break
-    if not found_branch:
-        for branch in branches:
-            if 'integration' in branch:
-                found_branch = branch
-                break
 
     if not found_branch:
-        for branch in branches:
-            if maj_min_v in branch:
-                found_branch = branch
+        raise UnexpectedState("Can't find working branch '{}' in '{}'".format(
+            integration_branch,
+            repo))
 
     commit, ref = found_branch.split()
     ref = ref.replace('remotes/origin', '').replace('refs/heads/', '')
@@ -666,6 +686,45 @@ def current_repo_branch(args, repo, version):
         return commit.strip(), ref.strip()
 
     return None, None
+
+
+def get_prod_key(args, product_name):
+    """
+    return product key if we only know the product_name
+    """
+
+    install_logger.debug("get_prod_keys was passed {}".format(product_name))
+
+    # we need the location_dict to lookup up information about the product
+    location_dict = utils.get_product_catalog(connection, load_prods(args))
+
+    available_keys = []
+
+    for item in location_dict:
+        install_logger.debug("checking for product {}".format(item))
+        if location_dict[item]['import_branch']:
+            install_logger.debug("found import branch {}".format(location_dict[item]['import_branch']))
+            if location_dict[item]['product'] == product_name:
+                install_logger.debug("product match for {}".format(product_name))
+                available_keys.append(item)
+            else:
+                install_logger.debug("couldn't match product_name {} to {}".format(
+                    product_name,
+                    location_dict[item]['product']))
+
+    if available_keys:
+        install_logger.debug("searching {} results in available products {}".format(
+            product_name,
+            available_keys))
+        sorted_keys = sorted(available_keys, key=LooseVersion)
+        install_logger.debug("sorted keys are {}".format(sorted_keys))
+        best_key = sorted_keys[-1]
+        install_logger.debug("best key is {}".format(best_key))
+        return best_key
+    else:
+        install_logger.debug("searching {} results in no available products".format(
+            product_name))
+        return None
 
 
 def get_prod_version(args, product, short=True):
