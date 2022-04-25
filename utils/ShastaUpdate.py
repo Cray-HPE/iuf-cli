@@ -783,8 +783,8 @@ def get_prod_version(args, product, short=True):
         return highest_vers
 
 
-def wait_for_pod(job_id):
-    """Wait for the COS after creating an image"""
+def wait_for_ims_pod(job_id):
+    """Wait for an IMS pod after creating an image"""
 
     out = connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf -n ims describe job {}".format(job_id)).stdout.splitlines()
     created_line = None
@@ -986,7 +986,7 @@ def build_cos_compute_image(args): #pylint: disable=unused-argument
 
     # Sleep 30 seconds to give enough time for the fields from the ims command to be populated
     time.sleep(30)
-    pod_name, resultant_image_id, etag = wait_for_pod(job_id)
+    pod_name, resultant_image_id, etag = wait_for_ims_pod(job_id)
     if any( x is None for x in [pod_name, resultant_image_id, etag]):
         raise COSProblem("WARNING: Cannot create the modified cos image, pod_name={}".format(pod_name))
 

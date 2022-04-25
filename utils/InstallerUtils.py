@@ -174,14 +174,12 @@ def wait_for_pod(connection, pod_name, timeout=1200, delete=False):
             else:
                 # This case shouldn't be hit.  Allow for it for debugging purposes.
                 install_logger.warning("Could not find pod {}".format(pod_name))
-
         if found and delete is False:
             install_logger.debug("found running and delete == False, running={}".format(running))
             if running.lower() in ["running", "completed"]:
                 break
             elif running.lower() in ["imagepullbackoff","failed"] or "error" in running.lower():
-                install_logger.warning("pod {} in error state: {}".format(pod_name, running))
-                break
+               raise PodProblem("pod {} in error state: {}".format(pod_name, running))
             else:
                 install_logger.debug("(else) running={} ... no action performed".format(running))
         elif not found and delete is True:
@@ -189,8 +187,7 @@ def wait_for_pod(connection, pod_name, timeout=1200, delete=False):
             break
         if time_waited >= timeout:
             action_str = "delete" if delete else "complete"
-            install_logger.warning("        Timed out waiting {} seconds for pod {} to {}".format(time_waited, pod_name, action_str))
-            break
+            raise PodProblem("Timed out waiting {} seconds for pod {} to {}".format(time_waited, pod_name, action_str))
         if counter % alert_freq == 0:
             install_logger.info("        Waited {} of {} seconds".format(int(time_waited), timeout))
         counter += 1
