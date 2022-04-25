@@ -242,6 +242,13 @@ def validate_stages(args_dict):
                     args_dict["source_bos_sessiontemplate"],
                     bos_cfs_config_name))
                 install_logger.warning(msg)
+    if ("working_branch" in args_dict and args_dict["working_branch"] is None) \
+        and (("update_working_branches" in stages) \
+        or ("update_ncn_config" in stages)):
+            msg = formatted("""
+                Please supply --working-branch with stages update_working_branches or update_ncn_config.""")
+            print(msg)
+            sys.exit(1)
 
     return
 
