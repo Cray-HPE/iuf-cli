@@ -22,6 +22,8 @@ class COSProblem(Exception):
 class UnexpectedState(Exception):
     """A wrapper for raising an UnexpectedState exception."""
     pass
+class PodProblem(Exception):
+    """A wrapper for raising problems with pods."""
 
 class TestFailure(Exception):
     """A wrapper for raising a TestFailure exception."""
