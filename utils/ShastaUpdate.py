@@ -1219,7 +1219,61 @@ def worker_health_check(args):
 
 
 def unload_dvs_and_lnet(args):
-    """Unload the DVS and LNET modules."""
+    """
+    reload dvs using method controlled by --dvs-update-method
+    auto mode will try the new mechanism and fall back to the legacy mode
+    ncn-upgrade mode will try the new mechanism and fail if not possible
+    legacy will use the legacy mode
+    """
+    dvs_update_method = args.get("dvs_update_method")
+    if dvs_update_method != "legacy":
+        try:
+            cfs_reload_config, _ = create_dvs_reload_config(args)
+
+            # delete old session, if exists
+            try:
+                connection.sudo("cray cfs sessions describe cne-install-ncn-reload --format json")
+                install_logger.info("  Deleting old CFS session cne-install-ncn-reload")
+                connection.sudo("cray cfs sessions delete cne-install-ncn-reload")
+            except Exception as err:
+                pass
+
+            install_logger.info("  Running cfs session cne-install-ncn-reload session using config {}".format(cfs_reload_config))
+            k8s_job_line = None
+            output = connection.sudo("cray cfs sessions create --name cne-install-ncn-reload \
+                --configuration-name {}".format(cfs_reload_config),
+                timeout=120).stdout.splitlines()
+
+            k8s_job_line = [line for line in output if line.lower().startswith('services')][0]
+                
+            if k8s_job_line:
+                k8s_job = k8s_job_line.split()[1].strip()
+                install_logger.debug("k8sjob={}  wait for the pod...".format(k8s_job))
+                utils.wait_for_pod(connection, k8s_job)
+            else:
+                install_logger.error("Unable to get the K8S job name.")
+
+        except NCNPersonalization as err:
+            if dvs_update_method == "auto":
+                install_logger.debug("falling back to legacy mode")
+                legacy_dvs_reload(args)
+            else:
+                # they specifically wanted ncn-upgrade mode, so fail
+                install_logger.error("Please ensure that your specified COS working branch contains COS 2.3 or later")
+                install_logger.error("AND your specified ncn-personalization config contains a slingshot-host-software layer'")
+                raise NCNPersonalization("Cannot use the specified dvs_update_method of 'ncn-upgrade'")
+
+    else:
+        # legacy mode specified, just call it
+        install_logger.debug("dvs_update_method of legacy set")
+        legacy_dvs_reload(args)
+
+
+def legacy_dvs_reload(args):
+    """
+    legacy (<= COS 2.2) version of the DVS reload proceedure
+    this mode performs a DVS reload based on 
+    """
 
     worker_tuples = utils.get_ncn_tuples(connection, args, just_workers=True)
 

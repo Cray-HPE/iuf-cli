@@ -444,6 +444,17 @@ As a result, the update_working_branches stage would perform the following merge
         default="ncn-personalization",
         help="The name of the ncn personalization config to update.  Defaults to 'ncn-personalization'")
 
+    install_sp.add_argument("-D", "--dvs-update-method", action="store",
+        choices=["auto", "legacy", "ncn-upgrade"],
+        default="auto",
+        help="""Defaults to 'auto'.  Method used to update COS on the NCN nodes.  This is primarily to
+update from one version of DVS to another.  The 'legacy' mode is the proceedure used in
+COS <= 2.2.  The 'ncn-upgrade' mode utilizes the 'ncn-upgrade.yml' playbook introduced
+in COS 2.3.  The 'auto' mode will utilize the ncn-upgrade mode if all the needed conditions
+are present (the ncn-upgrade.yml playbook must be in the COS working branch AND the
+ncn-personalization config must contain the slingshot-host-software layer) and the
+'legacy' mode if not.""")
+
     install_sp.add_argument("-wn", "--worker-nodes", action="store",
         help="""Override worker list used in DVS reload stage to assist with repairing broken nodes.
 Can be a regular expression or text string.
