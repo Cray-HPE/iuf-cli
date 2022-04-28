@@ -887,7 +887,7 @@ def customize_cos_compute_image(args):
         cfs_desc = json.loads(connection.sudo("cray cfs sessions describe {} --format json".format(session_name)).stdout)
         image_id = cfs_desc["status"]["artifacts"][0]["result_id"]
         artifacts = json.loads(connection.sudo("cray artifacts describe boot-images {}/manifest.json --format json".format(image_id)).stdout)
-        etag = artifacts['artifact']['ETag'].replace("\\\"", "")
+        etag = artifacts['artifact']['ETag'].replace('"', '')
         bos_info = {
             "image_id": image_id,
             "etag": etag,
@@ -905,18 +905,12 @@ def create_cos_cfs_config(args):
     """
     Write a CFS config based on args, and update the commits to the most recent.
     """
-    cos_version = get_prod_version(args, 'cos')
-    _, intbranch = current_repo_branch(args, 'cos-config-management', cos_version)
-
-    if intbranch is None:
-        raise COSProblem("WARNING: Could not determine COS branch, so cannot build a compute image")
-
     # Update the configuration.
     local_config_path = os.path.join(get_dirs(args, "state"), CFS_CONFIG_FILENAME)
     cfs_config = args.get("cfs_config")
 
     # Retrieve And Modify An Existing Configuration For COS.
-    errout = connection.sudo("cray cfs configurations describe {} --format json".format(intbranch))
+    errout = connection.sudo("cray cfs configurations describe {} --format json".format(cfs_config))
     curr_config = json.loads(errout.stdout)
     curr_config = update_cfs_commits(args, curr_config)
 
