@@ -47,6 +47,10 @@ STAGES = OrderedDict({
         "func" : main_ctrl.verify_product_import,
         "description" : "Verify all product import PODS and Jobs have completed."
         },
+    "verify_product_install": {
+        "func" : main_ctrl.verify_product_install,
+        "description" : "Verify product installation by running product validations"
+        },
     "update_working_branches": {
         "func" : main_ctrl.update_working_branches,
         "description" : """Update config managment branches identified by --working-branch with the product

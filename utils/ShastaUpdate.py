@@ -14,7 +14,7 @@ import stat
 import sys
 import time
 import jinja2
-
+from subprocess import TimeoutExpired
 from pprint import pformat
 
 from distutils.version import LooseVersion
@@ -349,6 +349,74 @@ def verify_product_import(args): #pylint: disable=unused-argument
         msg = "Something went wrong while waiting for the import jobs and pods to finish."
         raise UnexpectedState(msg)
 
+def verify_product_install(args): #pylint: disable=unused-argument
+    """ Check if there is a "validate.sh" script in the product
+    distrubtion. If there is a script, run it and return the results.
+    The validation is considered a success, if:
+       - There is a script to run and it succeeds. 
+       - There is no script to run. 
+       - The script has already been run and succeeded.
+    The validation does not succeeded, if:
+       - A validate.sh script runs and fails, hits timeout, etc. 
+       - 
+    """
+    location_dict = load_prods(args)
+    
+    # Keep track of the validations that explicitly failed.
+    validate_failed = []
+
+    install_logger.info("    Starting product validations:")
+
+    # Loop through all the products in the location_dict and display their validation status. 
+    # If the product has successfully run an install, check to see if it needs to be validated.
+    # Set all the products "validated" field to True or False, depending on the state. 
+    for product_name, product_info in location_dict.items():
+        validated = False
+        if product_info.get("installed", False) == False:
+            # These products haven't succeeded the installation stage. 
+            install_logger.warning("    {} {:.>32}".format(product_name, "not installed"))
+        elif product_info.get("installed", False) == True and product_info.get("validated", False) == False:
+            # Check if these products need to run a validation, then try to run it.
+            if os.path.exists(os.path.join(product_info["work_dir"], "validate.sh")):
+                install_logger.debug("Running validate.sh for {}".format(product_name))
+                try:
+                    results = connection.sudo("./validate.sh", cwd=os.path.join(product_info["work_dir"]), timeout=600)
+                    if results.returncode == 0:
+                        validated = True
+                        install_logger.info("        {} {:.>32}".format(product_name, "succeeded"))
+                    else:
+                        install_logger.error("        {} {:.>32}".format(product_name, "failed", results.returncode))
+                        validate_failed.append(product_name)
+                except TimeoutExpired as te:
+                    install_logger.error("        {} {:.>32}".format(product_name, "timeout"))
+                    validate_failed.append(product_name)
+                except:
+                    install_logger.error("        {} {:.>32}".format(product_name, "failed"))
+                    validate_failed.append(product_name)
+                install_logger.debug("Finshed running validate.sh for {}".format(product_name))  
+            else:
+                # These products have no validate.sh script to run.
+                install_logger.info("        {} {:.>32}".format(product_name, "nothing to run"))
+                validated = True
+
+        elif product_info.get("installed", False) == True and product_info.get("validated", False) == True:
+            # These products already ran and passed the validation stage.
+            install_logger.info("        {} {:.>32}".format(product_name, "done"))
+        else:
+            # These products are in an unknown state, they should be ignored. 
+            install_logger.warning("        {} {:.>32}".format(product_name, "ignored"))
+
+        location_dict[product_name]["validated"] = validated
+    
+    # Dryruns shouldn't update the location_dict with the validation status changes.
+    if args.get("dryrun", False) == False:
+        update_prods(args, location_dict)
+    
+    # Raise an exception if any of the validations explicitly failed. 
+    if len(validate_failed) > 0:
+        msg = "{} validation(s) failed."
+        install_logger.error(msg.format(len(validate_failed)))
+        raise COSProblem(msg.format(len(validate_failed)))
 
 def check_services(args): #pylint: disable=unused-argument
     """Check the cps and nmd services.  Also check dvs and lnet"""
