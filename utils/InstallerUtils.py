@@ -829,16 +829,16 @@ def get_products( connection,
                     'SUSE-Products': 'sles',
                     'SUSE-Updates': 'sles',
                     'slingshot-host-software': 'slingshot-host-software',
-                    'analytics': 'analytics',
+                    # 'analytics': 'analytics',
                     'uan': 'uan',
-                    'cpe-slurm': 'slurm',
-                    'wlm-slurm': 'slurm',
-                    'wlm-pbs': 'pbs',
-                    'cpe-pbs': 'pbs',
+                    # 'cpe': 'cpe',
+                    # 'cpe-slurm': 'slurm',
+                    # 'wlm-slurm': 'slurm',
+                    # 'wlm-pbs': 'pbs',
+                    # 'cpe-pbs': 'pbs',
+                    # 'cray-sdu-rda': 'sdu'
                     'sma': 'sma',
-                    'sat': 'sat',
-                    'cray-sdu-rda': 'sdu',
-                    'cpe': 'cpe'
+                    'sat': 'sat'
                     }
 
     if not suffixes:
