@@ -575,7 +575,11 @@ def update_cfs_commits(args, cfs_template_arg):
     cfs_template = copy.deepcopy(cfs_template_arg)
 
     del cfs_template["name"]
-    del cfs_template["lastUpdated"]
+    # don't die if not found
+    try:
+        del cfs_template["lastUpdated"]
+    except Exception:
+        pass
 
     def find_substr(substr):
         """Return the index of the element containing the substring.  This
@@ -1093,6 +1097,82 @@ def customize_cos_compute_image(args):
         os.remove(bos_file)
 
 
+def create_dvs_reload_config(args):
+    """
+    build a ncn reload config, if possible
+    """
+
+    # we need the location_dict to lookup up information about the product
+    location_dict = utils.get_product_catalog(connection, load_prods(args))
+
+    # get the cos clone url
+    cos_clone_url = location_dict[get_prod_key(args, "cos")]["clone_url"]
+
+    # get the commit and branch
+    cos_commit, cos_branch = current_repo_branch(args, "cos-config-management", None)
+
+    # get a list of the files in the cos config
+    git = utils.git(args, connection)
+    repo = "cos-config-management"
+    cos = git.clone(repo)
+    git.checkout(repo, cos_branch)
+    git.pull(repo, quiet=True)
+    repofiles = os.listdir(cos)
+    git.cleanup(repo)
+
+    # ncn-upgrade.yml must be in the cos config for this method
+    if "ncn-upgrade.yml" in repofiles:
+
+        install_logger.debug("found ncn-upgrade.yml in cos config")
+
+        cos_layer = {'cloneUrl': cos_clone_url,
+            'commit': cos_commit,
+            'name': cos_branch,
+            'playbook': 'ncn-upgrade.yml'}
+
+        install_logger.debug("built cos layer of {}".format(cos_layer))
+
+        # get the SHS layer from the ncn_personalization config
+        template_name = args.get("ncn_personalization")
+        cfs_template = None
+        cfs_template = json.loads(connection.sudo("cray cfs configurations describe {} --format json".format(
+            template_name)).stdout)
+
+        shs_layer = None
+        for i in cfs_template["layers"]:
+            if 'slingshot-host-software-config-management' in i["cloneUrl"]:
+                shs_layer = i
+
+        if shs_layer:
+
+            install_logger.debug("found shs layer in {}".format(args.get("ncn_personalization")))
+            install_logger.debug("found shs layer of {}".format(shs_layer))
+
+            template_name = "ncn_dvs_reload"
+            base_file = "dvs_reload.json"
+
+            # build a current config
+            cfs_template = update_cfs_commits(args,
+                { "layers": [ shs_layer, cos_layer], "name": template_name })
+
+            file_location = os.path.join(get_dirs(args, "state"), base_file)
+            with open(file_location, 'w', encoding='UTF-8') as fhandle:
+                json.dump(cfs_template, fhandle)
+
+            connection.sudo("cray cfs configurations update {} --file {} --format json".format(
+                template_name, file_location))
+
+            install_logger.info("  DVS reload config saved in {}".format(file_location))
+            install_logger.info("  Using DVS reload config {}".format(template_name))
+
+            return template_name, file_location
+
+        else:
+            raise NCNPersonalization("there is no SHS layer")
+    else:
+        raise NCNPersonalization("there is no ncn-upgrade.yml in this branch")
+
+
 def create_cos_cfs_config(args):
     """
     Write a CFS config based on args, and update the commits to the most recent.
@@ -1317,7 +1397,61 @@ def worker_health_check(args):
 
 
 def unload_dvs_and_lnet(args):
-    """Unload the DVS and LNET modules."""
+    """
+    reload dvs using method controlled by --dvs-update-method
+    auto mode will try the new mechanism and fall back to the legacy mode
+    ncn-upgrade mode will try the new mechanism and fail if not possible
+    legacy will use the legacy mode
+    """
+    dvs_update_method = args.get("dvs_update_method")
+    if dvs_update_method != "legacy":
+        try:
+            cfs_reload_config, _ = create_dvs_reload_config(args)
+
+            # delete old session, if exists
+            try:
+                connection.sudo("cray cfs sessions describe cne-install-ncn-reload --format json")
+                install_logger.info("  Deleting old CFS session cne-install-ncn-reload")
+                connection.sudo("cray cfs sessions delete cne-install-ncn-reload")
+            except Exception as err:
+                pass
+
+            install_logger.info("  Running cfs session cne-install-ncn-reload session using config {}".format(cfs_reload_config))
+            k8s_job_line = None
+            output = connection.sudo("cray cfs sessions create --name cne-install-ncn-reload \
+                --configuration-name {}".format(cfs_reload_config),
+                timeout=120).stdout.splitlines()
+
+            k8s_job_line = [line for line in output if line.lower().startswith('services')][0]
+                
+            if k8s_job_line:
+                k8s_job = k8s_job_line.split()[1].strip()
+                install_logger.debug("k8sjob={}  wait for the pod...".format(k8s_job))
+                utils.wait_for_pod(connection, k8s_job)
+            else:
+                install_logger.error("Unable to get the K8S job name.")
+
+        except NCNPersonalization as err:
+            if dvs_update_method == "auto":
+                install_logger.debug("falling back to legacy mode")
+                legacy_dvs_reload(args)
+            else:
+                # they specifically wanted ncn-upgrade mode, so fail
+                install_logger.error("Please ensure that your specified COS working branch contains COS 2.3 or later")
+                install_logger.error("AND your specified ncn-personalization config contains a slingshot-host-software layer'")
+                raise NCNPersonalization("Cannot use the specified dvs_update_method of 'ncn-upgrade'")
+
+    else:
+        # legacy mode specified, just call it
+        install_logger.debug("dvs_update_method of legacy set")
+        legacy_dvs_reload(args)
+
+
+def legacy_dvs_reload(args):
+    """
+    legacy (<= COS 2.2) version of the DVS reload proceedure
+    this mode performs a DVS reload based on 
+    """
 
     worker_tuples = utils.get_ncn_tuples(connection, args, just_workers=True)
 
@@ -1724,6 +1858,11 @@ def validate_products(args):
                 install_logger.error('    COS NCN content does NOT match running NCN kernel {}'.format(running_kernel))
                 install_logger.error('    It is not recommended to proceed as packages such as DVS which have')
                 install_logger.error('    a kernel module will not work correctly on your NCN worker nodes.')
+                raise InstallError('COS NCN content does NOT match running NCN kernel {}'.format(running_kernel))
+        elif len(rpms) == 0:
+                install_logger.error('    Could not find any the DVS Kernel RPMS for the OS version you are')
+                install_logger.error('    running.  This version of COS will not properly support DVS on your')
+                install_logger.error('    worker nodes.')
                 raise InstallError('COS NCN content does NOT match running NCN kernel {}'.format(running_kernel))
         else:
             install_logger.warning('    Cannot perform check due to unexpected number of RPM matches')
