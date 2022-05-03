@@ -979,7 +979,7 @@ def create_dvs_reload_config(args):
         else:
             raise NCNPersonalization("there is no SHS layer")
     else:
-        raise NCNPersonalization("there is no ")
+        raise NCNPersonalization("there is no ncn-upgrade.yml in this branch")
 
 
 def create_cos_cfs_config(args):
