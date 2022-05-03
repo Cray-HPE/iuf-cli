@@ -21,7 +21,7 @@ from distutils.version import LooseVersion
 
 import yaml #pylint: disable=import-error
 
-from utils.InstallLogger import get_install_logger
+from utils.InstallLogger import get_install_logger, get_log_filename
 from utils.InstallerUtils import CmdMgr
 
 install_logger = get_install_logger(__name__)
@@ -140,10 +140,13 @@ def install(args):
 
                 cmd = './install.sh'
                 try:
-                    result = connection.sudo(cmd, cwd=loc, timeout=900)
+                    logname = get_log_filename(args, prod)
+                    location_dict[prod]["log_name"] = logname
+                    result = connection.sudo(cmd, cwd=loc, timeout=900, store_output=logname, tee=True)
                     install_logger.debug(result)
                     install_logger.info('    OK')
-                    location_dict[prod]['installed'] = True
+                    if not args["dryrun"]:
+                        location_dict[prod]['installed'] = True
                     update_prods(args, location_dict)
                 except Exception as err:
                     install_logger.error('    Failed')
@@ -168,16 +171,18 @@ def install(args):
 
     if unsuccessful_products:
         install_logger.error('The following products failed to install:')
-        for problem in unsuccessful_products:
-            install_logger.error('  {} ==========================='.format(problem['product']))
-            for line in problem['stderr']:
-                if len(line) > 75:
-                    fmt_line = line[:75] + '[..]'
-                else:
-                    fmt_line = line
-                # log the full line, but print a short line to the screen
-                install_logger.debug('    stderr> {}'.format(line))
-                print('ERROR    stderr> {}'.format(fmt_line))
+        for prod in unsuccessful_products:
+            install_logger.error('  {} ==========================='.format(prod))
+            with open(location_dict[prod["product"]]["log_name"], "r") as problem:
+                for line in problem:
+                    line = line.rstrip()
+                    if len(line) > 75:
+                        fmt_line = line[:75] + '[..]'
+                    else:
+                        fmt_line = line
+                    # log the full line, but print a short line to the screen
+                    install_logger.debug('    stderr> {}'.format(line))
+                    print('ERROR    stderr> {}'.format(fmt_line))
 
     # we shouldn't continue if we tried to install something and failed
     if unsuccessful_products:

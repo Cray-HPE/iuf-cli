@@ -11,6 +11,28 @@ class InstallError(Exception):
     """A wrapper for raising an InstallError exception."""
     pass
 
+class RunException(Exception):
+    """A wrapper for raising an RunException exception."""
+    def __init__(self, message, cmd, args, returncode, stdout, stderr):
+        super().__init__(message)
+
+        self.cmd = cmd
+        self.args = args
+        self.stdout = stdout
+        self.stderr = stderr
+        self.returncode = returncode
+
+class RunTimeoutError(Exception):
+    """A wrapper for raising an RunTimeoutError exception."""
+    def __init__(self, message, cmd, args, returncode, stdout, stderr):
+        super().__init__(message)
+
+        self.cmd = cmd
+        self.args = args
+        self.stdout = stdout
+        self.stderr = stderr
+        self.returncode = returncode
+
 class TimeOut(Exception):
     """A wrapper for raising a TimeOut exception."""
     pass
@@ -57,7 +79,7 @@ LOG_DEFAULT_CONSOLE_LEVEL = logging.INFO
 LOG_DEFAULT_DIR = os.path.join(os.getcwd(), "log")
 LOG_DEFAULT_FILE_LEVEL = logging.DEBUG
 LOG_DEFAULT_FILENAME = "install.log"
-LOG_SESSION_FILENAME = "install.{}.log".format(datetime.datetime.now().strftime("%Y%m%d%H%M%S"))
+SESSION_TIMESTAMP = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
 LOG_DEFAULT_FILE_FORMAT = '%(asctime)s %(levelname)s %(message)s'
 LOG_DEFAULT_CONSOLE_FORMAT = '%(levelname)s %(message)s'
 LOG_DEFAULT_FILE_FORMAT_VERBOSE = '%(asctime)s %(levelname)s %(module)s.%(funcName)s:%(lineno)d %(message)s'

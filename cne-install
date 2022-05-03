@@ -317,7 +317,7 @@ def process_list(args): #pylint: disable=unused-argument
 
 
 def process_debug_level(cmdline_args):
-    install_logger_file_init(verbose=cmdline_args.get("verbose", False))
+    install_logger_file_init(cmdline_args)
     if "level" in cmdline_args.keys() and cmdline_args["level"] != None:
         if cmdline_args["level"] in LOG_LEVELS.keys():
             level = LOG_LEVELS[cmdline_args["level"]]
@@ -368,6 +368,9 @@ def main():
     parser.add_argument("-m", "--media-dir", action="store",
         help="Location of installation media you would like to install.  Defaults to $PWD/media")
 
+    parser.add_argument("--log-dir", action="store", default=LOG_DEFAULT_DIR,
+        help="Location used to store log files.  Defaults to $PWD/log")
+
     parser.add_argument("--dryrun", action=InvertableArgument, default=False,
         help="Run without making any changes to the system to see what would happen")
 
@@ -402,7 +405,7 @@ def main():
         help="Run only the specified stages")
 
     install_sp.add_argument("-s", "--skip-stages", nargs="+", action="store",
-        help="Skip the execution of the specified stages.")
+        help="Skip the execution of the specified stages")
 
     install_sp.add_argument("-B", "--working-branch", action="store",
         help="""String representing the working branch in each product config
@@ -517,6 +520,7 @@ reload ncn-w003.
         args.func(args_dict)
     except AttributeError:
         install_logger.error("A subcommand was not specified.")
+        parser.print_help(sys.stderr)
         sys.exit(1)
 if __name__ == "__main__":
     main()
