@@ -75,6 +75,8 @@ BOS_SESSIONTEMPLATE_FILENAME = "bos_sessiontemplate.json"
 
 NCNP_VARS = "ncnp-vars.yaml"
 
+SAT_BOOTPREP_CFG = "bootprep-config.yaml"
+
 LOG_DEFAULT_CONSOLE_LEVEL = logging.INFO
 LOG_DEFAULT_DIR = os.path.join(os.getcwd(), "log")
 LOG_DEFAULT_FILE_LEVEL = logging.DEBUG

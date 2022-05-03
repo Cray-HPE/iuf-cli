@@ -67,6 +67,19 @@ def formatted(text):
     return msg
 
 
+def get_ims_public_key(connection):
+    created_public_keys = json.loads(connection.sudo("cray ims public-keys list --format json").stdout)
+    inst_pkey_list = [k for k in created_public_keys if k["name"] == "installer_public_key"]
+    rsa_pub = os.path.join(os.path.expanduser("~"), ".ssh", "id_rsa.pub")
+    if len(inst_pkey_list) <= 0:
+        pkey_dict = json.loads(connection.sudo('cray ims public-keys create --name "installer_public_key" --format json --public-key {}'.format(rsa_pub)).stdout)
+        public_key = pkey_dict
+    else:
+        public_key = inst_pkey_list[0]
+    ims_public_key_id = public_key['id']
+
+    return ims_public_key_id
+
 def check_repos(connection, product, filename):
     """Verify the repos.  This should work for cos and slingshot"""
 
@@ -914,16 +927,16 @@ def get_products( connection,
                     'SUSE-Products': 'sles',
                     'SUSE-Updates': 'sles',
                     'slingshot-host-software': 'slingshot-host-software',
-                    'analytics': 'analytics',
+                    # 'analytics': 'analytics',
                     'uan': 'uan',
-                    'cpe-slurm': 'slurm',
-                    'wlm-slurm': 'slurm',
-                    'wlm-pbs': 'pbs',
-                    'cpe-pbs': 'pbs',
+                    # 'cpe': 'cpe',
+                    # 'cpe-slurm': 'slurm',
+                    # 'wlm-slurm': 'slurm',
+                    # 'wlm-pbs': 'pbs',
+                    # 'cpe-pbs': 'pbs',
+                    # 'cray-sdu-rda': 'sdu'
                     'sma': 'sma',
-                    'sat': 'sat',
-                    'cray-sdu-rda': 'sdu',
-                    'cpe': 'cpe'
+                    'sat': 'sat'
                     }
 
     if not suffixes:

@@ -47,6 +47,10 @@ STAGES = OrderedDict({
         "func" : main_ctrl.verify_product_import,
         "description" : "Verify all product import PODS and Jobs have completed."
         },
+    "verify_product_install": {
+        "func" : main_ctrl.verify_product_install,
+        "description" : "Verify product installation by running product validations"
+        },
     "update_working_branches": {
         "func" : main_ctrl.update_working_branches,
         "description" : """Update config managment branches identified by --working-branch with the product
@@ -79,18 +83,14 @@ STAGES = OrderedDict({
         "func" : main_ctrl.create_cos_cfs_config,
         "description" : "Write the CFS config used for building the COS image."
         },
-    "build_cos_compute_image": {
-        "func" : main_ctrl.build_cos_compute_image,
-        "description" : "Build the COS compute image."
+    "create_bootprep_config": {
+        "func" : main_ctrl.create_bootprep_config,
+        "description" : "Generate the `sat bootprep` input config."
         },
-    "customize_cos_compute_image": {
-        "func" : main_ctrl.customize_cos_compute_image,
-        "description" : "Customize the COS compute image."
+    "sat_bootprep": {
+        "func" : main_ctrl.sat_bootprep,
+        "description" : "Run `sat bootprep`."
         },
-    "create_bos_session_template": {
-        "func" : main_ctrl.create_bos_session_template,
-        "description" : "Create a BOS session template derived from --source-bos-sessiontemplate.",
-        }
 })
 
 NOABORT_STAGES = [
@@ -216,8 +216,13 @@ def validate_stages(args_dict):
     if "func" in args_dict and args_dict["func"] == process_install:
         install_logger.info("STAGE SUMMARY: begin_stage={}, end_stage={}".format(begin_stage, end_stage))
 
+    # Check some of the commandline arguments up front to prevent wasted time.
+
+    # Check the BOS sessiontemplate and CFS config arguments.  If the CFS
+    # config is not explicitly specified, it can be obtained from the BOS
+    # sessiontemplate.
     if "source_bos_sessiontemplate" in args_dict and args_dict["source_bos_sessiontemplate"] is None \
-        and "create_bos_session_template" in stages:
+        and "create_bootprep_config" in stages:
         msg = formatted("""
             When creating a bos session template,  a source bos sessiontemplate
             (-t or --source-bos-sessiontemplate) is required""")
@@ -242,12 +247,22 @@ def validate_stages(args_dict):
                     args_dict["source_bos_sessiontemplate"],
                     bos_cfs_config_name))
                 install_logger.warning(msg)
+
+    # Ensure that working_branch is specified if it's needed.
     if ("working_branch" in args_dict and args_dict["working_branch"] is None) \
         and (("update_working_branches" in stages) \
         or ("update_ncn_config" in stages)):
             msg = formatted("""
                 Please supply --working-branch with stages update_working_branches or update_ncn_config.""")
             print(msg)
+            sys.exit(1)
+
+    # Ensure that if a `sat bootprep` config was specified (and the stage
+    # is being run) it exists.
+    bp_config = args_dict.get("bootprep_config", None)
+    if bp_config and "sat_bootprep" in stages:
+        if not os.path.exists(bp_config):
+            print("--bootprep-config/-bpc {} was specified but could not be found".format(bp_config))
             sys.exit(1)
 
     return
@@ -437,6 +452,12 @@ As a result, the update_working_branches stage would perform the following merge
     cray/slingshot-host-software/1.7.1 --> slingshot-host-software-1.7.1-integration
         """)
 
+    bpc_help = formatted("""
+    Use an alternate `sat bootprep` config file than is generated during the
+    `create_bootprep_config` stage.""")
+
+    install_sp.add_argument("-bpc", "--bootprep-config", action="store",
+        help=bpc_help)
     install_sp.add_argument("-t", "--source-bos-sessiontemplate", action="store",
         help="BOS template to start from when booting COS")
 
@@ -446,6 +467,17 @@ As a result, the update_working_branches stage would perform the following merge
     install_sp.add_argument("-ncnp", "--ncn-personalization", action="store",
         default="ncn-personalization",
         help="The name of the ncn personalization config to update.  Defaults to 'ncn-personalization'")
+
+    install_sp.add_argument("-D", "--dvs-update-method", action="store",
+        choices=["auto", "legacy", "ncn-upgrade"],
+        default="auto",
+        help="""Defaults to 'auto'.  Method used to update COS on the NCN nodes.  This is primarily to
+update from one version of DVS to another.  The 'legacy' mode is the proceedure used in
+COS <= 2.2.  The 'ncn-upgrade' mode utilizes the 'ncn-upgrade.yml' playbook introduced
+in COS 2.3.  The 'auto' mode will utilize the ncn-upgrade mode if all the needed conditions
+are present (the ncn-upgrade.yml playbook must be in the COS working branch AND the
+ncn-personalization config must contain the slingshot-host-software layer) and the
+'legacy' mode if not.""")
 
     install_sp.add_argument("-wn", "--worker-nodes", action="store",
         help="""Override worker list used in DVS reload stage to assist with repairing broken nodes.
