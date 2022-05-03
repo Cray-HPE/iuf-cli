@@ -52,18 +52,24 @@ def addLoggingLevel(levelName, levelNum, methodName=None):
     setattr(logging.getLoggerClass(), methodName, logForLevel)
     setattr(logging, methodName, logToRoot)
 
-def install_logger_file_init(log_file_level=LOG_DEFAULT_FILE_LEVEL, verbose=False):
+def install_logger_file_init(args):
     """
     Create the config for the log file. This should only be called once.
     """
 
+    log_file_level = args["level"]
+    verbose = args["verbose"]
+
     install_logger = logging.getLogger(LOG_DEFAULT_NAME)
     install_logger.setLevel(LOG_DEFAULT_FILE_LEVEL)
 
-    if not os.path.exists(LOG_DEFAULT_DIR):
-        os.mkdir(LOG_DEFAULT_DIR)
+    log_dir_base = args["log_dir"]
+    log_dir = os.path.join(log_dir_base, SESSION_TIMESTAMP)
 
-    log_filename = os.path.join(LOG_DEFAULT_DIR, LOG_SESSION_FILENAME)
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+
+    log_filename = os.path.join(log_dir, LOG_DEFAULT_FILENAME)
     log_file_handler = logging.FileHandler(log_filename)
 
     if os.path.islink(LOG_DEFAULT_FILENAME):
@@ -74,7 +80,6 @@ def install_logger_file_init(log_file_level=LOG_DEFAULT_FILE_LEVEL, verbose=Fals
 
     os.symlink(log_filename, LOG_DEFAULT_FILENAME)
 
-    log_file_handler.setLevel(log_file_level)
     if verbose:
         log_file_handler.setFormatter(logging.Formatter(LOG_DEFAULT_FILE_FORMAT_VERBOSE))
     else:
@@ -111,3 +116,19 @@ def get_install_logger(module=None):
         return logging.getLogger(LOG_DEFAULT_NAME)
     else:
         return logging.getLogger("{}.{}".format(LOG_DEFAULT_NAME, module))
+
+def get_log_filename(args, name):
+    """
+    Take a base name and return a filename in the log_dir
+    """
+
+    log_dir_base = args["log_dir"]
+    log_dir = os.path.join(log_dir_base, SESSION_TIMESTAMP)
+
+    log_filename = os.path.join(log_dir, "{}.log".format(name))
+
+    # for now require the logs be unique, might need to revisit this
+    if os.path.exists(log_filename):
+        raise LoggingError("{} already exists.".format(log_filename))
+
+    return log_filename
