@@ -66,7 +66,6 @@ def update_prods(args, location_dict):
     update location_dict with updated info
     """
     media_dir, statedir = get_dirs(args)
-    install_logger.debug('updating location_dict')
     filepath = os.path.join(statedir, "location_dict.yaml")
     with open(filepath, "w", encoding="UTF-8") as fhandle:
         yaml.dump(location_dict, fhandle)
@@ -141,14 +140,14 @@ def install(args):
                 try:
                     logname = get_log_filename(args, prod)
                     location_dict[prod]["log_name"] = logname
-                    result = connection.sudo(cmd, cwd=loc, timeout=900, store_output=logname, tee=True)
-                    install_logger.debug(result)
+                    install_logger.info('    Logging to {}'.format(logname))
+                    result = connection.sudo(cmd, cwd=loc, timeout=900, store_output=logname)
                     install_logger.info('    OK')
                     if not args["dryrun"]:
                         location_dict[prod]['installed'] = True
                     update_prods(args, location_dict)
                 except Exception as err:
-                    install_logger.error('    Failed')
+                    install_logger.error('   Failed')
                     err_summary = {
                         'product': prod,
                         'stderr': err.stderr.splitlines()[-5:]
@@ -170,18 +169,15 @@ def install(args):
 
     if unsuccessful_products:
         install_logger.error('The following products failed to install:')
-        for prod in unsuccessful_products:
-            install_logger.error('  {} ==========================='.format(prod["product"]))
-            with open(location_dict[prod["product"]]["log_name"], "r") as problem:
-                for line in problem:
-                    line = line.rstrip()
-                    if len(line) > 75:
-                        fmt_line = line[:75] + '[..]'
-                    else:
-                        fmt_line = line
-                    # log the full line, but print a short line to the screen
-                    install_logger.debug('    stderr> {}'.format(line))
-                    print('ERROR    stderr> {}'.format(fmt_line))
+        for problem in unsuccessful_products:
+            install_logger.error('  {} ==========================='.format(problem['product']))
+            for line in problem['stderr']:
+                if len(line) > 75:
+                    fmt_line = line[:75] + '[..]'
+                else:
+                    fmt_line = line
+                # log the full line, but print a short line to the screen
+                install_logger.error('    stderr> {}'.format(fmt_line))
 
     # we shouldn't continue if we tried to install something and failed
     if unsuccessful_products:
@@ -994,8 +990,10 @@ def sat_bootprep(args):
     timeout = 60 * 60 # 1 hour
 
     # Run `sat bootprep`
+    logname = get_log_filename(args, "sat_bootprep")
     install_logger.info("Running `sat bootprep`.  This can take around 30 minutes, depending on the number of layers, images, and bos sessiontemplates.")
-    connection.sudo("sat bootprep run --overwrite-configs --overwrite-images --overwrite-templates --public-key-id {} {}".format(ims_public_key, bootprep_if), timeout=timeout)
+    install_logger.info('  Logging to {}'.format(logname))
+    connection.sudo("sat bootprep run --overwrite-configs --overwrite-images --overwrite-templates --public-key-id {} {}".format(ims_public_key, bootprep_if), timeout=timeout, tee=True, store_output=logname)
 
     # Read in the configuration used for `sat bootprep` and give a summary.
     with open(bootprep_if, "r", encoding='UTF-8') as fhandle:

@@ -343,6 +343,9 @@ def process_debug_level(cmdline_args):
     else:
         install_logger_stream_init(verbose=cmdline_args.get("verbose", False))
 
+    log_dir_base = cmdline_args["log_dir"]
+    log_dir = os.path.join(log_dir_base, SESSION_TIMESTAMP)
+    install_logger.info("All logs will be stored in {}".format(log_dir))
     return
 
 

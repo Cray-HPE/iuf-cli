@@ -299,8 +299,11 @@ class _CmdInterface:
 
             except RunException as e:
                 install_logger.debug("  >>   cmd      : {}".format(e.cmd))
-                install_logger.debug("  >>>> stdout   : {}".format(e.stdout))
-                install_logger.debug("  >>>> stderr   : {}".format(e.stderr))
+                if store_output:
+                    install_logger.debug("  >>>> log      : {}".format(store_output))
+                else:
+                    install_logger.debug("  >>>> stdout   : {}".format(e.stdout))
+                    install_logger.debug("  >>>> stderr   : {}".format(e.stderr))
                 install_logger.debug("  >>>> exit code: {}".format(e.returncode))
                 raise
             except RunTimeoutError as e:
@@ -310,12 +313,15 @@ class _CmdInterface:
 
         if not quiet:
             if dryrun:
-                install_logger.dryrun("  >>   cmd      : {}".format(result.cmd))
+                install_logger.dryrun("  >>   cmd      : {}".format(cmd))
                 install_logger.dryrun("  >>>> cwd      : {}".format(cwd))
             else:
                 install_logger.debug("  >>   cmd      : {}".format(result.cmd))
-                install_logger.debug("  >>>> stdout   : {}".format(result.stdout))
-                install_logger.debug("  >>>> stderr   : {}".format(result.stderr))
+                if store_output:
+                    install_logger.debug("  >>>> log      : {}".format(store_output))
+                else:
+                    install_logger.debug("  >>>> stdout   : {}".format(result.stdout))
+                    install_logger.debug("  >>>> stderr   : {}".format(result.stderr))
                 install_logger.debug("  >>>> exit code: {}".format(result.returncode))
 
         return result
