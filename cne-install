@@ -12,7 +12,6 @@ import sys
 import yaml
 import logging
 import textwrap
-import subprocess
 import datetime
 
 from utils.vars import *
@@ -289,7 +288,7 @@ def process_install(args_dict):
                 STAGES[stage]["func"](args_dict)
                 install_logger.info("  stage completed in {}".format(elapsed_time(stage_start)))
 
-            except subprocess.CalledProcessError as err:
+            except RunException as err:
                 # if this was an unhandled, failed command, print details
                 install_logger.info("  aborting stage after {}".format(elapsed_time(stage_start)))
                 install_logger.debug("Exception while executing {}".format(stage), exc_info=True)
@@ -332,7 +331,7 @@ def process_list(args): #pylint: disable=unused-argument
 
 
 def process_debug_level(cmdline_args):
-    install_logger_file_init(verbose=cmdline_args.get("verbose", False))
+    install_logger_file_init(cmdline_args)
     if "level" in cmdline_args.keys() and cmdline_args["level"] != None:
         if cmdline_args["level"] in LOG_LEVELS.keys():
             level = LOG_LEVELS[cmdline_args["level"]]
@@ -344,6 +343,9 @@ def process_debug_level(cmdline_args):
     else:
         install_logger_stream_init(verbose=cmdline_args.get("verbose", False))
 
+    log_dir_base = cmdline_args["log_dir"]
+    log_dir = os.path.join(log_dir_base, SESSION_TIMESTAMP)
+    install_logger.info("All logs will be stored in {}".format(log_dir))
     return
 
 
@@ -383,6 +385,9 @@ def main():
     parser.add_argument("-m", "--media-dir", action="store",
         help="Location of installation media you would like to install.  Defaults to $PWD/media")
 
+    parser.add_argument("--log-dir", action="store", default=LOG_DEFAULT_DIR,
+        help="Location used to store log files.  Defaults to $PWD/log")
+
     parser.add_argument("--dryrun", action=InvertableArgument, default=False,
         help="Run without making any changes to the system to see what would happen")
 
@@ -417,7 +422,7 @@ def main():
         help="Run only the specified stages")
 
     install_sp.add_argument("-s", "--skip-stages", nargs="+", action="store",
-        help="Skip the execution of the specified stages.")
+        help="Skip the execution of the specified stages")
 
     install_sp.add_argument("-B", "--working-branch", action="store",
         help="""String representing the working branch in each product config
@@ -549,6 +554,7 @@ reload ncn-w003.
         args.func(args_dict)
     except AttributeError:
         install_logger.error("A subcommand was not specified.")
+        parser.print_help(sys.stderr)
         sys.exit(1)
 if __name__ == "__main__":
     main()
