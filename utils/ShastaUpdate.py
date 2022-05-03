@@ -825,6 +825,7 @@ def bos_sessiontemplate_name(args):
 
 
 def create_bootprep_config(args):
+    """Generate the bootprep config."""
     # Generate the  CFS config.
 
     bp_conf_arg = args.get("bootprep_config", None)
@@ -921,7 +922,7 @@ def sat_bootprep(args):
 
     # Run `sat bootprep`
     install_logger.info("Running `sat bootprep`.  This can take around 30 minutes, depending on the number of layers, images, and bos sessiontemplates.")
-    connection.sudo("sat bootprep run --public-key-id {} {}".format(ims_public_key, bootprep_if), timeout=timeout)
+    connection.sudo("sat bootprep run --overwrite-configs --overwrite-images --overwrite-templates --public-key-id {} {}".format(ims_public_key, bootprep_if), timeout=timeout)
 
     # Read in the configuration used for `sat bootprep` and give a summary.
     with open(bootprep_if, "r", encoding='UTF-8') as fhandle:

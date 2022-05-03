@@ -85,7 +85,7 @@ STAGES = OrderedDict({
         },
     "sat_bootprep": {
         "func" : main_ctrl.sat_bootprep,
-        "description" : "Generate the `sat bootprep` input config."
+        "description" : "Run `sat bootprep`."
         },
 })
 
