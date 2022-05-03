@@ -171,7 +171,7 @@ def install(args):
     if unsuccessful_products:
         install_logger.error('The following products failed to install:')
         for prod in unsuccessful_products:
-            install_logger.error('  {} ==========================='.format(prod))
+            install_logger.error('  {} ==========================='.format(prod["product"]))
             with open(location_dict[prod["product"]]["log_name"], "r") as problem:
                 for line in problem:
                     line = line.rstrip()
