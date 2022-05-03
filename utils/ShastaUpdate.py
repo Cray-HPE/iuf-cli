@@ -14,7 +14,7 @@ import stat
 import sys
 import time
 import jinja2
-
+from subprocess import TimeoutExpired
 from pprint import pformat
 
 from distutils.version import LooseVersion
@@ -349,6 +349,74 @@ def verify_product_import(args): #pylint: disable=unused-argument
         msg = "Something went wrong while waiting for the import jobs and pods to finish."
         raise UnexpectedState(msg)
 
+def verify_product_install(args): #pylint: disable=unused-argument
+    """ Check if there is a "validate.sh" script in the product
+    distrubtion. If there is a script, run it and return the results.
+    The validation is considered a success, if:
+       - There is a script to run and it succeeds. 
+       - There is no script to run. 
+       - The script has already been run and succeeded.
+    The validation does not succeeded, if:
+       - A validate.sh script runs and fails, hits timeout, etc. 
+       - 
+    """
+    location_dict = load_prods(args)
+    
+    # Keep track of the validations that explicitly failed.
+    validate_failed = []
+
+    install_logger.info("    Starting product validations:")
+
+    # Loop through all the products in the location_dict and display their validation status. 
+    # If the product has successfully run an install, check to see if it needs to be validated.
+    # Set all the products "validated" field to True or False, depending on the state. 
+    for product_name, product_info in location_dict.items():
+        validated = False
+        if product_info.get("installed", False) == False:
+            # These products haven't succeeded the installation stage. 
+            install_logger.warning("    {} {:.>32}".format(product_name, "not installed"))
+        elif product_info.get("installed", False) == True and product_info.get("validated", False) == False:
+            # Check if these products need to run a validation, then try to run it.
+            if os.path.exists(os.path.join(product_info["work_dir"], "validate.sh")):
+                install_logger.debug("Running validate.sh for {}".format(product_name))
+                try:
+                    results = connection.sudo("./validate.sh", cwd=os.path.join(product_info["work_dir"]), timeout=600)
+                    if results.returncode == 0:
+                        validated = True
+                        install_logger.info("        {} {:.>32}".format(product_name, "succeeded"))
+                    else:
+                        install_logger.error("        {} {:.>32}".format(product_name, "failed", results.returncode))
+                        validate_failed.append(product_name)
+                except TimeoutExpired as te:
+                    install_logger.error("        {} {:.>32}".format(product_name, "timeout"))
+                    validate_failed.append(product_name)
+                except:
+                    install_logger.error("        {} {:.>32}".format(product_name, "failed"))
+                    validate_failed.append(product_name)
+                install_logger.debug("Finshed running validate.sh for {}".format(product_name))  
+            else:
+                # These products have no validate.sh script to run.
+                install_logger.info("        {} {:.>32}".format(product_name, "nothing to run"))
+                validated = True
+
+        elif product_info.get("installed", False) == True and product_info.get("validated", False) == True:
+            # These products already ran and passed the validation stage.
+            install_logger.info("        {} {:.>32}".format(product_name, "done"))
+        else:
+            # These products are in an unknown state, they should be ignored. 
+            install_logger.warning("        {} {:.>32}".format(product_name, "ignored"))
+
+        location_dict[product_name]["validated"] = validated
+    
+    # Dryruns shouldn't update the location_dict with the validation status changes.
+    if args.get("dryrun", False) == False:
+        update_prods(args, location_dict)
+    
+    # Raise an exception if any of the validations explicitly failed. 
+    if len(validate_failed) > 0:
+        msg = "{} validation(s) failed."
+        install_logger.error(msg.format(len(validate_failed)))
+        raise COSProblem(msg.format(len(validate_failed)))
 
 def check_services(args): #pylint: disable=unused-argument
     """Check the cps and nmd services.  Also check dvs and lnet"""
@@ -492,10 +560,10 @@ def get_cos_recipe_name(args):
         install_logger.debug("{} not found in the location_dict.".format(product))
         return None
 
-    if "recipe" not in location_dict[product]:
-        # no recipe was found by get_product_catalog, give up
-        install_logger.debug("'recipe' keyword not found in the location_dict.")
-        return None
+    if "recipe" not in location_dict[product] or not location_dict[product]["recipe"]:
+        # No recipe was found by get_product_catalog; raise an exception.
+        raise COSProblem("A recipe name is needed to build the COS compute image.")
+
 
     # return what we've got
     install_logger.debug("recipe found in product catalog {}".format(location_dict[product]["recipe"]))
@@ -805,7 +873,7 @@ def wait_for_ims_pod(job_id):
             event_reason, pod_name))
         utils.wait_for_pod(connection, pod_name)
     else:
-        install_logger.warning("WARNING: Unable to get pod for job id {}".format(job_id))
+        install_logger.warning("Unable to get pod for job id {}".format(job_id))
         return None, None, None
 
     # Get the image id and etag
@@ -818,6 +886,128 @@ def wait_for_ims_pod(job_id):
     etag = artifacts['artifact']['ETag']
 
     return pod_name, resultant_image_id, etag
+
+def bos_sessiontemplate_name(args):
+    """Get the bos sessiontemplate name."""
+
+    date = datetime.datetime.today().strftime("%Y%m%d")
+    sessiontemplate_name = "cos-sessiontemplate-{}-{}".format(get_prod_version(args, 'cos'), date)
+
+    return  sessiontemplate_name
+
+
+def create_bootprep_config(args):
+    """Generate the bootprep config."""
+    # Generate the  CFS config.
+
+    bp_conf_arg = args.get("bootprep_config", None)
+    if bp_conf_arg:
+        install_logger.info("Using the following: `sat bootprep` config: {}".format(bp_conf_arg))
+        return
+
+    install_logger.info("Generating the `sat bootprep` config")
+
+    # Generate the configuration section.
+    bootprep_dict = {}
+    cfs_dict = create_cos_cfs_config(args)
+    bootprep_dict["configurations"] = []
+    date = datetime.datetime.today().strftime("%Y%m%d%H%M%S")
+    cfs_arg = args.get("cfs_config")
+    cfs_name = "{}-{}".format(cfs_arg, date)
+
+    bp_layers = [
+        {
+            "name": cfsd["name"],
+            "playbook": cfsd["playbook"],
+            "git":
+                {
+                    "url": cfsd["cloneUrl"],
+                    "commit": cfsd["commit"]
+
+                }
+        } for cfsd in cfs_dict["layers"]
+    ]
+    cfs_elt = {
+        "name": cfs_name,
+        "layers": bp_layers
+    }
+    bootprep_dict["configurations"].append(cfs_elt)
+
+    # Generate the images section.
+    cos_recipe_name = get_cos_recipe_name(args)
+    date = datetime.datetime.today().strftime("%Y%m%d%H%M%S")
+    cos_image_name = "cos-installer-image-{}".format(date)
+    images = [
+        {
+            "name": cos_image_name,
+            "description": """COS recipe for compute nodes""",
+            "ims": {
+                "name": cos_recipe_name,
+                "is_recipe": True,
+            },
+            "configuration": cfs_name,
+            "configuration_group_names": [
+                "Compute",
+            ],
+        },
+    ]
+
+    bootprep_dict["images"] = images
+
+    # Generate the BOS session templates section.
+    source_template_name = args["source_bos_sessiontemplate"]
+    working_template = json.loads(connection.sudo("cray bos sessiontemplate describe {} --format json".format(source_template_name)).stdout)
+    sessiontemplate_name = "{}-{}".format(source_template_name, date)
+    session_templates = [
+        {
+            "name": sessiontemplate_name,
+            "image": cos_image_name,
+            "configuration": cfs_name,
+            "bos_parameters": {
+                "boot_sets": {
+                    "compute": {
+                        "kernel_parameters": working_template["boot_sets"]["compute"]["kernel_parameters"],
+                        "node_roles_groups": ["Compute"],
+                    }
+                }
+            }
+        }
+    ]
+
+    bootprep_dict["session_templates"] = session_templates
+
+    with open(os.path.join(get_dirs(args, "state"), SAT_BOOTPREP_CFG), "w", encoding="UTF-8") as fhandle:
+        yaml.dump(bootprep_dict, fhandle)
+
+
+def sat_bootprep(args):
+    """Run `sat bootprep`.  This builds images and customized images, and generates a bos sessiontemplate."""
+
+    bp_conf_arg = args.get("bootprep_config", None)
+    if bp_conf_arg:
+        bootprep_if = bp_conf_arg
+    else:
+        bootprep_if = os.path.join(get_dirs(args, "state"), SAT_BOOTPREP_CFG)
+
+    ims_public_key = utils.get_ims_public_key(connection)
+    timeout = 60 * 60 # 1 hour
+
+    # Run `sat bootprep`
+    install_logger.info("Running `sat bootprep`.  This can take around 30 minutes, depending on the number of layers, images, and bos sessiontemplates.")
+    connection.sudo("sat bootprep run --overwrite-configs --overwrite-images --overwrite-templates --public-key-id {} {}".format(ims_public_key, bootprep_if), timeout=timeout)
+
+    # Read in the configuration used for `sat bootprep` and give a summary.
+    with open(bootprep_if, "r", encoding='UTF-8') as fhandle:
+        bootprep_dict = yaml.load(fhandle, yaml.SafeLoader)
+
+    cfs_cfg_names = ",".join([cfg["name"] for cfg in bootprep_dict["configurations"]])
+    image_names = ",".join([img["name"] for img in bootprep_dict["images"]])
+    st_names = ",".join([st["name"] for st in bootprep_dict["session_templates"]])
+
+    install_logger.info("`sat bootprep` summary:")
+    install_logger.info("  cfs configs: {}".format(cfs_cfg_names))
+    install_logger.info("  images: {}".format(image_names))
+    install_logger.info("  BOS sessiontemplates: {}".format(st_names))
 
 
 def customize_cos_compute_image(args):
@@ -838,6 +1028,7 @@ def customize_cos_compute_image(args):
 
     with open(image_info_location, 'r') as fhandle:
         image_info = yaml.load(fhandle, yaml.SafeLoader)
+
     # Find a session name that doesn't already exist.  We shouldn't need to
     # create more than 100 in a day.
     cfs_sessions = json.loads(connection.sudo("cray cfs sessions list --format json").stdout)
@@ -883,7 +1074,7 @@ def customize_cos_compute_image(args):
         tdiff = datetime.datetime.now() - start
         seconds_waited = tdiff.total_seconds()
         if seconds_waited > timeout:
-            install_logger.warning("WARNING: timed out waiting for {} to succeed; cannot customize the COS image".format(session_name))
+            install_logger.warning("Timed out waiting for {} to succeed; cannot customize the COS image".format(session_name))
             keep_going = False
         time.sleep(10)
 
@@ -891,7 +1082,7 @@ def customize_cos_compute_image(args):
         cfs_desc = json.loads(connection.sudo("cray cfs sessions describe {} --format json".format(session_name)).stdout)
         image_id = cfs_desc["status"]["artifacts"][0]["result_id"]
         artifacts = json.loads(connection.sudo("cray artifacts describe boot-images {}/manifest.json --format json".format(image_id)).stdout)
-        etag = artifacts['artifact']['ETag'].replace("\\\"", "")
+        etag = artifacts['artifact']['ETag'].replace('"', '')
         bos_info = {
             "image_id": image_id,
             "etag": etag,
@@ -986,24 +1177,19 @@ def create_cos_cfs_config(args):
     """
     Write a CFS config based on args, and update the commits to the most recent.
     """
-    cos_version = get_prod_version(args, 'cos')
-    _, intbranch = current_repo_branch(args, 'cos-config-management', cos_version)
-
-    if intbranch is None:
-        raise COSProblem("WARNING: Could not determine COS branch, so cannot build a compute image")
-
     # Update the configuration.
     local_config_path = os.path.join(get_dirs(args, "state"), CFS_CONFIG_FILENAME)
     cfs_config = args.get("cfs_config")
 
     # Retrieve And Modify An Existing Configuration For COS.
-    errout = connection.sudo("cray cfs configurations describe {} --format json".format(intbranch))
+    errout = connection.sudo("cray cfs configurations describe {} --format json".format(cfs_config))
     curr_config = json.loads(errout.stdout)
     curr_config = update_cfs_commits(args, curr_config)
 
     with open(local_config_path, 'w', encoding='UTF-8') as fhandle:
         json.dump(curr_config, fhandle)
 
+    return curr_config
 
 def build_cos_compute_image(args): #pylint: disable=unused-argument
     """
@@ -1031,23 +1217,15 @@ def build_cos_compute_image(args): #pylint: disable=unused-argument
     recipes = [r for r in recipe_list if r['name'] == cos_recipe_name]
     if not recipes:
         msg = utils.formatted("""
-            WARNING: Could not find recipe {}.  Skipping image building.
+            Could not find recipe {}.  Skipping image building.
             """.format(cos_recipe_name))
         raise COSProblem(msg)
     elif len(recipes) != 1:
-        install_logger.warning("WARNING: multiple recipes found for {}.  recipes = {}.  Taking the first one".format(cos_recipe_name, recipes))
+        install_logger.warning("Multiple recipes found for {}.  recipes = {}.  Taking the first one".format(cos_recipe_name, recipes))
 
     ims_recipe_id = recipes[0]['id']
 
-    created_public_keys = json.loads(connection.sudo("cray ims public-keys list --format json").stdout)
-    inst_pkey_list = [k for k in created_public_keys if k["name"] == "installer_public_key"]
-    rsa_pub = os.path.join(os.path.expanduser("~"), ".ssh", "id_rsa.pub")
-    if len(inst_pkey_list) <= 0:
-        pkey_dict = json.loads(connection.sudo('cray ims public-keys create --name "installer_public_key" --format json --public-key {}'.format(rsa_pub)).stdout)
-        public_key = pkey_dict
-    else:
-        public_key = inst_pkey_list[0]
-    ims_public_key_id = public_key['id']
+    ims_public_key_id = utils.get_ims_public_key(connection)
 
     install_logger.info("  Creating image from recipe {} id {}".format(cos_recipe_name, ims_recipe_id))
 
@@ -1069,7 +1247,7 @@ def build_cos_compute_image(args): #pylint: disable=unused-argument
     time.sleep(30)
     pod_name, resultant_image_id, etag = wait_for_ims_pod(job_id)
     if any( x is None for x in [pod_name, resultant_image_id, etag]):
-        raise COSProblem("WARNING: Cannot create the modified cos image, pod_name={}".format(pod_name))
+        raise COSProblem("Cannot create the modified cos image, pod_name={}".format(pod_name))
 
     install_logger.debug("Built COS image with a pod named {}, resultant_image_id={}, etag={}".format(
         pod_name, resultant_image_id, etag))
@@ -1495,7 +1673,7 @@ def create_bos_session_template(args):
     bos_file = os.path.join(get_dirs(args, "state"), BOS_INFO_FILENAME)
     if not os.path.exists(bos_file):
         msg = utils.formatted("""
-        WARNING: the bos information file {} does not exist.  Cannot boot COS.
+        The bos information file {} does not exist.  Cannot boot COS.
         """.format(bos_file))
         raise COSProblem(msg)
 
@@ -1590,7 +1768,7 @@ def run_hello_world(args):
             len(slurm_down_node_lst)+len(slurm_idle_node_lst)))
 
     if len(node_lst) != len(slurm_idle_node_lst):
-        install_logger.warning("WARNING: Not all 'Ready'({}) nodes are in 'idle'({}) state".format(
+        install_logger.warning("Not all 'Ready'({}) nodes are in 'idle'({}) state".format(
             len(node_lst), len(slurm_idle_node_lst)))
 
     install_logger.info("Running srun on {} nodes".format(len(slurm_idle_node_lst)))
