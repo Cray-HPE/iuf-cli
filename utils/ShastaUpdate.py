@@ -14,7 +14,6 @@ import stat
 import sys
 import time
 import jinja2
-from subprocess import TimeoutExpired
 from pprint import pformat
 
 from distutils.version import LooseVersion
@@ -392,7 +391,7 @@ def verify_product_install(args): #pylint: disable=unused-argument
                     else:
                         install_logger.error("        {} {:.>32}".format(product_name, "failed", results.returncode))
                         validate_failed.append(product_name)
-                except TimeoutExpired as te:
+                except RunTimeoutError as te:
                     install_logger.error("        {} {:.>32}".format(product_name, "timeout"))
                     validate_failed.append(product_name)
                 except:
@@ -629,7 +628,7 @@ def update_ncn_config(args):
 
     base_file = "cfs-config.{}-{}.json".format(
         prod_version,
-        datetime.datetime.today().strftime("%Y%m%d-%H%M%S"))
+        SESSION_TIMESTAMP)
 
     # ncn_personalization should always be found in args since it has a
     # default value.
@@ -895,8 +894,7 @@ def wait_for_ims_pod(job_id):
 def bos_sessiontemplate_name(args):
     """Get the bos sessiontemplate name."""
 
-    date = datetime.datetime.today().strftime("%Y%m%d")
-    sessiontemplate_name = "cos-sessiontemplate-{}-{}".format(get_prod_version(args, 'cos'), date)
+    sessiontemplate_name = "cos-sessiontemplate-{}-{}".format(get_prod_version(args, 'cos'), SESSION_TIMESTAMP)
 
     return  sessiontemplate_name
 
@@ -916,9 +914,8 @@ def create_bootprep_config(args):
     bootprep_dict = {}
     cfs_dict = create_cos_cfs_config(args)
     bootprep_dict["configurations"] = []
-    date = datetime.datetime.today().strftime("%Y%m%d%H%M%S")
     cfs_arg = args.get("cfs_config")
-    cfs_name = "{}-{}".format(cfs_arg, date)
+    cfs_name = "{}-{}".format(cfs_arg, SESSION_TIMESTAMP)
 
     bp_layers = [
         {
@@ -940,8 +937,7 @@ def create_bootprep_config(args):
 
     # Generate the images section.
     cos_recipe_name = get_cos_recipe_name(args)
-    date = datetime.datetime.today().strftime("%Y%m%d%H%M%S")
-    cos_image_name = "cos-installer-image-{}".format(date)
+    cos_image_name = "cos-installer-image-{}".format(SESSION_TIMESTAMP)
     images = [
         {
             "name": cos_image_name,
@@ -962,7 +958,7 @@ def create_bootprep_config(args):
     # Generate the BOS session templates section.
     source_template_name = args["source_bos_sessiontemplate"]
     working_template = json.loads(connection.sudo("cray bos sessiontemplate describe {} --format json".format(source_template_name)).stdout)
-    sessiontemplate_name = "{}-{}".format(source_template_name, date)
+    sessiontemplate_name = "{}-{}".format(source_template_name, SESSION_TIMESTAMP)
     session_templates = [
         {
             "name": sessiontemplate_name,
@@ -1019,7 +1015,6 @@ def customize_cos_compute_image(args):
     """Customize a COS compute image."""
 
     cos_version = get_prod_version(args, 'cos')
-    date = datetime.datetime.today().strftime("%Y%m%d")
 
     image_info_location = os.path.join(get_dirs(args, "state"), IMAGE_INFO)
     if not os.path.exists(image_info_location):
@@ -1041,7 +1036,7 @@ def customize_cos_compute_image(args):
 
     for i in range(100):
         istr = "%02d" % i
-        session_name = "cos-config-{}-integration-{}-{}".format(cos_version, date, istr)
+        session_name = "cos-config-{}-integration-{}-{}".format(cos_version, SESSION_TIMESTAMP, istr)
         if session_name not in existing_sessions:
             break
 
@@ -1235,11 +1230,10 @@ def build_cos_compute_image(args): #pylint: disable=unused-argument
     install_logger.info("  Creating image from recipe {} id {}".format(cos_recipe_name, ims_recipe_id))
 
     # Now create the image.
-    datestr =  datetime.datetime.today().strftime("%Y%m%d-%H%M%S")
     cmd = "cray ims jobs create --job-type create --image-root-archive-name \
             {}-recipe-ci-image --artifact-id {} --public-key-id {} \
             --enable-debug False --format json".format(
-                datestr, ims_recipe_id, ims_public_key_id)
+                SESSION_TIMESTAMP, ims_recipe_id, ims_public_key_id)
     image_result = connection.sudo(cmd)
     install_logger.debug("result of image create: out={}, err={}".format(image_result.stdout, image_result.stderr))
 
@@ -1699,8 +1693,7 @@ def create_bos_session_template(args):
 
     bos_session_file = os.path.join(get_dirs(args, "state"), BOS_SESSIONTEMPLATE_FILENAME)
 
-    date = datetime.datetime.today().strftime("%Y%m%d")
-    sessiontemplate_name = "cos-sessiontemplate-{}-{}".format(get_prod_version(args, 'cos'), date)
+    sessiontemplate_name = "cos-sessiontemplate-{}-{}".format(get_prod_version(args, 'cos'), SESSION_TIMESTAMP)
 
     with open(bos_session_file, 'w', encoding='UTF-8') as fhandle:
         json.dump(working_template, fhandle)
