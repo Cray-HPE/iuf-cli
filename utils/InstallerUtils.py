@@ -102,18 +102,23 @@ def get_hosts(connection, host_str):
     Get hosts matching a string or regular expression; for example
     'get_hosts(connection, "ncn-w")' will get all worker nodes.
     """
-    sat_stat = json.loads(connection.sudo("sat status --format json", dryrun=False).stdout)
-    hosts = []
 
+    components_list = json.loads(connection.sudo("cray hsm state components list --type node --format json").stdout)
+
+    xnames = [clist["ID"] for clist in components_list["Components"]]
+    hosts = []
     def ncn_sort(tup):
         return tup[1]
 
     host_re = re.compile(r"{}".format(host_str))
-    for elt in sat_stat:
-        if  re.match(host_re, elt["xname"]) or re.match(host_re, elt["Aliases"]):
-            hosts.append((elt["xname"], elt["Aliases"]))
-
-    install_logger.debug("Found hosts matching {}: {}".format(host_str, hosts))
+    for xname in xnames:
+        hw_desc = json.loads(connection.sudo('cray sls hardware describe {} --format json'.format(xname)).stdout)
+        try:
+            alias = hw_desc["ExtraProperties"]['Aliases'][0]
+        except KeyError:
+            pass
+        if re.match(host_re, alias) or re.match(host_re, alias):
+            hosts.append((xname, alias))
 
     return sorted(hosts, key=ncn_sort)
 
