@@ -295,7 +295,7 @@ class _CmdInterface:
             result = RunOutput(cmd, shlex.split(cmd), 0, "", "Dryrun, command not executed")
         else:
             if store_output:
-                output_h = open(store_output, "w")
+                output_h = open(store_output, "w", 1)
             else:
                 output_h = None
 
