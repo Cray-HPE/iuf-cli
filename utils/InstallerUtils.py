@@ -120,12 +120,6 @@ def get_hosts(connection, host_str):
         if re.match(host_re, alias) or re.match(host_re, alias):
             hosts.append((xname, alias))
 
-    # For some reason, the 'cray hsm state components list ...' command doesn't
-    # include ncn-m001.
-    if re.match(host_re, 'm0') or re.match(host_re, 'ncn'):
-        self_xname = connection.sudo("cat /etc/cray/xname").stdout.rstrip()
-        hosts.append((self_xname, 'ncn-m001'))
-
     return sorted(hosts, key=ncn_sort)
 
 
