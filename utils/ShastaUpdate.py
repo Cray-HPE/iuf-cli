@@ -10,6 +10,7 @@ import json
 import os
 import platform
 import re
+import shutil
 import stat
 import sys
 import time
@@ -411,9 +412,8 @@ def verify_product_install(args): #pylint: disable=unused-argument
         # Make sure the goss executable exists and is in the path.
         # Another idea might be to query the hpe-csm-goss-package package.
         prodname_short = location_dict[product_name]["product"]
-        try:
-            goss_exe = connection.sudo("which goss").stdout
-        except RunException:
+        goss_exe = shutil.which("goss")
+        if not goss_exe:
             msg = """
                 The goss executable can't be found, so goss testing will be
                 not be ran for {}""".format(product_name)
@@ -422,7 +422,6 @@ def verify_product_install(args): #pylint: disable=unused-argument
 
         # Run the gos tests if they exist.
         test_dir = os.path.join("/opt/cray/tests/install", prodname_short)
-        connection.sudo("goss --help")
         if os.path.exists(test_dir) and goss_exe:
             goss_yamls = connection.sudo("find {} -name \*goss\*.yaml".format(test_dir)).stdout.splitlines()
             for gy in goss_yamls:
