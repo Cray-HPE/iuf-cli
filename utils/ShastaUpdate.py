@@ -10,6 +10,7 @@ import json
 import os
 import platform
 import re
+import shutil
 import stat
 import sys
 import time
@@ -217,7 +218,7 @@ def verify_product_import(args): #pylint: disable=unused-argument
     jobs_running = {"Completed":[], "Running":[]}
     # The pods could be in a number of various states, but these are the states we know/care about most
     # If the pod is in another state, it will be added to the dict later
-    pods_running = {"Completed":[], "Running":[], "Error":[]}  
+    pods_running = {"Completed":[], "Running":[], "Error":[]}
 
     total_seconds = 0
     timeout_seconds = 1200
@@ -229,7 +230,7 @@ def verify_product_import(args): #pylint: disable=unused-argument
 
     while True:
 
-        finished = True        
+        finished = True
 
         # Initailly we're gatering a superset of the jobs/pods to monitor
         jobs_list = connection.sudo(get_jobs_cmd).stdout.splitlines()
@@ -247,7 +248,7 @@ def verify_product_import(args): #pylint: disable=unused-argument
 
         # Here we loop through the superset of jobs, and narrow down the list of jobs
         # by checking the job name field specifically. The jobs are either considered
-        # "Completed or "Running" based on the "Completions" column. 
+        # "Completed or "Running" based on the "Completions" column.
         # e.g. 0/2 or 1/2 are considered "Running" and 2/2 is considered "Completed"
         for job in jobs_list:
             fields = job.split()
@@ -310,12 +311,12 @@ def verify_product_import(args): #pylint: disable=unused-argument
             msg = "    Time elaspsed: {} second(s)".format(total_seconds)
             install_logger.info(msg)
 
-        alert_count += 1     
-        time.sleep(sleep_seconds)   
+        alert_count += 1
+        time.sleep(sleep_seconds)
 
     msg = "Total time spent waiting for import jobs and pods was {} second(s)".format(total_seconds)
     install_logger.info(msg)
-    
+
     # finished should only be True if all the jobs/pods are in "Completed" or "Error" states,
     # or if there were no jobs/pods found at all
     if finished:
@@ -341,7 +342,7 @@ def verify_product_import(args): #pylint: disable=unused-argument
         if failed:
             msg = "There are jobs/pods that failed to complete"
             raise COSProblem(msg)
-        
+
     elif total_seconds > timeout_seconds:
         msg = "Timed out waiting for import jobs and pods to finish"
         raise TimeOut(msg)
@@ -353,27 +354,27 @@ def verify_product_install(args): #pylint: disable=unused-argument
     """ Check if there is a "validate.sh" script in the product
     distrubtion. If there is a script, run it and return the results.
     The validation is considered a success, if:
-       - There is a script to run and it succeeds. 
-       - There is no script to run. 
+       - There is a script to run and it succeeds.
+       - There is no script to run.
        - The script has already been run and succeeded.
     The validation does not succeeded, if:
-       - A validate.sh script runs and fails, hits timeout, etc. 
-       - 
+       - A validate.sh script runs and fails, hits timeout, etc.
+       -
     """
     location_dict = load_prods(args)
-    
+
     # Keep track of the validations that explicitly failed.
     validate_failed = []
 
     install_logger.info("    Starting product validations:")
 
-    # Loop through all the products in the location_dict and display their validation status. 
+    # Loop through all the products in the location_dict and display their validation status.
     # If the product has successfully run an install, check to see if it needs to be validated.
-    # Set all the products "validated" field to True or False, depending on the state. 
+    # Set all the products "validated" field to True or False, depending on the state.
     for product_name, product_info in location_dict.items():
         validated = False
         if product_info.get("installed", False) == False:
-            # These products haven't succeeded the installation stage. 
+            # These products haven't succeeded the installation stage.
             install_logger.warning("    {} {:.>32}".format(product_name, "not installed"))
         elif product_info.get("installed", False) == True and product_info.get("validated", False) == False:
             # Check if these products need to run a validation, then try to run it.
@@ -393,7 +394,7 @@ def verify_product_install(args): #pylint: disable=unused-argument
                 except:
                     install_logger.error("        {} {:.>32}".format(product_name, "failed"))
                     validate_failed.append(product_name)
-                install_logger.debug("Finshed running validate.sh for {}".format(product_name))  
+                install_logger.debug("Finshed running validate.sh for {}".format(product_name))
             else:
                 # These products have no validate.sh script to run.
                 install_logger.info("        {} {:.>32}".format(product_name, "nothing to run"))
@@ -403,16 +404,39 @@ def verify_product_install(args): #pylint: disable=unused-argument
             # These products already ran and passed the validation stage.
             install_logger.info("        {} {:.>32}".format(product_name, "done"))
         else:
-            # These products are in an unknown state, they should be ignored. 
+            # These products are in an unknown state, they should be ignored.
             install_logger.warning("        {} {:.>32}".format(product_name, "ignored"))
 
         location_dict[product_name]["validated"] = validated
-    
+
+        # Make sure the goss executable exists and is in the path.
+        # Another idea might be to query the hpe-csm-goss-package package.
+        prodname_short = location_dict[product_name]["product"]
+        goss_exe = shutil.which("goss")
+        if not goss_exe:
+            msg = """
+                The goss executable can't be found, so goss testing will be
+                not be ran for {}""".format(product_name)
+            install_logger.warning(utils.formatted(msg))
+            continue
+
+        # Run the gos tests if they exist.
+        test_dir = os.path.join("/opt/cray/tests/install", prodname_short)
+        if os.path.exists(test_dir) and goss_exe:
+            goss_yamls = connection.sudo("find {} -name \*goss\*.yaml".format(test_dir)).stdout.splitlines()
+            for gy in goss_yamls:
+                connection.sudo("{} -g {} validate".format(goss_exe, gy))
+        else:
+            msg = """
+                goss test directory ({}) does not exist for {}
+                 ==> skipping goss tests""".format(test_dir, product_name)
+            install_logger.warning(utils.formatted(msg))
+
     # Dryruns shouldn't update the location_dict with the validation status changes.
     if args.get("dryrun", False) == False:
         update_prods(args, location_dict)
-    
-    # Raise an exception if any of the validations explicitly failed. 
+
+    # Raise an exception if any of the validations explicitly failed.
     if len(validate_failed) > 0:
         msg = "{} validation(s) failed."
         install_logger.error(msg.format(len(validate_failed)))
@@ -1261,7 +1285,7 @@ def unload_dvs_and_lnet(args):
                 timeout=120).stdout.splitlines()
 
             k8s_job_line = [line for line in output if line.lower().startswith('services')][0]
-                
+
             if k8s_job_line:
                 k8s_job = k8s_job_line.split()[1].strip()
                 install_logger.debug("k8sjob={}  wait for the pod...".format(k8s_job))
@@ -1288,7 +1312,7 @@ def unload_dvs_and_lnet(args):
 def legacy_dvs_reload(args):
     """
     legacy (<= COS 2.2) version of the DVS reload proceedure
-    this mode performs a DVS reload based on 
+    this mode performs a DVS reload based on
     """
 
     worker_tuples = utils.get_ncn_tuples(connection, args, just_workers=True)

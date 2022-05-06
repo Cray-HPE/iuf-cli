@@ -295,8 +295,7 @@ def process_install(args_dict):
                 print("")
                 install_logger.critical("The following command failed while executing {}:".format(stage))
                 print("")
-                cmd = " ".join(err.cmd)
-                install_logger.error("   CMD: {}".format(cmd))
+                install_logger.error("   CMD: {}".format(err.cmd))
                 for item in ["stdout", "stderr", "returncode"]:
                     if hasattr(err, item):
                         rawmsg = str(eval("err."+item))
