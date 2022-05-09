@@ -19,6 +19,7 @@ import urllib
 import shlex
 import shutil
 import yaml
+import rpm
 
 from utils.InstallLogger import get_install_logger
 from utils.vars import *
@@ -147,7 +148,39 @@ def get_ncn_tuples(connection, args, just_workers=False):
 
     return all_ncn_tuples
 
+def process_rpm(rpmpath):
+    provides = []
+    requires = []
 
+    def symstr(name,value):
+        sym = None
+        nstr = n.decode('utf-8')
+        if nstr.startswith("ksym("):
+            sym = "{} = {}".format(nstr,value.decode('utf-8'))
+
+        return sym
+
+    # the rpm module sure is something!
+    ts = rpm.TransactionSet("", (rpm._RPMVSF_NOSIGNATURES))
+    with rpmpath.open() as fd:
+        headers = ts.hdrFromFdno(fd)
+
+        pnames = headers[rpm.RPMTAG_PROVIDENAME]
+        pvals = headers[rpm.RPMTAG_PROVIDEVERSION]
+        for n,v in zip(pnames,pvals):
+            sym = symstr(n,v)
+            if sym:
+                provides.append(sym)
+
+
+        rnames = headers[rpm.RPMTAG_REQUIRENAME]
+        rvals = headers[rpm.RPMTAG_REQUIREVERSION]
+        for n,v in zip(rnames,rvals):
+            sym = symstr(n,v)
+            if sym:
+                requires.append(sym)
+
+    return provides, requires
 
 def wait_for_pod(connection, pod_name, timeout=1200, delete=False):
     """Wait for a pod to be either created or deleted."""
