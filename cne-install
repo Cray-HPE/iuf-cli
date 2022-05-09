@@ -360,8 +360,22 @@ def process_dryrun(cmdline_args):
         addLoggingLevel('DRYRUN', logging.INFO + 1)
         install_logger.dryrun("Dryrun enabled")
 
+def check_environment_variables():
+    """
+    Go over a list of variables that we don't want set and remove them
+    """
+
+    CLEAN_ENV = [
+        "CRAY_FORMAT",
+    ]
+
+    for var in CLEAN_ENV:
+        if var in os.environ:
+            del os.environ[var]
+
 def main():
     """Main entry point."""
+    check_environment_variables()
 
     parser = argparse.ArgumentParser(description=
         """
