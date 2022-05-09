@@ -24,10 +24,6 @@ import yaml #pylint: disable=import-error
 from utils.InstallLogger import get_install_logger, get_log_filename
 from utils.InstallerUtils import CmdMgr
 
-install_logger = get_install_logger(__name__)
-
-CWD = os.getcwd()
-
 from utils.vars import *
 import utils.InstallerUtils as utils #pylint: disable=wrong-import-position,import-error
 from utils.InstallerUtils import getenv #pylint: disable=wrong-import-position,import-error
@@ -1031,7 +1027,6 @@ def sat_bootprep(args):
     install_logger.info("  cfs configs: {}".format(cfs_cfg_names))
     install_logger.info("  images: {}".format(image_names))
     install_logger.info("  BOS sessiontemplates: {}".format(st_names))
-
 
 
 def create_dvs_reload_config(args):

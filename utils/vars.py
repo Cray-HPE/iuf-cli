@@ -73,6 +73,7 @@ CFS_CONFIG_FILENAME = "cfs-config.json"
 IMAGE_INFO = "image_info.yaml"
 BOS_SESSIONTEMPLATE_FILENAME = "bos_sessiontemplate.json"
 
+STAGE_HIST_FILENAME = "stage_hist.yaml"
 NCNP_VARS = "ncnp-vars.yaml"
 
 SAT_BOOTPREP_CFG = "bootprep-config.yaml"
