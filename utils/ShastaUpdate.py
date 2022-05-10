@@ -1660,21 +1660,19 @@ def validate_weak_symbols(args, valid_products, failures, flavor="cray_shasta_c"
         install_logger.warning("    Unable to perform weak symbol check: Unable to find any KMPs")
         return
 
-    missing_symbols = False
+    missing_symbols = 0
     for kmp in kmps:
         diff_list = list(set(required[kmp]).difference(provided))
         if diff_list:
-            if not missing_symbols:
-                install_logger.error("   Missing kernel symbols found")
-
-            missing_symbols = True
-            install_logger.error("      {}".format(os.path.basename(kmp)))
+            missing_symbols += 1
+            install_logger.debug("      {}".format(os.path.basename(kmp)))
             for missing in diff_list:
-                install_logger.error("        {}".format(missing))
+                install_logger.debug("        {}".format(missing))
 
     if missing_symbols:
+        install_logger.error("   Missing kernel symbols found in {} package(s)".format(missing_symbols))
         install_logger.info("    FAILED")
-        failures.append("Weak symbols check found missing symbols")
+        failures.append("The versions of SHS and COS being installed have incompatible kernel sets")
         return
     else:
         install_logger.info("    OK")

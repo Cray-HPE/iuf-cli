@@ -154,7 +154,7 @@ def process_rpm(rpmpath):
 
     def symstr(name,value):
         sym = None
-        nstr = n.decode('utf-8')
+        nstr = name.decode('utf-8')
         if nstr.startswith("ksym("):
             sym = "{} = {}".format(nstr,value.decode('utf-8'))
 
@@ -165,14 +165,17 @@ def process_rpm(rpmpath):
     with rpmpath.open() as fd:
         headers = ts.hdrFromFdno(fd)
 
+        # the rpm api returns the provide name in one list, and the values in another list
         pnames = headers[rpm.RPMTAG_PROVIDENAME]
         pvals = headers[rpm.RPMTAG_PROVIDEVERSION]
+
+        # get the two ordered lists and join them
         for n,v in zip(pnames,pvals):
             sym = symstr(n,v)
             if sym:
                 provides.append(sym)
 
-
+        # same with the requires
         rnames = headers[rpm.RPMTAG_REQUIRENAME]
         rvals = headers[rpm.RPMTAG_REQUIREVERSION]
         for n,v in zip(rnames,rvals):
