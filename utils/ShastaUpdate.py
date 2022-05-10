@@ -1762,7 +1762,7 @@ def validate_products(args):
 
     # get all the product stuff here since we don't want to do anything apparently
     # if there are multiple tarballs for any given product
-    valid_products = {'cos': {}, 'slingshot-host-software': {}}
+    valid_products = {'cos': {}, 'slingshot-host-software': {}, 'sles': {}}
 
     # build a list of valid cos and shs products
     for prod in location_dict:
