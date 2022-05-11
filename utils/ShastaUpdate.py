@@ -1720,10 +1720,13 @@ def validate_cos_ncn_kernel(args, valid_products, failures):
     # represented in the COS rpms
     running_kernel = os.uname()[2]
 
+    # need to get rid of the -default and replace - with _ in order to match rpm names
+    running_kernel = running_kernel.split('-default')[0].replace('-', '_')
+
     # find a representive rpm from the cos media
     query_package = 'cray-dvs-kmp-default'
     rpms = []
-    for rpm in Path(cos_workdir).rglob("cray-dvs-kmp-default-*".format(os_release)):
+    for rpm in Path(cos_workdir).rglob("cray-dvs-kmp-default-*"):
         if "{}-ncn".format(os_release) in str(rpm.parent):
             rpms.append(rpm.name)
 
@@ -1759,10 +1762,7 @@ def validate_products(args):
 
     # load previously discovered produts
     location_dict = load_prods(args)
-
-    # get all the product stuff here since we don't want to do anything apparently
-    # if there are multiple tarballs for any given product
-    valid_products = {'cos': {}, 'slingshot-host-software': {}, 'sles': {}}
+    valid_products = dict()
 
     # build a list of valid cos and shs products
     for prod in location_dict:
@@ -1772,6 +1772,8 @@ def validate_products(args):
             if location_dict[prod]['work_dir'] and not location_dict[prod]['installed']:
                 product_name = location_dict[prod]['product']
                 # products we care about from a validation perspective
+                if product_name not in valid_products:
+                    valid_products[product_name] = dict()
                 valid_products[product_name][prod] = location_dict[prod]
 
     num_cos_products = len(valid_products['cos'])
