@@ -20,22 +20,19 @@ from utils.InstallerUtils import formatted
 from utils.Config import Config
 from utils.Config import InvertableArgument
 
-# Import utils.stages without the 'as stages' to prevent namespace collisions.
+
 import utils.ShastaUpdate as supdate
+
+# Import utils.stages without the 'as stages' to prevent namespace collisions.
 import utils.stages
-
-
 
 # pylint: disable=consider-using-f-string
 
 install_logger = get_install_logger()
 
-STAGES = utils.stages.Stages()
 
-NOABORT_STAGES = [
-]
 
-def validate_stages(args_dict):
+def validate_stages(args_dict, stages):
     """Validate that all of the various stage related args passed in are valid"""
 
 
@@ -45,14 +42,13 @@ def validate_stages(args_dict):
     run_stages = args_dict.get('run_stages')
     skip_stages = args_dict.get('skip_stages')
     state_dir = args_dict.get('state_dir')
-    print("call STAGES.validate, state_dir={}, begin_stage={}, end_stage={}, run_stages={}, skip_stages={}".format(
-        state_dir, begin_stage, end_stage, run_stages, skip_stages))
-    STAGES.validate(state_dir, begin_stage, end_stage, run_stages, skip_stages)
+
+    stages.validate(state_dir, begin_stage, end_stage, run_stages, skip_stages)
 
     if args_dict["func"] == process_install:
-        install_logger.info("STAGE SUMMARY: begin_stage={}, end_stage={}".format(STAGES._stages[0], STAGES._stages[-1]))
+        install_logger.info("STAGE SUMMARY: begin_stage=%s, end_stage=%s", stages.beginStage, stages.endStage)
 
-    local_stages = STAGES.get(all_stages=False, list_fmt=True)
+    local_stages = stages.get(all_stages=False, list_fmt=True)
 
     # Check the BOS sessiontemplate and CFS config arguments.  If the CFS
     # config is not explicitly specified, it can be obtained from the BOS
@@ -104,34 +100,32 @@ def validate_stages(args_dict):
     return
 
 
-def process_install(args_dict):
+def process_install(args_dict, stages):
     """Run the install"""
-    all_stages = STAGES.get(list_fmt=True, all_stages=True)
-    stages = STAGES.get(list_fmt=True, all_stages=False)
+    all_stages = stages.get(list_fmt=True, all_stages=True)
+    exec_stages = stages.get(list_fmt=True, all_stages=False)
 
     for stage in all_stages:
-        if stage in stages:
+        if stage in exec_stages:
             install_logger.info("Beginning stage: {}".format(stage))
             # a logging message using exc_info must be the very first thing called after the except
             # block starts, so I can't make all these decisions there
-            if stage in NOABORT_STAGES:
-                log_level=LOG_LEVELS["WARNING"]
+            if stages.abortable(stage):
+                log_level = LOG_LEVELS["ERROR"]
             else:
-                log_level=LOG_LEVELS["ERROR"]
+                log_level = LOG_LEVELS["WARNING"]
 
-            STAGES.exec_stage(args_dict, stage)
+            stages.exec_stage(args_dict, stage)
 
-    install_logger.info("Install completed in {}".format(elapsed_time(STAGES.installer_start)))
+    install_logger.info("Install completed in {}".format(elapsed_time(stages.installer_start)))
 
 
-def process_list(args): #pylint: disable=unused-argument
+def process_list(args, stages): #pylint: disable=unused-argument
     """Process the arguments to the list subparser"""
 
-    # Initialize the stages for printing purposes.
-    STAGES.set_hist(args["state_dir"])
-    stages = STAGES.get(long=True, status=True, all_stages=True)
+    all_stages = stages.get(long=True, status=True, all_stages=True)
 
-    print(stages)
+    print(all_stages)
 
 
 def process_debug_level(cmdline_args):
@@ -222,7 +216,7 @@ def main():
     # install stage.  The install stage needs to install what was unpacked.
 
     subparsers = parser.add_subparsers(title="subcommands")
-    stage_list = STAGES.get_help()
+    stage_list = utils.stages.get_stage_help()
 
     install_sp = subparsers.add_parser("install", epilog="Valid stages:\n{}".format(stage_list),
         formatter_class=argparse.RawTextHelpFormatter)
@@ -309,8 +303,6 @@ reload ncn-w003.
     install_sp.set_defaults(func=process_install, skip_stages=list(), run_stages=list())
 
     list_sp = subparsers.add_parser("list-stages", aliases=["ls"])
-    list_sp.add_argument("-s", "--status", action="store_true",
-                         help="Print the status of the install")
     list_sp.set_defaults(func=process_list)
 
     # create a config object to store all of the configured options in the parser
@@ -347,6 +339,7 @@ reload ncn-w003.
         if not os.path.exists(state_default):
             os.mkdir(state_default)
 
+    stages = utils.stages.Stages(stage_dict=STAGE_DICT, state_dir=args_dict["state_dir"])
     process_debug_level(args_dict)
     process_dryrun(args_dict)
     install_logger.debug(args_dict)
@@ -364,13 +357,13 @@ reload ncn-w003.
     if not os.path.exists(args_dict["state_dir"]):
         install_logger.error("State directory {} does not exist.".format(args_dict["state_dir"]))
         sys.exit(1)
-    validate_stages(args_dict)
+    validate_stages(args_dict, stages)
 
     if args_dict["write_input_file"]:
         config.write(args_dict)
 
     try:
-        args.func(args_dict)
+        args.func(args_dict, stages)
     except AttributeError:
         install_logger.error("A subcommand was not specified.")
         parser.print_help(sys.stderr)

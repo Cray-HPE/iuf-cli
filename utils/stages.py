@@ -2,7 +2,7 @@
 
 """This module contains the staging information and functionality."""
 
-from collections import OrderedDict
+
 import copy
 import datetime
 import os
@@ -12,105 +12,29 @@ import yaml
 from utils.InstallLogger import get_install_logger
 from utils.InstallerUtils import elapsed_time, formatted
 
+# Note: utils.ShastaUpdate needs to be imported `as supdate` because of the
+# Naming convention used in vars.py to get at the functions.
 import utils.ShastaUpdate as supdate
-from utils.vars import RunException, STAGE_HIST_FILENAME
+from utils.vars import RunException, STAGE_HIST_FILENAME, STAGE_DICT, NOABORT_STAGES
 
 install_logger = get_install_logger(__name__)
 
 # pylint: disable=consider-using-f-string
 
-def format_tabbed_list(alist):
-    """Format a list into text that's easier to read.  This is useful when
-    a list needs to be displayed to a user."""
-    retstr = ""
-    for elt in alist:
-        retstr += "  {}\n".format(elt)
-
-    return retstr
-
-STAGES_DICT = OrderedDict({
-    "process_product_media": {
-        "func" : supdate.get_prods,
-        "description" : "Inventory and extract products in the media directory for use in subsequent stages."
-        },
-    "validate_products":  {
-        "func" : supdate.validate_products,
-        "description" : "Perform product sanity checks."
-        },
-    "install_products": {
-        "func" : supdate.install,
-        "description" : "Install products identified in the process_product_media stage."
-        },
-    "verify_product_import": {
-        "func" : supdate.verify_product_import,
-        "description" : "Verify all product import PODS and Jobs have completed."
-        },
-    "verify_product_install": {
-        "func" : supdate.verify_product_install,
-        "description" : "Verify product installation by running product validations"
-        },
-    "update_working_branches": {
-        "func" : supdate.update_working_branches,
-        "description" : formatted("""
-                        Update config managment branches identified by --working-branch with the product
-                        release branch content for each product being installed that contains a
-                        config management repo.  See help for --working-branch for details on
-                        setting the working branch.""")
-        },
-    "update_ncn_config": {
-        "func" : supdate.update_ncn_config,
-        "description" : formatted("""
-                        Update the NCN personalization configuration.  Defaults to 'ncn-personalization',
-                        use --ncn-personalization to over-ride.""")
-        },
-    "worker_health_check": {
-        "func":  supdate.worker_health_check,
-        "description": "Check the health of the workers prior to beginning NCN Personalization."
-        },
-    "ncn_personalization": {
-        "func" : supdate.ncn_personalization,
-        "description" : "Perform NCN personalization."
-        },
-    "unload_dvs_and_lnet": {
-        "func" : supdate.unload_dvs_and_lnet,
-        "description" : "Perform a rolling unload, upgrade and reload of DVS and LNET on worker nodes."
-        },
-    "check_services": {
-        "func" : supdate.check_services,
-        "description" : "Check CPS, DVS, LNET. and NMD services."
-        },
-    "create_cos_cfs_config": {
-        "func" : supdate.create_cos_cfs_config,
-        "description" : "Write the CFS config used for building the COS image."
-        },
-    "create_bootprep_config": {
-        "func" : supdate.create_bootprep_config,
-        "description" : "Generate the `sat bootprep` input config."
-        },
-    "sat_bootprep": {
-        "func" : supdate.sat_bootprep,
-        "description" : "Run `sat bootprep`."
-        },
-})
-
 class StageHist:
-    def __init__(self, state_dir=None):
-        self._stages = list(STAGES_DICT.keys())
+    def __init__(self, state_dir, all_stages=[]):
+        self._stages = all_stages
         self._status = {}
-        self.stage_hist_file = None
-        if state_dir is None:
-            # This will happen on an 'ls'
-            for stage in self._stages:
-                self.update(stage, False, False, None)
+        self._stage_hist_file = None
+        self._stage_hist_file = os.path.join(state_dir, STAGE_HIST_FILENAME)
 
-            return
-
-        self.stage_hist_file = os.path.join(state_dir, STAGE_HIST_FILENAME)
-        if os.path.exists(self.stage_hist_file):
-            with open(self.stage_hist_file, "r", encoding='UTF-8') as fhandle:
+        # Load the stage history from a previous run and return.
+        if os.path.exists(self._stage_hist_file):
+            with open(self._stage_hist_file, "r", encoding='UTF-8') as fhandle:
               self._status = yaml.full_load(fhandle)
               return
 
+        # We have not returned.  This must be a new run.
         for stage in self._stages:
             self._status[stage] = {
                 "ran": False,
@@ -118,8 +42,8 @@ class StageHist:
                 "duration": None,
             }
 
-        with open(self.stage_hist_file, "w", encoding='UTF-8') as fhandle:
-            yaml.dump(self._status, fhandle)
+        self.dump_status()
+
 
     def create_new_status(self):
           for stage in self._stages:
@@ -129,15 +53,15 @@ class StageHist:
                     "duration": None,
                 }
 
+
     def load_status(self):
-        with open(self.stage_hist_file, "r", encoding='UTF-8') as fhandle:
+        with open(self._stage_hist_file, "r", encoding='UTF-8') as fhandle:
               self._status = yaml.full_load(fhandle)
 
-    def dump_status(self):
-        if self.properInit:
-            with open(self.stage_hist_file, "w", encoding='UTF-8') as fhandle:
-                yaml.dump(self._status, fhandle)
 
+    def dump_status(self):
+        with open(self._stage_hist_file, "w", encoding='UTF-8') as fhandle:
+            yaml.dump(self._status, fhandle)
 
 
     def update(self, stage, ran=False, succeeded=False, duration=None):
@@ -150,39 +74,30 @@ class StageHist:
         }
         self.dump_status()
 
-    def set_hist(self, state_dir):
-        if not self.stage_hist_file:
-            self.stage_hist_file = os.path.join(state_dir, STAGE_HIST_FILENAME)
-            if not os.path.exists(self.stage_hist_file):
-                self.create_new_status()
-            else:
-                self.load_status()
 
-    @property
-    def properInit(self):
-        """
-        Indicate whether or not this class has been fully initialized.
-        Since a user could simply do an `ls` without having ran anything else,
-        we can't fully initialize until we've executed a stage.
-        """
-        if self.stage_hist_file:
-            return True
-        else:
-            return False
-
-class Stages:
+class Stages():
     """Staging information and methods."""
-    def __init__(self):
-        self._stage_dict = copy.deepcopy(STAGES_DICT)
+    def __init__(self, stage_dict={}, state_dir='state'):
+        self._stage_dict = copy.deepcopy(stage_dict)
         self._stages = list(self._stage_dict.keys())
         self._all_stages = self._stages
         self.installer_start = datetime.datetime.now()
-        self.stage_hist = StageHist()
+        self.stage_hist = StageHist(state_dir, self._all_stages)
         self.skip_stages = []
+        self._noabort_stages = NOABORT_STAGES
 
-    def set_hist(self, state_dir):
-        """Set up the history file"""
-        self.stage_hist.set_hist(state_dir)
+
+    @property
+    def beginStage(self):
+        return self._stages[0]
+
+    @property
+    def endStage(self):
+        return self._stages[-1]
+
+    def abortable(self, stage):
+        """Return true if a stage can be aborted."""
+        return stage not in self._noabort_stages
 
     def get(self, long=False, all_stages=True, status=False, list_fmt=False):
         """Get either a printable list and description/status of stages, or return a list
@@ -231,29 +146,16 @@ class Stages:
         table.align = "l"
         return table.get_string()
 
-    def get_help(self):
-        """Get the stages in a format that coincides with the help output."""
-        table = PrettyTable(header=False, border=False)
-        table.field_names = ["Stage", "Description"]
-        for stage in STAGES_DICT:
-            table.add_row([stage, STAGES_DICT[stage]["description"]])
-        table.align = "l"
-
-        return table.get_string()
-
-    def checkInit(self, state_dir):
-        if not self.stage_hist.properInit:
-            self.stage_hist.set_hist(state_dir)
-
 
     def exec_stage(self, args_dict, stage):
         """Run a stage."""
 
-        self.checkInit(args_dict['state_dir'])
+        #self.checkInit(args_dict['state_dir'])
 
         try:
+            stage_func = eval("supdate.{}".format(self._stage_dict[stage]["func"]))
             stage_start = datetime.datetime.now()
-            self._stage_dict[stage]["func"](args_dict)
+            stage_func(args_dict)
             duration = elapsed_time(stage_start)
             install_logger.info("  stage completed in %s", duration)
             self.stage_hist.update(stage, True, True, duration)
@@ -305,7 +207,7 @@ class Stages:
         # Do some error-handling with the stage-related args
         stages_list = self.get(list_fmt=True)
 
-        self.checkInit(state_dir)
+        #self.checkInit(state_dir)
         # wait to exit until we process all the stages
         error=False
 
@@ -382,3 +284,13 @@ class Stages:
         self._stages = [stages_list[i] for i in range(begin_idx, end_idx + 1) if stages_list[i] not in skip_stages]
         install_logger.debug("stages=%s",self._stages)
         install_logger.debug("(begin,end)_idx = (%s,%s)", begin_idx, end_idx)
+
+def get_stage_help():
+    """Get the stages in a format that coincides with the help output."""
+    table = PrettyTable(header=False, border=False)
+    table.field_names = ["Stage", "Description"]
+    for stage in STAGE_DICT:
+        table.add_row([stage, STAGE_DICT[stage]["description"]])
+    table.align = "l"
+
+    return table.get_string()

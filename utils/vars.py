@@ -1,9 +1,11 @@
 # Copyright 2022 Hewlett Packard Enterprise Development LP
 
+from collections import OrderedDict
 import datetime
 import os
 import logging
 
+import textwrap
 class VMConnectionException(Exception):
     """A pass-through class."""
 
@@ -62,6 +64,82 @@ class NCNPersonalization(Exception):
 class GitError(Exception):
     """A wrapper for raising an NCNPersonalization error"""
     pass
+
+# Note this isn't imported from InstallerUtils to avoid circular dependencies.
+def _formatted(text):
+    """Format a text string for a standard 80-line terminal."""
+    wrapper = textwrap.TextWrapper(width=78)
+    raw = textwrap.dedent(text).strip()
+    msg = wrapper.fill(text=raw)
+    return msg
+
+STAGE_DICT = OrderedDict({
+    "process_product_media": {
+        "func" : "get_prods",
+        "description" : "Inventory and extract products in the media directory for use in subsequent stages."
+        },
+    "validate_products":  {
+        "func" : "validate_products",
+        "description" : "Perform product sanity checks."
+        },
+    "install_products": {
+        "func" : "install",
+        "description" : "Install products identified in the process_product_media stage."
+        },
+    "verify_product_import": {
+        "func" : "verify_product_import",
+        "description" : "Verify all product import PODS and Jobs have completed."
+        },
+    "verify_product_install": {
+        "func" : "verify_product_install",
+        "description" : "Verify product installation by running product validations"
+        },
+    "update_working_branches": {
+        "func" : "update_working_branches",
+        "description" : _formatted("""
+            Update config managment branches identified by
+            --working-branch with the product release branch content for each product
+            being installed that contains a config management repo.  See help for
+            --working-branch for details on setting the working branch.""")
+        },
+    "update_ncn_config": {
+        "func" : "update_ncn_config",
+        "description" : _formatted("""
+            Update the NCN personalization configuration.  Defaults to 'ncn-personalization',
+            use --ncn-personalization to over-ride.""")
+        },
+    "worker_health_check": {
+        "func":  "worker_health_check",
+        "description": "Check the health of the workers prior to beginning NCN Personalization."
+        },
+    "ncn_personalization": {
+        "func" : "ncn_personalization",
+        "description" : "Perform NCN personalization."
+        },
+    "unload_dvs_and_lnet": {
+        "func" : "unload_dvs_and_lnet",
+        "description" : "Perform a rolling unload, upgrade and reload of DVS and LNET on worker nodes."
+        },
+    "check_services": {
+        "func" : "check_services",
+        "description" : "Check CPS, DVS, LNET. and NMD services."
+        },
+    "create_cos_cfs_config": {
+        "func" : "create_cos_cfs_config",
+        "description" : "Write the CFS config used for building the COS image."
+        },
+    "create_bootprep_config": {
+        "func" : "create_bootprep_config",
+        "description" : "Generate the `sat bootprep` input config."
+        },
+    "sat_bootprep": {
+        "func" : "sat_bootprep",
+        "description" : "Run `sat bootprep`."
+        },
+})
+
+NOABORT_STAGES = [
+]
 
 LOCATION_DICT = "location_dict.yaml"
 
