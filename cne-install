@@ -5,14 +5,11 @@
 """The Compute Node Environment (CNE) Installer"""
 
 import argparse
-from collections import OrderedDict
+
 import json
 import os
 import sys
-import yaml
 import logging
-import textwrap
-import datetime
 
 from utils.vars import *
 from utils.InstallLogger import *
@@ -23,212 +20,48 @@ from utils.InstallerUtils import formatted
 from utils.Config import Config
 from utils.Config import InvertableArgument
 
-import utils.ShastaUpdate as main_ctrl
+
+import utils.ShastaUpdate as supdate
+
+# Import utils.stages without the 'as stages' to prevent namespace collisions.
+import utils.stages
 
 # pylint: disable=consider-using-f-string
 
 install_logger = get_install_logger()
 
-STAGES = OrderedDict({
-    "process_product_media": {
-        "func" : main_ctrl.get_prods,
-        "description" : "Inventory and extract products in the media directory for use in subsequent stages."
-        },
-    "validate_products":  {
-        "func" : main_ctrl.validate_products,
-        "description" : "Perform product sanity checks."
-        },
-    "install_products": {
-        "func" : main_ctrl.install,
-        "description" : "Install products identified in the process_product_media stage."
-        },
-    "verify_product_import": {
-        "func" : main_ctrl.verify_product_import,
-        "description" : "Verify all product import PODS and Jobs have completed."
-        },
-    "verify_product_install": {
-        "func" : main_ctrl.verify_product_install,
-        "description" : "Verify product installation by running product validations"
-        },
-    "update_working_branches": {
-        "func" : main_ctrl.update_working_branches,
-        "description" : """Update config managment branches identified by --working-branch with the product
-                                release branch content for each product being installed that contains a
-                                config management repo.  See help for --working-branch for details on
-                                setting the working branch."""
-        },
-    "update_ncn_config": {
-        "func" : main_ctrl.update_ncn_config,
-        "description" : """Update the NCN personalization configuration.  Defaults to 'ncn-personalization',
-                                use --ncn-personalization to over-ride."""
-        },
-    "worker_health_check": {
-        "func":  main_ctrl.worker_health_check,
-        "description": "Check the health of the workers prior to beginning NCN Personalization."
-    },
-    "ncn_personalization": {
-        "func" : main_ctrl.ncn_personalization,
-        "description" : "Perform NCN personalization."
-        },
-    "unload_dvs_and_lnet": {
-        "func" : main_ctrl.unload_dvs_and_lnet,
-        "description" : "Perform a rolling unload, upgrade and reload of DVS and LNET on worker nodes."
-        },
-    "check_services": {
-        "func" : main_ctrl.check_services,
-        "description" : "Check CPS, DVS, LNET. and NMD services."
-        },
-    "create_cos_cfs_config": {
-        "func" : main_ctrl.create_cos_cfs_config,
-        "description" : "Write the CFS config used for building the COS image."
-        },
-    "create_bootprep_config": {
-        "func" : main_ctrl.create_bootprep_config,
-        "description" : "Generate the `sat bootprep` input config."
-        },
-    "sat_bootprep": {
-        "func" : main_ctrl.sat_bootprep,
-        "description" : "Run `sat bootprep`."
-        },
-})
 
-NOABORT_STAGES = [
-]
 
-def format_tabbed_list(alist):
-    """Format a list into text that's easier to read.  This is useful when
-    a list needs to be displayed to a user."""
-    retstr = ""
-    for elt in alist:
-        retstr += "  {}\n".format(elt)
-
-    return retstr
-
-def get_stages(long=False, all=False):
-    ret = []
-
-    longest = max(map(len, STAGES.keys()))
-
-    for stage in STAGES.keys():
-        display = STAGES[stage].get("display", True)
-        if not display and not all:
-            continue
-        stagestr = stage
-        if long:
-            description = STAGES[stage].get("description", False)
-            if description:
-                stagestr = "{stage:{width}} : {description}".format(stage=stage, width=longest, description=description)
-
-        ret.append(stagestr)
-
-    if long:
-        return format_tabbed_list(ret)
-    else:
-        return ret
-
-def validate_stages(args_dict):
+def validate_stages(args_dict, stages):
     """Validate that all of the various stage related args passed in are valid"""
-    # Do some error-handling with the stage-related args
-    stages_list = get_stages(all=True)
-    stages_formatted = get_stages(long=True)
+
 
     # load all of the stage variables
     begin_stage = args_dict.get('begin_stage')
     end_stage = args_dict.get('end_stage')
     run_stages = args_dict.get('run_stages')
     skip_stages = args_dict.get('skip_stages')
+    state_dir = args_dict.get('state_dir')
 
-    # wait to exit until we process all the stages
-    error=False
+    stages.validate(state_dir, begin_stage, end_stage, run_stages, skip_stages)
 
-    # if they've specified begin or end along with run_stages, we no longer have any idea
-    # what they're talking about.  Don't allow it.
-    if begin_stage is not None or end_stage is not None:
-        if run_stages:
-            install_logger.error("argument -r/--run-stages: not allowed with -b/--begin-stage or -e/--end-stage")
-            error=True
+    if args_dict["func"] == process_install:
+        install_logger.info("STAGE SUMMARY: begin_stage=%s, end_stage=%s", stages.beginStage, stages.endStage)
 
-    # run and skip at the same time is equally nonsensical
-    if run_stages and skip_stages:
-        install_logger.error("argument -r/--run-stages: not allowed with -s/--skip-stages")
-        error=True
-
-    if begin_stage is None:
-        begin_stage = stages_list[0]
-
-    if end_stage is None:
-        end_stage = stages_list[-1]
-
-    if begin_stage not in stages_list:
-        install_logger.error("invalid stage ({}) found in --begin-stage".format(begin_stage))
-        error=True
-
-    if end_stage not in stages_list:
-        install_logger.error("invalid stage ({}) found in --end-stage.".format(end_stage))
-        error=True
-
-    if run_stages:
-        for stage in run_stages:
-            if stage not in stages_list:
-                install_logger.error("invalid stage ({}) found in --run-stages".format(stage))
-                error=True
-
-    # don't need to log the help information, just print and exit
-    if error:
-        print("\nAll stages must be one of the following:\n{}".format(stages_formatted))
-        sys.exit(1)
-
-    # Let args_dict['run_stages'] override begin_stage and end_stage; that is,
-    # if all three were passed in, run_stages wins.  Loop against stages_list
-    # to preserve the execution order.
-    if run_stages:
-        got_first_stage = False
-        for stage in stages_list:
-            if stage in run_stages and not got_first_stage:
-                begin_stage = stage
-                end_stage = stage
-                got_first_stage = True
-            elif stage in run_stages:
-                end_stage = stage
-
-    # Determine if any stages can be skipped.
-    if skip_stages is None:
-        skip_stages = list()
-
-    if not isinstance(skip_stages, list):
-        # This may happen if it skip_stages was passed it via the input file.
-        print("'-s/--skip-stages' argument should be a list")
-        sys.exit(1)
-
-    for sstage in skip_stages:
-        if sstage not in stages_list:
-            install_logger.error("invalid stage ({}) found in --skip-stages".format(sstage))
-            error=True
-
-    begin_idx = stages_list.index(begin_stage)
-    end_idx = stages_list.index(end_stage)
-    install_logger.debug("begin_idx={}, end_idx={}, len(stages_list)={}".format(begin_idx, end_idx, len(stages_list)))
-    stages = [stages_list[i] for i in range(begin_idx, end_idx + 1) if stages_list[i] not in skip_stages]
-    install_logger.debug("stages={}".format(stages))
-    install_logger.debug("(begin,end)_idx = ({},{})".format(begin_idx, end_idx))
-    args_dict["stages"] = stages
-    if "func" in args_dict and args_dict["func"] == process_install:
-        install_logger.info("STAGE SUMMARY: begin_stage={}, end_stage={}".format(begin_stage, end_stage))
-
-    # Check some of the commandline arguments up front to prevent wasted time.
+    local_stages = stages.get(all_stages=False, list_fmt=True)
 
     # Check the BOS sessiontemplate and CFS config arguments.  If the CFS
     # config is not explicitly specified, it can be obtained from the BOS
     # sessiontemplate.
     if "source_bos_sessiontemplate" in args_dict and args_dict["source_bos_sessiontemplate"] is None \
-        and "create_bootprep_config" in stages:
+        and "create_bootprep_config" in local_stages:
         msg = formatted("""
             When creating a bos session template,  a source bos sessiontemplate
             (-t or --source-bos-sessiontemplate) is required""")
         print(msg)
         sys.exit(1)
     elif "source_bos_sessiontemplate" in args_dict and args_dict["source_bos_sessiontemplate"]:
-        bos_template = json.loads(main_ctrl.connection.sudo("cray bos sessiontemplate describe {} --format json".format(
+        bos_template = json.loads(supdate.connection.sudo("cray bos sessiontemplate describe {} --format json".format(
             args_dict["source_bos_sessiontemplate"])).stdout)
         bos_cfs_config_name = bos_template["cfs"]["configuration"]
 
@@ -249,8 +82,8 @@ def validate_stages(args_dict):
 
     # Ensure that working_branch is specified if it's needed.
     if ("working_branch" in args_dict and args_dict["working_branch"] is None) \
-        and (("update_working_branches" in stages) \
-        or ("update_ncn_config" in stages)):
+        and (("update_working_branches" in local_stages) \
+        or ("update_ncn_config" in local_stages)):
             msg = formatted("""
                 Please supply --working-branch with stages update_working_branches or update_ncn_config.""")
             print(msg)
@@ -259,7 +92,7 @@ def validate_stages(args_dict):
     # Ensure that if a `sat bootprep` config was specified (and the stage
     # is being run) it exists.
     bp_config = args_dict.get("bootprep_config", None)
-    if bp_config and "sat_bootprep" in stages:
+    if bp_config and "sat_bootprep" in local_stages:
         if not os.path.exists(bp_config):
             print("--bootprep-config/-bpc {} was specified but could not be found".format(bp_config))
             sys.exit(1)
@@ -267,66 +100,32 @@ def validate_stages(args_dict):
     return
 
 
-def process_install(args_dict):
+def process_install(args_dict, stages):
     """Run the install"""
-    stages_list = get_stages(all=True)
-    stages = args_dict["stages"]
+    all_stages = stages.get(list_fmt=True, all_stages=True)
+    exec_stages = stages.get(list_fmt=True, all_stages=False)
 
-    installer_start = datetime.datetime.now()
-    for stage in stages_list:
-        if stage in stages:
+    for stage in all_stages:
+        if stage in exec_stages:
             install_logger.info("Beginning stage: {}".format(stage))
             # a logging message using exc_info must be the very first thing called after the except
             # block starts, so I can't make all these decisions there
-            if stage in NOABORT_STAGES:
-                log_level=LOG_LEVELS["WARNING"]
+            if stages.abortable(stage):
+                log_level = LOG_LEVELS["ERROR"]
             else:
-                log_level=LOG_LEVELS["ERROR"]
+                log_level = LOG_LEVELS["WARNING"]
 
-            try:
-                stage_start = datetime.datetime.now()
-                STAGES[stage]["func"](args_dict)
-                install_logger.info("  stage completed in {}".format(elapsed_time(stage_start)))
+            stages.exec_stage(args_dict, stage)
 
-            except RunException as err:
-                # if this was an unhandled, failed command, print details
-                install_logger.info("  aborting stage after {}".format(elapsed_time(stage_start)))
-                install_logger.debug("Exception while executing {}".format(stage), exc_info=True)
-                print("")
-                install_logger.critical("The following command failed while executing {}:".format(stage))
-                print("")
-                install_logger.error("   CMD: {}".format(err.cmd))
-                for item in ["stdout", "stderr", "returncode"]:
-                    if hasattr(err, item):
-                        rawmsg = str(eval("err."+item))
-                        msglines = rawmsg.splitlines()
-                        for line in msglines:
-                            if line:
-                                install_logger.error("{}: {}".format(item, line))
-                print("")
-                install_logger.info("Aborting install after {}".format(elapsed_time(installer_start)))
-                print("")
-                sys.exit(1)
-
-            except Exception as err:
-                install_logger.info("  aborting stage after {}".format(elapsed_time(stage_start)))
-                install_logger.debug("Exception while executing {}".format(stage), exc_info=True)
-                print("")
-                install_logger.critical("A '{}' error".format(err))
-                install_logger.critical("occured while executing {}".format(stage))
-
-                print("")
-                install_logger.info("Aborting install after {}".format(elapsed_time(installer_start)))
-                print("")
-                sys.exit(1)
-
-    install_logger.info("Install completed in {}".format(elapsed_time(installer_start)))
+    install_logger.info("Install completed in {}".format(elapsed_time(stages.installer_start)))
 
 
-def process_list(args): #pylint: disable=unused-argument
+def process_list(args, stages): #pylint: disable=unused-argument
     """Process the arguments to the list subparser"""
-    stages = get_stages(long=True)
-    print(stages)
+
+    all_stages = stages.get(long=True, status=True, all_stages=True)
+
+    print(all_stages)
 
 
 def process_debug_level(cmdline_args):
@@ -417,7 +216,7 @@ def main():
     # install stage.  The install stage needs to install what was unpacked.
 
     subparsers = parser.add_subparsers(title="subcommands")
-    stage_list = get_stages(long=True)
+    stage_list = utils.stages.get_stage_help()
 
     install_sp = subparsers.add_parser("install", epilog="Valid stages:\n{}".format(stage_list),
         formatter_class=argparse.RawTextHelpFormatter)
@@ -540,6 +339,7 @@ reload ncn-w003.
         if not os.path.exists(state_default):
             os.mkdir(state_default)
 
+    stages = utils.stages.Stages(stage_dict=STAGE_DICT, state_dir=args_dict["state_dir"])
     process_debug_level(args_dict)
     process_dryrun(args_dict)
     install_logger.debug(args_dict)
@@ -557,14 +357,13 @@ reload ncn-w003.
     if not os.path.exists(args_dict["state_dir"]):
         install_logger.error("State directory {} does not exist.".format(args_dict["state_dir"]))
         sys.exit(1)
-
-    validate_stages(args_dict)
+    validate_stages(args_dict, stages)
 
     if args_dict["write_input_file"]:
         config.write(args_dict)
 
     try:
-        args.func(args_dict)
+        args.func(args_dict, stages)
     except AttributeError:
         install_logger.error("A subcommand was not specified.")
         parser.print_help(sys.stderr)
