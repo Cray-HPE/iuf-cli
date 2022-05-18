@@ -13,6 +13,7 @@ import yaml
 import logging
 import textwrap
 import datetime
+import tarfile
 
 from utils.vars import *
 from utils.InstallLogger import *
@@ -20,6 +21,8 @@ from utils.InstallLogger import *
 from utils.InstallerUtils import CmdMgr
 from utils.InstallerUtils import elapsed_time
 from utils.InstallerUtils import formatted
+from utils.InstallerUtils import get_product_prefixes
+from utils.InstallerUtils import print_table
 from utils.Config import Config
 from utils.Config import InvertableArgument
 
@@ -328,6 +331,37 @@ def process_list(args): #pylint: disable=unused-argument
     stages = get_stages(long=True)
     print(stages)
 
+def process_products(args):
+    products = get_product_prefixes(desc=True)
+    media = args['media_dir']
+
+    def arc_wanted(f, prefix):
+        if f.is_file() and f.name.startswith(prefix):
+            if tarfile.is_tarfile(f.path):
+                return True
+
+        return False
+
+
+    header = ['Archive Prefix', 'Product Description']
+    alignments = dict()
+    alignments['Archive Prefix'] = "r"
+    alignments['Product Description'] = "l"
+
+    rows = []
+    archives = []
+    for prefix,description in products.items():
+        rows.append([prefix,description])
+        found = [ f.name for f in os.scandir(media) if arc_wanted(f,prefix) ]
+        archives.extend(found)
+
+    scriptname = os.path.basename(__file__)
+    print("The following products are supported by {}:".format(scriptname))
+    print_table(rows, header, 'Archive Prefix', alignments)
+    print ("Matching products in", media)
+    for archive in archives:
+        print ("  ",archive)
+
 
 def process_debug_level(cmdline_args):
     install_logger_file_init(cmdline_args)
@@ -505,6 +539,9 @@ reload ncn-w003.
 
     list_sp = subparsers.add_parser("list-stages", aliases=["ls"])
     list_sp.set_defaults(func=process_list)
+
+    products_sp = subparsers.add_parser("list-products")
+    products_sp.set_defaults(func=process_products)
 
     # create a config object to store all of the configured options in the parser
     config = Config()

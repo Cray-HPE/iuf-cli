@@ -20,6 +20,7 @@ import shlex
 import shutil
 import yaml
 import rpm
+import prettytable
 
 from utils.InstallLogger import get_install_logger
 from utils.vars import *
@@ -50,6 +51,24 @@ class productVersions():
             self.versions[product] = version(short_version, full_version)
     def has(self, product):
         return product in self.versions
+
+def print_table(rows, header=None, sort=None, alignments=None):
+    table = prettytable.PrettyTable()
+
+    if header:
+        table.field_names = header
+
+    if sort:
+        table.sortby = sort
+
+    if alignments:
+        for column,align in alignments.items():
+            table.align[column] = align
+
+    for row in rows:
+        table.add_row(row)
+
+    print(table)
 
 def getenv(var):
     """Get an environment variable"""
@@ -915,6 +934,62 @@ def get_product_catalog(connection, products=None):
 
     return products
 
+def get_product_prefixes(desc=False):
+    prefixes = {
+        'cos': {
+            'product': 'cos',
+            'description': 'HPE Cray Operating System',
+            },
+        'SUSE-Backports-SLE': {
+            'product': 'sles',
+            'description': 'openSUSE packages backports provided by SUSE',
+            },
+        'SUSE-PTF': {
+            'product': 'sles',
+            'description': 'PTFs (Program Temporary Fixes) provided by SUSE',
+            },
+        'SUSE-Products': {
+            'product': 'sles',
+            'description': 'Base SLE software provided by SUSE',
+            },
+        'SUSE-Updates': {
+            'product': 'sles',
+            'description': 'Updates to base SLE software provided by SUSE',
+            },
+        'slingshot-host-software': {
+            'product': 'slingshot-host-software',
+            'description': 'Slingshot Host Software and Drivers',
+            },
+        # 'analytics': 'analytics',
+        'uan': {
+            'product': 'uan',
+            'description': 'HPE Cray User Access Node (UAN) Software',
+            },
+        # 'cpe': 'cpe',
+        # 'cpe-slurm': 'slurm',
+        # 'wlm-slurm': 'slurm',
+        # 'wlm-pbs': 'pbs',
+        # 'cpe-pbs': 'pbs',
+        # 'cray-sdu-rda': 'sdu'
+        'sma': {
+            'product': 'sma',
+            'description': 'HPE Cray EX System Monitoring Application',
+            },
+        'sat': {
+            'product': 'sat',
+            'description': 'HPE Cray System Admin Toolkit',
+            },
+    }
+
+    retval = dict()
+
+    for prefix in prefixes:
+        if desc:
+            retval[prefix] = prefixes[prefix]['description']
+        else:
+            retval[prefix] = prefixes[prefix]['product']
+
+    return retval
 
 def get_products( connection,
                   media_dir = '.',
@@ -967,24 +1042,7 @@ def get_products( connection,
         products = {}
 
     if not prefixes:
-        prefixes = {
-                    'cos': 'cos',
-                    'SUSE-Backports-SLE': 'sles',
-                    'SUSE-PTF': 'sles',
-                    'SUSE-Products': 'sles',
-                    'SUSE-Updates': 'sles',
-                    'slingshot-host-software': 'slingshot-host-software',
-                    # 'analytics': 'analytics',
-                    'uan': 'uan',
-                    # 'cpe': 'cpe',
-                    # 'cpe-slurm': 'slurm',
-                    # 'wlm-slurm': 'slurm',
-                    # 'wlm-pbs': 'pbs',
-                    # 'cpe-pbs': 'pbs',
-                    # 'cray-sdu-rda': 'sdu'
-                    'sma': 'sma',
-                    'sat': 'sat'
-                    }
+        prefixes = get_product_prefixes()
 
     if not suffixes:
         suffixes = { 'md5': '.tar.gz.MD5.TXT',
