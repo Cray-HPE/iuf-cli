@@ -420,6 +420,8 @@ def verify_product_install(args): #pylint: disable=unused-argument
         test_dir = os.path.join("/opt/cray/tests/install", prodname_short)
         if os.path.exists(test_dir) and goss_exe:
             goss_yamls = connection.sudo("find {} -name \*goss\*.yaml".format(test_dir)).stdout.splitlines()
+            if len(goss_yamls) > 0:
+                install_logger.info("        Running goss tests ...")
             for gy in goss_yamls:
                 connection.sudo("{} -g {} validate".format(goss_exe, gy))
         else:
