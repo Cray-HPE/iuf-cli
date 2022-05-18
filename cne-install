@@ -130,7 +130,7 @@ def process_list(args, stages): #pylint: disable=unused-argument
 
     print(all_stages)
 
-def process_products(args):
+def process_products(args, stages):
     products = get_product_prefixes(desc=True)
     media = args['media_dir']
 
