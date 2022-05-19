@@ -11,14 +11,14 @@ install_logger = get_install_logger(__name__)
 
 
 class PodDetails:
-    """ 
+    """
     This class holds the pod json data returned from 'kubectl get pods' type commands.
     """
 
     def __init__(self, pod_name, pod_namespace, pod_data=None):
-        """ 
-        pod_name and pod_namespace are strings that will be directly passed to kubectl, 
-        and pod_data holds the json info from kubectl that's be converted to a dict. 
+        """
+        pod_name and pod_namespace are strings that will be directly passed to kubectl,
+        and pod_data holds the json info from kubectl that's be converted to a dict.
         """
 
         self.pod_name = pod_name
@@ -33,7 +33,7 @@ class PodDetails:
     def _get_container_state(self, container):
         """ Looks at the container dict from the pod_data to figure out the current state.
             Returns the contianer name and container state dict key as a pair.
-            Appends the reason the pod is terminated, if the pod is in that state. 
+            Appends the reason the pod is terminated, if the pod is in that state.
             States can be "waiting", "running" or "terminated".
         """
         if container == None:
@@ -83,7 +83,7 @@ class PodDetails:
     @staticmethod
     def find_pod_namespace(pod_name):
         """
-        Returns the namespace of the pod_name input. 
+        Returns the namespace of the pod_name input.
         If the namespace can't be determined, return None.
        
         """
@@ -104,7 +104,7 @@ class PodDetails:
     @staticmethod
     def create_pod_details(pod_name):
         """
-        Creates and returns an instance of PodDetails given the pod_name input. 
+        Creates and returns an instance of PodDetails given the pod_name input.
         Determines the namespace of the pod, and updates the pod_data.
         Returns None if the namespace lookup fails, or data can't be updated.
         """
@@ -123,7 +123,7 @@ class PodDetails:
 def wait_for_pod(connection, pod_name, timeout=1200, delete=False):
     """ Wait for a pod to be either created or deleted.
 
-        If the pod is being deleted, 
+        If the pod is being deleted,
          - Considered succeeded when the pod can't be found.
 
         If the pod is NOT being deleted,
