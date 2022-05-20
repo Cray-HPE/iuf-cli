@@ -1629,6 +1629,11 @@ def validate_weak_symbols(args, valid_products, failures, flavor="cray_shasta_c"
     required = dict()
     kmps = []
 
+    install_logger.info("  Performing weak symbols check on the installation media")
+    if 'slingshot-host-software' not in valid_products or len(valid_products['slingshot-host-software']) != 1:
+        install_logger.warning("    Unable to perform weak symbol check: No SHS packages found")
+        return
+
     cos_products = valid_products['cos']
     cos_version = list(cos_products.keys())[0]
     cos_product = valid_products['cos'][cos_version]
@@ -1639,10 +1644,6 @@ def validate_weak_symbols(args, valid_products, failures, flavor="cray_shasta_c"
     shs_product = valid_products['slingshot-host-software'][shs_version]
     shsdir = shs_product['work_dir']
 
-    install_logger.info("  Performing weak symbols check on the installation media")
-    if len(valid_products['slingshot-host-software']) != 1:
-        install_logger.warning("    Unable to perform weak symbol check: No SHS packages found")
-        return
 
     # find the COS kernel
     for fkernel in Path(cosdir).rglob("kernel-{}-[0-9]*.{}.rpm".format(flavor,arch)):
@@ -1780,7 +1781,7 @@ def validate_products(args):
         num_cos_products = len(valid_products['cos'])
 
     num_shs_products = 0
-    if 'shs' in valid_products:
+    if 'slingshot-host-software' in valid_products:
         num_shs_products = len(valid_products['slingshot-host-software'])
 
     failures = []
