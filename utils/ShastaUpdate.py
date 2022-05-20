@@ -1768,7 +1768,7 @@ def validate_products(args):
         # only look at entries that are identified as products
         if location_dict[prod]['product']:
             # work_dir will not be set for invalid products
-            if location_dict[prod]['work_dir'] and not location_dict[prod]['installed']:
+            if location_dict[prod]['work_dir']:
                 product_name = location_dict[prod]['product']
                 # products we care about from a validation perspective
                 if product_name not in valid_products:
