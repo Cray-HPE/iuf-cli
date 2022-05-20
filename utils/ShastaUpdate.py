@@ -29,6 +29,8 @@ from utils.vars import *
 import utils.InstallerUtils as utils #pylint: disable=wrong-import-position,import-error
 from utils.InstallerUtils import getenv #pylint: disable=wrong-import-position,import-error
 
+import utils.pod as pod
+
 # pylint: disable=consider-using-f-string
 
 connection = utils.CmdMgr.get_cmd_interface()
@@ -894,7 +896,7 @@ def wait_for_ims_pod(job_id):
         pod_name = fields[-1]
         install_logger.debug("type = {}, event = {}, pod_name = {}".format(event_type,
             event_reason, pod_name))
-        utils.wait_for_pod(connection, pod_name)
+        pod.wait_for_pod(connection, pod_name)
     else:
         install_logger.warning("Unable to get pod for job id {}".format(job_id))
         return None, None, None
@@ -1287,7 +1289,7 @@ def unload_dvs_and_lnet(args):
             if k8s_job_line:
                 k8s_job = k8s_job_line.split()[1].strip()
                 install_logger.debug("k8sjob={}  wait for the pod...".format(k8s_job))
-                utils.wait_for_pod(connection, k8s_job)
+                pod.wait_for_pod(connection, k8s_job)
             else:
                 install_logger.error("Unable to get the K8S job name.")
 
@@ -1346,7 +1348,7 @@ def legacy_dvs_reload(args):
             pod_line = cps_cm_pm_pods[0]
             fields = pod_line.split()
             pod_name = fields[1]
-            utils.wait_for_pod(connection, pod_name, delete=True)
+            pod.wait_for_pod(connection, pod_name, delete=True)
 
         # Check to see if any UAIs are running on the worker.  Migrate the UAIs and wait for each to finish.
         uais = [ p for p in all_pods if 'uai' in p and w_node in p]
@@ -1357,7 +1359,7 @@ def legacy_dvs_reload(args):
             install_logger.info("    Migrating UAI {} off the worker {}".format(uai_name, w_node))
             connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf delete pod -n user {}".format(uai_name))
             install_logger.debug("Waiting for UAI {} to migrate".format(uai_name))
-            utils.wait_for_pod(connection, uai_name)
+            pod.wait_for_pod(connection, uai_name, delete=True)
 
         # enable cfs.  while the health check verifies a node needs to be configured
         # before you get here, if someone is trying to fix a configuration they may
@@ -1388,7 +1390,7 @@ def legacy_dvs_reload(args):
         if k8s_job_line:
             k8s_job = k8s_job_line.split()[1].strip()
             install_logger.debug("k8sjob={}  wait for the pod...".format(k8s_job))
-            utils.wait_for_pod(connection, k8s_job)
+            pod.wait_for_pod(connection, k8s_job)
         else:
             install_logger.debug("WARNING: Unable to get the K8S job name.")
 
@@ -1436,7 +1438,7 @@ def legacy_dvs_reload(args):
         if k8s_job_line:
             k8s_job = k8s_job_line.split()[1].strip()
             install_logger.debug("k8sjob={}.  wait for the pod...".format(k8s_job))
-            utils.wait_for_pod(connection, k8s_job)
+            pod.wait_for_pod(connection, k8s_job)
         else:
             install_logger.warning("    (unload_dvs_and_lnet): Unable to get the K8S job name.")
 

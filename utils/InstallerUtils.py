@@ -204,70 +204,6 @@ def process_rpm(rpmpath):
 
     return provides, requires
 
-def wait_for_pod(connection, pod_name, timeout=1200, delete=False):
-    """Wait for a pod to be either created or deleted."""
-
-    time_waited = 0
-    sleep_time = 10
-    alert_freq = 6
-
-    found = False
-    namespace = None
-    pods = connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods -Ao wide").stdout.splitlines()
-
-    # Get the namespace, so that querying the pod is simple.
-    for pod_line in pods:
-        install_logger.debug("checking {} against {}".format(pod_name, pod_line))
-        pod_list = pod_line.split()
-        if pod_name == pod_list[1]:
-            install_logger.debug("  match")
-            found = True
-            namespace = pod_line.split()[0]
-        else:
-            install_logger.debug("  doesn't match")
-
-    install_logger.info("      Waiting for pod '{}' to complete.".format(pod_name))
-
-    # Return if the pod is not found
-    if found:
-        pod_cmd = "kubectl get pods -n {} --no-headers {}".format(namespace, pod_name)
-    if not found:
-        install_logger.info("        Pod {} not found ==> not waiting".format(pod_name))
-        return
-
-    start_time = datetime.datetime.now()
-    counter = 0
-    while True:
-        try:
-            pod_status = connection.sudo(pod_cmd).stdout
-            running = pod_status.split()[2]
-        except Exception as err:
-            if delete:
-                break
-            else:
-                # This case shouldn't be hit.  Allow for it for debugging purposes.
-                install_logger.warning("Could not find pod {}".format(pod_name))
-        if found and delete is False:
-            install_logger.debug("found running and delete == False, running={}".format(running))
-            if running.lower() in ["running", "completed"]:
-                break
-            elif running.lower() in ["imagepullbackoff","failed"] or "error" in running.lower():
-               raise PodProblem("pod {} in error state: {}".format(pod_name, running))
-            else:
-                install_logger.debug("(else) running={} ... no action performed".format(running))
-        elif not found and delete is True:
-            # The pod has been deleted, so quit waiting.
-            break
-        if time_waited >= timeout:
-            action_str = "delete" if delete else "complete"
-            raise PodProblem("Timed out waiting {} seconds for pod {} to {}".format(time_waited, pod_name, action_str))
-        if counter % alert_freq == 0:
-            install_logger.info("        Waited {} of {} seconds".format(int(time_waited), timeout))
-        counter += 1
-        time.sleep(sleep_time)
-        tdiff = datetime.datetime.now() - start_time
-        time_waited = tdiff.total_seconds()
-
 
 def wait_for_ncn_personalization(connection, xnames, timeout=600, sleep_time=30):
     """Wait for ncn personalization to complete.
@@ -1172,7 +1108,7 @@ def get_products( connection,
             work_dir_contents = os.listdir(work_dir_prefix)
 
             # we expect only one directory in the work_dir
-            if len(work_dir_contents) == 1:
+            if len(work_dir_contents) == 1 and os.path.isdir(work_dir_contents[0]):
                 products[item_name]['work_dir'] = os.path.join(media_dir, item_name, work_dir_contents[0])
             else:
                 install_logger.warning('    work_dir contents of {} unexpected'.format(item))
