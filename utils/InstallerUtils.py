@@ -1108,7 +1108,7 @@ def get_products( connection,
             work_dir_contents = os.listdir(work_dir_prefix)
 
             # we expect only one directory in the work_dir
-            if len(work_dir_contents) == 1 and os.path.isdir(work_dir_contents[0]):
+            if len(work_dir_contents) == 1 and os.path.isdir(os.path.join(media_dir, item_name, work_dir_contents[0])):
                 products[item_name]['work_dir'] = os.path.join(media_dir, item_name, work_dir_contents[0])
             else:
                 install_logger.warning('    work_dir contents of {} unexpected'.format(item))
