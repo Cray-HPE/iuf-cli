@@ -1775,8 +1775,13 @@ def validate_products(args):
                     valid_products[product_name] = dict()
                 valid_products[product_name][prod] = location_dict[prod]
 
-    num_cos_products = len(valid_products['cos'])
-    num_shs_products = len(valid_products['slingshot-host-software'])
+    num_cos_products = 0
+    if 'cos' in valid_products:
+        num_cos_products = len(valid_products['cos'])
+
+    num_shs_products = 0
+    if 'shs' in valid_products:
+        num_shs_products = len(valid_products['slingshot-host-software'])
 
     failures = []
 
