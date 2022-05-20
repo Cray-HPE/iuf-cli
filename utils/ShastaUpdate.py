@@ -1018,7 +1018,7 @@ def sat_bootprep(args):
     logname = get_log_filename(args, "sat_bootprep")
     install_logger.info("Running `sat bootprep`.  This can take around 30 minutes, depending on the number of layers, images, and bos sessiontemplates.")
     install_logger.info('  Logging to {}'.format(logname))
-    connection.sudo("sat bootprep run --overwrite-configs --overwrite-images --overwrite-templates --public-key-id {} {}".format(ims_public_key, bootprep_if), timeout=timeout, tee=True, store_output=logname)
+    connection.sudo("sat bootprep run --overwrite-configs --overwrite-images --overwrite-templates --public-key-id {} {}".format(ims_public_key, os.path.relpath(bootprep_if)), timeout=timeout, tee=True, store_output=logname)
 
     # Read in the configuration used for `sat bootprep` and give a summary.
     with open(bootprep_if, "r", encoding='UTF-8') as fhandle:
