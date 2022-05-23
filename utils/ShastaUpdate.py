@@ -22,6 +22,7 @@ from distutils.version import LooseVersion
 
 import yaml #pylint: disable=import-error
 
+from utils.git import Git
 from utils.InstallLogger import get_install_logger, get_log_filename
 from utils.InstallerUtils import CmdMgr
 
@@ -523,7 +524,7 @@ def update_working_branches(args):
 
     # get dict of mergeable repos
     repos = get_mergeable_repos(args)
-    git = utils.git(args, connection)
+    git = Git(args, connection)
 
     for product in location_dict:
         if location_dict[product]['import_branch']:
@@ -759,7 +760,7 @@ def current_repo_branch(args, repo, version):
     integration_branch = get_integration_branch(args, get_prod_key(args, product_name))
     install_logger.debug("determined branch is {}".format(integration_branch))
 
-    git = utils.git(args, connection)
+    git = Git(args, connection)
     branches = git.ls_remote(repo)
     found_branch = None
 
@@ -1162,7 +1163,7 @@ def check_analytics_mount(args, node):
             install_logger.warning(errmsg)
             # Return early if the analytics data isn't found.
             return
-        git = utils.git(args, connection)
+        git = Git(args, connection)
         repo = "analytics-config-management"
         check_analytics_mount.cloned_dir = git.clone(repo)
         git.checkout(repo, analytics_branch)
