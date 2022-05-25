@@ -1042,8 +1042,9 @@ def create_dvs_reload_config(args):
     # we need the location_dict to lookup up information about the product
     location_dict = utils.get_product_catalog(connection, load_prods(args))
 
-    # get the cos clone url
-    cos_clone_url = location_dict[get_prod_key(args, "cos")]["clone_url"]
+    # get the cos clone url and transform it to a url cfs is able to use
+    ext_name = os.path.basename(location_dict[get_prod_key(args, "cos")]["clone_url"])
+    cos_clone_url = "/".join(["https://api-gw-service-nmn.local/vcs/cray", ext_name])
 
     # get the commit and branch
     cos_commit, cos_branch = current_repo_branch(args, "cos-config-management", None)
@@ -1278,16 +1279,36 @@ def unload_dvs_and_lnet(args):
             except Exception as err:
                 pass
 
+            # determine any limits to use
+            if "worker_nodes" in args and args["worker_nodes"]:
+                # get_ncn_tuples will process --worker-nodes, if specified
+                worker_tuples = utils.get_ncn_tuples(connection, args, just_workers=True)
+                # This stage is only ran on the worker nodes.  Make sure no other node
+                # type was specified.
+                bad_nodes = [wt[1] for wt in worker_tuples if "ncn-w" not in wt[1]]
+                if bad_nodes:
+                    raise NCNPersonalization(utils.formatted("""
+                        DVS can only be reloaded on worker nodes.  The following nodes are not
+                        worker nodes:
+                        {}""".format(",".join(bad_nodes))))
+                # new style reload needs xnames
+                xnames = [wt[0] for wt in worker_tuples]
+                limit = ",".join(xnames)
+            else:
+                limit = "Management_Worker"
+
             install_logger.info("  Running cfs session cne-install-ncn-reload session using config {}".format(cfs_reload_config))
             k8s_job_line = None
             output = connection.sudo("cray cfs sessions create --name cne-install-ncn-reload \
-                --configuration-name {}".format(cfs_reload_config),
+                --configuration-name {} --ansible-limit {}".format(cfs_reload_config, limit),
                 timeout=120).stdout.splitlines()
 
-            k8s_job_line = [line for line in output if line.lower().startswith('services')][0]
+            output = connection.sudo("cray cfs sessions describe cne-install-ncn-reload").stdout.splitlines()
+
+            k8s_job_line = [line for line in output if line.lower().startswith('job')][0]
 
             if k8s_job_line:
-                k8s_job = k8s_job_line.split()[1].strip()
+                k8s_job = k8s_job_line.split()[2].strip('"')
                 install_logger.debug("k8sjob={}  wait for the pod...".format(k8s_job))
                 pod.wait_for_pod(connection, k8s_job)
             else:

@@ -94,12 +94,35 @@ class PodDetails:
             for pod_line in all_pods:
                 install_logger.debug("checking {} against {}".format(pod_name, pod_line))
                 pod_list = pod_line.split()
-                if pod_name == pod_list[1]:
+                if pod_name in pod_list[1]:
                     namespace = pod_line.split()[0]
         except:
             install_logger.debug("Failed to find pod {} namespace".format(pod_name))
 
         return namespace
+
+
+    @staticmethod
+    def full_name(pod_name):
+        """
+        Returns the full_name of the pod_name input.
+        If the full_name can't be determined, return pod_name.
+       
+        """
+        full_name = pod_name
+        try:
+            connection = CmdMgr.get_cmd_interface()
+            all_pods = connection.sudo("kubectl get pods -Ao wide").stdout.splitlines()
+            for pod_line in all_pods:
+                install_logger.debug("checking {} against {}".format(pod_name, pod_line))
+                pod_list = pod_line.split()
+                if pod_name in pod_list[1]:
+                    full_name = pod_line.split()[1]
+        except:
+            install_logger.debug("Failed to find pod {} name".format(pod_name))
+
+        return full_name
+
 
     @staticmethod
     def create_pod_details(pod_name):
@@ -142,6 +165,10 @@ def wait_for_pod(connection, pod_name, timeout=1200, delete=False):
 
     action_str = "delete" if delete else "complete"
     pod_details = None
+
+    time.sleep(2)
+    pod_name = PodDetails.full_name(pod_name)
+
     start_time = datetime.datetime.now()
     while True:
         new_pod_details = PodDetails.create_pod_details(pod_name)
