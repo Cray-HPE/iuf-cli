@@ -116,9 +116,9 @@ def check_repos(connection, product, filename):
 
     return (len(repos) > 0, prod_name_version, repos)
 
-def get_hosts(connection, host_str):
+def get_hosts(connection, host_str, exact_match=True):
     """
-    Get hosts matching a string or regular expression; for example
+    Get hosts matching a string; for example
     'get_hosts(connection, "ncn-w")' will get all worker nodes.
     """
 
@@ -129,14 +129,16 @@ def get_hosts(connection, host_str):
     def ncn_sort(tup):
         return tup[1]
 
-    host_re = re.compile(r"{}".format(host_str))
     for xname in xnames:
         hw_desc = json.loads(connection.sudo('cray sls hardware describe {} --format json'.format(xname)).stdout)
         try:
             alias = hw_desc["ExtraProperties"]['Aliases'][0]
         except KeyError:
             pass
-        if re.match(host_re, alias) or re.match(host_re, alias):
+        if exact_match:
+            if host_str == xname or host_str == alias:
+                hosts.append((xname, alias))
+        elif host_str in xname or host_str in alias:
             hosts.append((xname, alias))
 
     return sorted(hosts, key=ncn_sort)
@@ -155,13 +157,15 @@ def get_ncn_tuples(connection, args, just_workers=False):
     # just use the hostname pattern.
     if just_workers:
         if "worker_nodes" in args and args["worker_nodes"]:
-            all_ncn_tuples = get_hosts(connection, args["worker_nodes"])
+            all_ncn_tuples = []
+            for node in args["worker_nodes"]:
+                all_ncn_tuples += get_hosts(connection, node)
         else:
-            w_ncn_tuples = get_hosts(connection, "ncn-w")
+            w_ncn_tuples = get_hosts(connection, "ncn-w", exact_match=False)
             all_ncn_tuples =  w_ncn_tuples
     else:
-        w_ncn_tuples = get_hosts(connection, "ncn-w")
-        m_ncn_tuples = get_hosts(connection, "ncn-m")
+        w_ncn_tuples = get_hosts(connection, "ncn-w", exact_match=False)
+        m_ncn_tuples = get_hosts(connection, "ncn-m", exact_match=False)
         all_ncn_tuples = w_ncn_tuples + m_ncn_tuples
 
     return all_ncn_tuples
