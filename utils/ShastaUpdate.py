@@ -1666,13 +1666,10 @@ def validate_cfs_config(args):
         product_name = location_dict[prod].get('product')
         if product_name == "slingshot-host-software":
             shsbranch = location_dict[prod].get('import_branch', None)
+            # if we have a shs import branch, then we need to check cfs
             if shsbranch:
                 cfs_ok = False
                 break
-
-    # if the shs import branch is defined, we need to check the CFS layer, otherwise just move on
-    if shsbranch is not None:
-        cfs_ok = False
 
     if not cfs_ok:
         cfs_config = json.loads(connection.sudo("cray cfs configurations describe {} --format json".format(cfs_config_name)).stdout)
