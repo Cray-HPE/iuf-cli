@@ -1650,11 +1650,6 @@ def validate_weak_symbols(args, valid_products, failures, flavor="cray_shasta_c"
     required = dict()
     kmps = []
 
-    install_logger.info("  Performing weak symbols check on the installation media")
-    if 'slingshot-host-software' not in valid_products or len(valid_products['slingshot-host-software']) != 1:
-        install_logger.warning("    Unable to perform weak symbol check: No SHS packages found")
-        return
-
     cos_products = valid_products['cos']
     cos_version = list(cos_products.keys())[0]
     cos_product = valid_products['cos'][cos_version]
@@ -1665,6 +1660,10 @@ def validate_weak_symbols(args, valid_products, failures, flavor="cray_shasta_c"
     shs_product = valid_products['slingshot-host-software'][shs_version]
     shsdir = shs_product['work_dir']
 
+    install_logger.info("  Performing kernel symbol check on the install media to verify COS and SHS compatibility")
+    if len(valid_products['slingshot-host-software']) != 1:
+        install_logger.warning("    Unable to perform weak symbol check: No SHS packages found")
+        return
 
     # find the COS kernel
     for fkernel in Path(cosdir).rglob("kernel-{}-[0-9]*.{}.rpm".format(flavor,arch)):
@@ -1705,17 +1704,29 @@ def validate_weak_symbols(args, valid_products, failures, flavor="cray_shasta_c"
         install_logger.warning("    Unable to perform weak symbol check: Unable to find any KMPs")
         return
 
-    missing_symbols = 0
+    missing_symbols = dict()
     for kmp in kmps:
         diff_list = list(set(required[kmp]).difference(provided))
         if diff_list:
-            missing_symbols += 1
-            install_logger.debug("      {}".format(os.path.basename(kmp)))
+            missing_symbols[kmp] = diff_list
+            install_logger.debug("      {}".format(kmp))
             for missing in diff_list:
                 install_logger.debug("        {}".format(missing))
 
     if missing_symbols:
-        install_logger.error("   Missing kernel symbols found in {} package(s)".format(missing_symbols))
+        install_logger.error("   Missing kernel symbols found in {} package(s)".format(len(missing_symbols)))
+        divider = "-" * (len(args['media_dir']) + 3)
+        print(divider)
+        print("The following packages have unresolved symbols:")
+        print(divider)
+        current_pdir = ""
+        for kmp in missing_symbols:
+            pdir = kmp.replace("{}/".format(args['media_dir']),"",1).split("/")[1]
+            if (current_pdir != pdir):
+                print("  {}:".format(pdir))
+                current_pdir = pdir
+            print("   ", os.path.basename(kmp))
+        print(divider)
         install_logger.info("    FAILED")
         failures.append("The versions of SHS and COS being installed have incompatible kernel sets")
         return
