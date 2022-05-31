@@ -1643,6 +1643,43 @@ def hello(args):
     allout = connection.sudo("echo hello")
     install_logger.debug("sudo result: stdout={}, stderr={}".format(allout.stdout, allout.stderr))
 
+def validate_cfs_config(args, valid_products, failures):
+    # Ensure that the cfs configuration has a slingshot-host-software layer if required
+    cfs_config_name = args.get("cfs_config", None)
+
+    # if we don't have a cfs config just return.  should never happen if we're running a stage
+    # that cares about it
+    if cfs_config_name is None:
+        return
+
+    install_logger.info("  Validating the CFS configuration")
+
+    cfs_ok = True
+
+    shs_products = valid_products['slingshot-host-software']
+    shs_version = list(shs_products.keys())[0]
+    shs_product = valid_products['slingshot-host-software'][shs_version]
+    shsbranch = shs_product['import_branch']
+
+    # if the shs import branch is defined, we need to check the CFS layer, otherwise just move on
+    if shsbranch is not None:
+        cfs_ok = False
+
+    if not cfs_ok:
+        cfs_config = json.loads(connection.sudo("cray cfs configurations describe {} --format json".format(cfs_config_name)).stdout)
+        layers = cfs_config.get("layers", dict())
+        for layer in layers:
+            url = layer.get("cloneUrl","")
+            if "slingshot-host-software-config-management" in url:
+                cfs_ok = True
+                break
+
+    if cfs_ok:
+        install_logger.info("    OK")
+    else:
+        failures.append("The CFS configuration '{}' must contain a slingshot-host-software layer".format(cfs_config_name))
+        install_logger.info("    FAILED")
+
 def validate_weak_symbols(args, valid_products, failures, flavor="cray_shasta_c", arch="x86_64"):
 
     kernels = []
@@ -1793,7 +1830,7 @@ def validate_products(args):
     """
 
     # load previously discovered produts
-    location_dict = load_prods(args)
+    location_dict = utils.get_product_catalog(connection, load_prods(args))
     valid_products = dict()
 
     # build a list of valid cos and shs products
@@ -1836,6 +1873,9 @@ def validate_products(args):
 
     # see if the kernels and ksyms all match
     validate_weak_symbols(args, valid_products, failures)
+
+    # see if the CFS configuration seems valid
+    validate_cfs_config(args, valid_products, failures)
 
     if failures:
         install_logger.error(" Validation failed:")
