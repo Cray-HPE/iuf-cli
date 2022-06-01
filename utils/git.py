@@ -246,7 +246,8 @@ class Git:
 
         return repoinfo
 
-    def ls_remote(self, repo):
+
+    def ls_remote(self, repo, just_branches=False):
         """
         Do a 'git ls-remote'.
 
@@ -255,8 +256,16 @@ class Git:
         vcs_url = self.get_vcs_url(repo)
         # this can be run during a dry run, it doesn't change anything
         output = self.run("ls-remote {}".format(vcs_url), quiet=True, dryrun=False)
+        if just_branches and output:
+            remotes = [line.split()[1] for line in output.stdout.splitlines()]
+        else:
+            remotes = output.stdout.splitlines()
 
-        return output.stdout.splitlines()
+        remotes = [rem.replace('remotes/origin', '').replace('refs/heads/', '') for rem in remotes]
+
+        return remotes
+
+
 
     def merge(self, repo, merge_branch, message=None):
         """
