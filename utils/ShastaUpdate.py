@@ -1205,6 +1205,8 @@ def worker_health_check(args):
     NCN Personalization
     """
 
+    cfs_config_ok = validate_cfs_config(args)
+
     worker_tuples = utils.get_ncn_tuples(connection, args)
     worker_nodes = [wt[1] for wt in worker_tuples]
 
@@ -1258,6 +1260,9 @@ def worker_health_check(args):
         install_logger.error("Fix CFS component configuration errors before proceeding")
         raise NCNPersonalization("NCN nodes not starting in configured state")
 
+    if not cfs_config_ok:
+        install_logger.error("Fix CFS component configuration errors before proceeding")
+        raise NCNPersonalization("Errors found in the CFS configuration")
 
 def unload_dvs_and_lnet(args):
     """
@@ -1642,6 +1647,45 @@ def hello(args):
     print("hello")
     allout = connection.sudo("echo hello")
     install_logger.debug("sudo result: stdout={}, stderr={}".format(allout.stdout, allout.stderr))
+
+def validate_cfs_config(args):
+    # Ensure that the cfs configuration has a slingshot-host-software layer if required
+    cfs_config_name = args.get("cfs_config", None)
+
+    # if we don't have a cfs config just return.  should never happen if we're running a stage
+    # that cares about it
+    if cfs_config_name is None:
+        return
+
+    location_dict = utils.get_product_catalog(connection, load_prods(args))
+    install_logger.info("  Validating the CFS configuration")
+
+    cfs_ok = True
+
+    for prod in location_dict:
+        product_name = location_dict[prod].get('product')
+        if product_name == "slingshot-host-software":
+            shsbranch = location_dict[prod].get('import_branch', None)
+            # if we have a shs import branch, then we need to check cfs
+            if shsbranch:
+                cfs_ok = False
+                break
+
+    if not cfs_ok:
+        cfs_config = json.loads(connection.sudo("cray cfs configurations describe {} --format json".format(cfs_config_name)).stdout)
+        layers = cfs_config.get("layers", dict())
+        for layer in layers:
+            url = layer.get("cloneUrl","")
+            if "slingshot-host-software-config-management" in url:
+                cfs_ok = True
+                break
+
+    if cfs_ok:
+        install_logger.info("    OK")
+    else:
+        install_logger.error("   The CFS configuration '{}' must contain a slingshot-host-software layer".format(cfs_config_name))
+
+    return cfs_ok
 
 def validate_weak_symbols(args, valid_products, failures, flavor="cray_shasta_c", arch="x86_64"):
 
