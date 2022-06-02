@@ -366,35 +366,45 @@ def verify_product_install(args): #pylint: disable=unused-argument
     validate_failed = []
 
     install_logger.info("    Starting product validations:")
+    goss_exe = shutil.which("goss")
+
+    # Tests we could be running.  We're only going to run the first one we find
+    # so do it in preferred order
+    tests = ["post-install-validation/validate", "validate.sh"]
 
     # Loop through all the products in the location_dict and display their validation status.
     # If the product has successfully run an install, check to see if it needs to be validated.
     # Set all the products "validated" field to True or False, depending on the state.
     for product_name, product_info in location_dict.items():
         validated = False
+        goss_wanted = True
         if product_info.get("installed", False) == False:
             # These products haven't succeeded the installation stage.
             install_logger.warning("    {} {:.>32}".format(product_name, "not installed"))
         elif product_info.get("installed", False) == True and product_info.get("validated", False) == False:
             # Check if these products need to run a validation, then try to run it.
-            if os.path.exists(os.path.join(product_info["work_dir"], "validate.sh")):
-                install_logger.debug("Running validate.sh for {}".format(product_name))
-                try:
-                    results = connection.sudo("./validate.sh", cwd=os.path.join(product_info["work_dir"]), timeout=600)
-                    if results.returncode == 0:
+            tests_found = False
+            for script in tests:
+                if os.path.exists(os.path.join(product_info["work_dir"], script)):
+                    tests_found = True
+                    if "post-install-validation" in script:
+                        # the post-install-validation scripts run the goss tests already
+                        goss_wanted = False
+                    install_logger.debug(f"Running {script} for {product_name}")
+                    try:
+                        connection.sudo(f"./{script}", cwd=os.path.join(product_info["work_dir"]), timeout=600)
                         validated = True
                         install_logger.info("        {} {:.>32}".format(product_name, "succeeded"))
-                    else:
-                        install_logger.error("        {} {:.>32}".format(product_name, "failed", results.returncode))
+                    except RunTimeoutError as te:
+                        install_logger.error("        {} {:.>32}".format(product_name, "timeout"))
                         validate_failed.append(product_name)
-                except RunTimeoutError as te:
-                    install_logger.error("        {} {:.>32}".format(product_name, "timeout"))
-                    validate_failed.append(product_name)
-                except:
-                    install_logger.error("        {} {:.>32}".format(product_name, "failed"))
-                    validate_failed.append(product_name)
-                install_logger.debug("Finshed running validate.sh for {}".format(product_name))
-            else:
+                    except:
+                        install_logger.error("        {} {:.>32}".format(product_name, "failed"))
+                        validate_failed.append(product_name)
+                    install_logger.debug(f"Finshed running {script} for {product_name}")
+                    break
+
+            if not tests_found:
                 # These products have no validate.sh script to run.
                 install_logger.info("        {} {:.>32}".format(product_name, "nothing to run"))
                 validated = True
@@ -402,6 +412,7 @@ def verify_product_install(args): #pylint: disable=unused-argument
         elif product_info.get("installed", False) == True and product_info.get("validated", False) == True:
             # These products already ran and passed the validation stage.
             install_logger.info("        {} {:.>32}".format(product_name, "done"))
+            validated = True
         else:
             # These products are in an unknown state, they should be ignored.
             install_logger.warning("        {} {:.>32}".format(product_name, "ignored"))
@@ -409,39 +420,33 @@ def verify_product_install(args): #pylint: disable=unused-argument
         location_dict[product_name]["validated"] = validated
 
         # Make sure the goss executable exists and is in the path.
-        # Another idea might be to query the hpe-csm-goss-package package.
         prodname_short = location_dict[product_name]["product"]
-        goss_exe = shutil.which("goss")
-        if not goss_exe:
-            msg = """
-                The goss executable can't be found, so goss testing will be
-                not be ran for {}""".format(product_name)
-            install_logger.warning(utils.formatted(msg))
-            continue
-
-        # Run the gos tests if they exist.
-        test_dir = os.path.join("/opt/cray/tests/install", prodname_short)
-        if os.path.exists(test_dir) and goss_exe:
-            goss_yamls = connection.sudo("find {} -name \*goss\*.yaml".format(test_dir)).stdout.splitlines()
-            if len(goss_yamls) > 0:
-                install_logger.info("        Running goss tests ...")
-            for gy in goss_yamls:
-                connection.sudo("{} -g {} validate".format(goss_exe, gy))
-        else:
-            msg = """
-                goss test directory ({}) does not exist for {}
-                 ==> skipping goss tests""".format(test_dir, product_name)
-            install_logger.warning(utils.formatted(msg))
+        if goss_wanted:
+            # Run the goss tests if they exist and weren't already run by the product script
+            test_dir = os.path.join("/opt/cray/tests/install", prodname_short)
+            if os.path.exists(test_dir):
+                if goss_exe:
+                    goss_yamls = connection.sudo("find {} -name \*goss\*.yaml".format(test_dir)).stdout.splitlines()
+                    if len(goss_yamls) > 0:
+                        install_logger.info("        Running goss tests ...")
+                    for gy in goss_yamls:
+                        connection.sudo("{} -g {} validate".format(goss_exe, gy))
+                else:
+                    msg = """
+                        The goss executable can't be found, so goss testing will be
+                        not be ran for {}""".format(product_name)
+                    install_logger.warning(utils.formatted(msg))
 
     # Dryruns shouldn't update the location_dict with the validation status changes.
     if args.get("dryrun", False) == False:
         update_prods(args, location_dict)
 
     # Raise an exception if any of the validations explicitly failed.
-    if len(validate_failed) > 0:
-        msg = "{} validation(s) failed."
-        install_logger.error(msg.format(len(validate_failed)))
-        raise COSProblem(msg.format(len(validate_failed)))
+    failed = len(validate_failed)
+    if failed:
+        msg = f"{failed} validation(s) failed."
+        install_logger.error(msg)
+        raise COSProblem(msg)
 
 def check_services(args): #pylint: disable=unused-argument
     """Check the cps and nmd services.  Also check dvs and lnet"""
