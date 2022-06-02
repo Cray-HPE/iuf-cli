@@ -419,9 +419,9 @@ def verify_product_install(args): #pylint: disable=unused-argument
 
         location_dict[product_name]["validated"] = validated
 
-        # Make sure the goss executable exists and is in the path.
         prodname_short = location_dict[product_name]["product"]
-        if goss_wanted:
+        # if prodname_short isn't defined, there's nothing to be done
+        if prodname_short and goss_wanted:
             # Run the goss tests if they exist and weren't already run by the product script
             test_dir = os.path.join("/opt/cray/tests/install", prodname_short)
             if os.path.exists(test_dir):
