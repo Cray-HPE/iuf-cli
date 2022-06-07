@@ -995,6 +995,7 @@ def create_bootprep_config(args):
                     "compute": {
                         "kernel_parameters": working_template["boot_sets"]["compute"]["kernel_parameters"],
                         "node_roles_groups": ["Compute"],
+                        "rootfs_provider_passthrough": working_template["boot_sets"]["compute"]["rootfs_provider_passthrough"],
                     }
                 }
             }
