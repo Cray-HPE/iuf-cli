@@ -1258,9 +1258,9 @@ def worker_health_check(args):
     if bad_cps_nodes:
         install_logger.warning("Check nodes {}".format(bad_cps_nodes))
 
-    if len(good_cps_nodes) - len(bad_cps_nodes) <3:
-        install_logger.error("Need at least three CPS deployments")
-        raise NCNPersonalization("Too few CPS deployments")
+    if len(good_cps_nodes) <2:
+        install_logger.error("Low number of CPS deployments")
+        raise NCNPersonalization("Low number of CPS deployments")
 
     if bad_status_nodes:
         install_logger.error("Fix CFS component configuration errors before proceeding")
