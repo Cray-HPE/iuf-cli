@@ -544,17 +544,24 @@ def update_working_branches(args):
             repo = repos[product_name]
             cos_checkout_dir = git.clone(repo)
 
-            # get integration branch with product key and --working-branch
-            integration_branch = get_integration_branch(args, product, git, repo)
+            # Get the working branch with product key and --working-branch
+            # If the passed working branch doesn't exist,it is created. 
 
             # check out a local copy of the import_branch (release version)
             git.checkout(repo, import_branch)
 
-            # check out a copy of the working branch, creating it if necessary
-            git.checkout(repo, integration_branch, create=True)
+            working_branch = render_jinja(args, product, args["working_branch"])
+            best_guess = best_guess_working(args, product, git, repo)
+            if best_guess != working_branch:
+                # The working branch does not exist.
+                # Checkout best_guess (which will be the closest lower version
+                # working_working branch.  working_branch will then be created
+                # from it if working_branch does not exist.
+                git.checkout(repo, best_guess)
+            git.checkout(repo, working_branch, create=True)
 
             # fourth, merge the import branch to the integration branch
-            install_logger.info("  Merging branch {} into {}".format(import_branch,integration_branch))
+            install_logger.info("  Merging branch {} into {}".format(import_branch, working_branch))
             git.merge(repo, import_branch)
             git.push(repo)
 
@@ -720,7 +727,9 @@ def ncn_personalization(args): #pylint: disable=unused-argument
             {}""".format(nodes_str))
         raise(NCNPersonalization(err_msg))
 
-def get_integration_branch(args, product_key, gitobj, repo):
+def best_guess_working(args, product_key, gitobj, repo):
+    """Best guess at the working branch.  If the specified branch exists,
+    return it.  Otherwise, find the one closest in version but lower."""
 
     integration_branch = None
     if not ("working_branch" in args and  args["working_branch"]):
@@ -785,7 +794,7 @@ def current_repo_branch(args, repo, version):
 
     # we don't have a product key here, so look one up based on whats in location_dict
     git = Git(args, connection)
-    integration_branch = get_integration_branch(args, get_prod_key(args, product_name), git, repo)
+    integration_branch = best_guess_working(args, get_prod_key(args, product_name), git, repo)
     install_logger.debug("determined branch is {}".format(integration_branch))
 
     branches = git.ls_remote(repo)
@@ -1075,7 +1084,7 @@ def create_dvs_reload_config(args):
     cos_commit, cos_branch = current_repo_branch(args, "cos-config-management", None)
 
     # get a list of the files in the cos config
-    git = utils.git(args, connection)
+    git = Git(args, connection)
     repo = "cos-config-management"
     cos = git.clone(repo)
     git.checkout(repo, cos_branch)
@@ -1558,7 +1567,7 @@ def boot_cos(args):
     """Boot a COS image"""
 
     #TODO figure out what sessiontemplate to boot with
-    # sessiontemplate_name = ???
+    # sessiontemplate_name = args.get("source_bos_sessiontemplate")
 
     boot_start_time = datetime.datetime.now()
     # Now reboot the compute nodes
