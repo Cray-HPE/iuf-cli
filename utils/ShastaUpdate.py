@@ -22,6 +22,7 @@ from distutils.version import LooseVersion
 
 import yaml #pylint: disable=import-error
 
+from utils.git import Git
 from utils.InstallLogger import get_install_logger, get_log_filename
 from utils.InstallerUtils import CmdMgr
 
@@ -462,7 +463,7 @@ def check_services(args): #pylint: disable=unused-argument
             install_logger.error("Service {} is not ready, status is:\n\t{}".format(name, service))
             fatal = True
 
-    w_ncn_tuples = utils.get_hosts(connection, 'ncn-w')
+    w_ncn_tuples = utils.get_hosts(connection, 'ncn-w', exact_match=False)
     w_ncns = [w[1] for w in w_ncn_tuples]
 
     for node in w_ncns:
@@ -528,7 +529,7 @@ def update_working_branches(args):
 
     # get dict of mergeable repos
     repos = get_mergeable_repos(args)
-    git = utils.git(args, connection)
+    git = Git(args, connection)
 
     for product in location_dict:
         if location_dict[product]['import_branch']:
@@ -548,17 +549,24 @@ def update_working_branches(args):
             repo = repos[product_name]
             cos_checkout_dir = git.clone(repo)
 
-            # get integration branch with product key and --working-branch
-            integration_branch = get_integration_branch(args, product)
+            # Get the working branch with product key and --working-branch
+            # If the passed working branch doesn't exist,it is created. 
 
             # check out a local copy of the import_branch (release version)
             git.checkout(repo, import_branch)
 
-            # check out a copy of the working branch, creating it if necessary
-            git.checkout(repo, integration_branch, create=True)
+            working_branch = render_jinja(args, product, args["working_branch"])
+            best_guess = best_guess_working(args, product, git, repo)
+            if best_guess != working_branch:
+                # The working branch does not exist.
+                # Checkout best_guess (which will be the closest lower version
+                # working_working branch.  working_branch will then be created
+                # from it if working_branch does not exist.
+                git.checkout(repo, best_guess)
+            git.checkout(repo, working_branch, create=True)
 
             # fourth, merge the import branch to the integration branch
-            install_logger.info("  Merging branch {} into {}".format(import_branch,integration_branch))
+            install_logger.info("  Merging branch {} into {}".format(import_branch, working_branch))
             git.merge(repo, import_branch)
             git.push(repo)
 
@@ -724,25 +732,54 @@ def ncn_personalization(args): #pylint: disable=unused-argument
             {}""".format(nodes_str))
         raise(NCNPersonalization(err_msg))
 
-
-def get_integration_branch(args, product_key):
+def best_guess_working(args, product_key, gitobj, repo):
+    """Best guess at the working branch.  If the specified branch exists,
+    return it.  Otherwise, find the one closest in version but lower."""
 
     integration_branch = None
-    if "working_branch" in args:
-        if args["working_branch"]:
-            integration_branch = render_jinja(args, product_key, args["working_branch"])
-            install_logger.debug("using passed working branch {}".format(integration_branch))
-        else:
-            raise InstallError("You must supply --working-branch")
-    else:
+    if not ("working_branch" in args and  args["working_branch"]):
         raise InstallError("You must supply --working-branch")
 
-    if integration_branch:
+    integration_branch = render_jinja(args, product_key, args["working_branch"])
+    branches = gitobj.ls_remote(repo, just_branches=True)
+    branch_versions = {}
+    if integration_branch in branches:
         return integration_branch
+
+    # The integration branch wasn't found.  Find the closest version.
+    location_dict = load_prods(args)
+
+    product_dict = location_dict[product_key]
+    product = product_dict["product"]
+    for branch in branches:
+        if product in branch and '/' in branch:
+            parts = branch.split('/')
+            version = parts[-1]
+            branch_versions[version] = branch
+
+    if "import_version" in product_dict and product_dict["import_version"]:
+        prod_version = product_dict["import_version"]
+    elif "product_version" in product_dict and product_dict["product_version"]:
+        prod_version = product_dict["product_version"]
     else:
-        raise UnexpectedState("Could not determine working branch for product {} using --working branch '{}' with".format(
-            product_key,
-            integration_branch))
+        prod_version = product_dict["version"]
+
+    branch_versions[prod_version] = integration_branch
+
+    sorted_versions = sorted(list(branch_versions.keys()), key=LooseVersion)
+
+    int_index = sorted_versions.index(prod_version)
+    if int_index == 0:
+        best_match = 1
+    else:
+        best_match = int_index - 1
+    best_version = sorted_versions[best_match]
+
+    best_integration_branch = branch_versions[best_version]
+
+    install_logger.debug("using integration branch {}".format(integration_branch))
+
+    return best_integration_branch
 
 
 def current_repo_branch(args, repo, version):
@@ -761,16 +798,15 @@ def current_repo_branch(args, repo, version):
     install_logger.debug("product_name is {}".format(product_name))
 
     # we don't have a product key here, so look one up based on whats in location_dict
-    integration_branch = get_integration_branch(args, get_prod_key(args, product_name))
+    git = Git(args, connection)
+    integration_branch = best_guess_working(args, get_prod_key(args, product_name), git, repo)
     install_logger.debug("determined branch is {}".format(integration_branch))
 
-    git = utils.git(args, connection)
     branches = git.ls_remote(repo)
     found_branch = None
 
     for branch in branches:
-        commit, raw_branch_name = branch.split()
-        munged_branch_name = raw_branch_name.replace("refs/heads/", "")
+        commit, munged_branch_name = branch.split()
         if integration_branch == munged_branch_name:
             found_branch = branch
             install_logger.debug("found branch match {}".format(found_branch))
@@ -782,7 +818,6 @@ def current_repo_branch(args, repo, version):
             repo))
 
     commit, ref = found_branch.split()
-    ref = ref.replace('remotes/origin', '').replace('refs/heads/', '')
 
     if found_branch:
         return commit.strip(), ref.strip()
@@ -1056,7 +1091,7 @@ def create_dvs_reload_config(args):
     cos_commit, cos_branch = current_repo_branch(args, "cos-config-management", None)
 
     # get a list of the files in the cos config
-    git = utils.git(args, connection)
+    git = Git(args, connection)
     repo = "cos-config-management"
     cos = git.clone(repo)
     git.checkout(repo, cos_branch)
@@ -1169,7 +1204,7 @@ def check_analytics_mount(args, node):
             install_logger.warning(errmsg)
             # Return early if the analytics data isn't found.
             return
-        git = utils.git(args, connection)
+        git = Git(args, connection)
         repo = "analytics-config-management"
         check_analytics_mount.cloned_dir = git.clone(repo)
         git.checkout(repo, analytics_branch)
@@ -1564,7 +1599,7 @@ def boot_cos(args):
     """Boot a COS image"""
 
     #TODO figure out what sessiontemplate to boot with
-    # sessiontemplate_name = ???
+    # sessiontemplate_name = args.get("source_bos_sessiontemplate")
 
     boot_start_time = datetime.datetime.now()
     # Now reboot the compute nodes
