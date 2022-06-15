@@ -3,7 +3,7 @@ import datetime
 import json
 import time
 
-from utils.InstallerUtils import CmdMgr
+from utils.Connection import CmdMgr
 from utils.InstallLogger import get_install_logger
 from utils.vars import *
 
@@ -143,7 +143,7 @@ class PodDetails:
         return pod_details
 
 
-def wait_for_pod(connection, pod_name, timeout=1200, delete=False):
+def wait_for_pod(config, pod_name, timeout=1200, delete=False):
     """ Wait for a pod to be either created or deleted.
 
         If the pod is being deleted,

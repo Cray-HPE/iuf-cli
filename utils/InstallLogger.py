@@ -52,19 +52,19 @@ def addLoggingLevel(levelName, levelNum, methodName=None):
     setattr(logging.getLoggerClass(), methodName, logForLevel)
     setattr(logging, methodName, logToRoot)
 
-def install_logger_file_init(args):
+def install_logger_file_init(config):
     """
     Create the config for the log file. This should only be called once.
     """
 
-    log_file_level = args["level"]
-    verbose = args["verbose"]
+    log_file_level = config.args["level"]
+    verbose = config.args["verbose"]
 
     install_logger = logging.getLogger(LOG_DEFAULT_NAME)
     install_logger.setLevel(LOG_DEFAULT_FILE_LEVEL)
 
-    log_dir_base = args["log_dir"]
-    log_dir = os.path.join(log_dir_base, SESSION_TIMESTAMP)
+    log_dir_base = config.args["log_dir"]
+    log_dir = os.path.join(log_dir_base, config.timestamp)
 
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
@@ -117,13 +117,13 @@ def get_install_logger(module=None):
     else:
         return logging.getLogger("{}.{}".format(LOG_DEFAULT_NAME, module))
 
-def get_log_filename(args, name):
+def get_log_filename(config, name):
     """
     Take a base name and return a filename in the log_dir
     """
 
-    log_dir_base = args["log_dir"]
-    log_dir = os.path.join(log_dir_base, SESSION_TIMESTAMP)
+    log_dir_base = config.args["log_dir"]
+    log_dir = os.path.join(log_dir_base, config.timestamp)
 
     log_filename = os.path.join(log_dir, "{}.log".format(name))
 

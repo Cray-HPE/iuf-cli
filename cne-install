@@ -15,16 +15,12 @@ import tarfile
 from utils.vars import *
 from utils.InstallLogger import *
 
-from utils.InstallerUtils import CmdMgr
 from utils.InstallerUtils import elapsed_time
 from utils.InstallerUtils import formatted
-from utils.InstallerUtils import get_product_prefixes
 from utils.InstallerUtils import print_table
-from utils.Config import Config
-from utils.Config import InvertableArgument
-
-
-import utils.ShastaUpdate as supdate
+from utils.ConfigFile import ConfigFile
+from utils.ConfigFile import InvertableArgument
+import hpe.Config
 
 # Import utils.stages without the 'as stages' to prevent namespace collisions.
 import utils.stages
@@ -33,58 +29,56 @@ import utils.stages
 
 install_logger = get_install_logger()
 
-
-
-def validate_stages(args_dict, stages):
+def validate_stages(config):
     """Validate that all of the various stage related args passed in are valid"""
 
 
     # load all of the stage variables
-    begin_stage = args_dict.get('begin_stage')
-    end_stage = args_dict.get('end_stage')
-    run_stages = args_dict.get('run_stages')
-    skip_stages = args_dict.get('skip_stages')
-    state_dir = args_dict.get('state_dir')
+    begin_stage = config.args.get('begin_stage')
+    end_stage = config.args.get('end_stage')
+    run_stages = config.args.get('run_stages')
+    skip_stages = config.args.get('skip_stages')
+    state_dir = config.args.get('state_dir')
 
-    stages.validate(state_dir, begin_stage, end_stage, run_stages, skip_stages)
+    config.stages.validate(state_dir, begin_stage, end_stage, run_stages, skip_stages)
 
-    if args_dict["func"] == process_install:
-        install_logger.info("STAGE SUMMARY: begin_stage=%s, end_stage=%s", stages.beginStage, stages.endStage)
+    if config.args["func"] == process_install:
+        install_logger.info("STAGE SUMMARY: begin_stage=%s, end_stage=%s", config.stages.beginStage, config.stages.endStage)
 
-    local_stages = stages.get(all_stages=False, list_fmt=True)
+    local_stages = config.stages.get(all_stages=False, list_fmt=True)
 
     # Check the BOS sessiontemplate and CFS config arguments.  If the CFS
     # config is not explicitly specified, it can be obtained from the BOS
     # sessiontemplate.
-    if "source_bos_sessiontemplate" in args_dict and args_dict["source_bos_sessiontemplate"] is None \
+    if "source_bos_sessiontemplate" in config.args and config.args["source_bos_sessiontemplate"] is None \
         and "create_bootprep_config" in local_stages:
         msg = formatted("""
             When creating a bos session template,  a source bos sessiontemplate
             (-t or --source-bos-sessiontemplate) is required""")
         print(msg)
         sys.exit(1)
-    elif "source_bos_sessiontemplate" in args_dict and args_dict["source_bos_sessiontemplate"]:
-        bos_template = json.loads(supdate.connection.sudo("cray bos sessiontemplate describe {} --format json".format(
-            args_dict["source_bos_sessiontemplate"])).stdout)
+    elif "source_bos_sessiontemplate" in config.args and config.args["source_bos_sessiontemplate"]:
+        bos_template = json.loads(config.connection.sudo("cray bos sessiontemplate describe {} --format json".format(
+            config.args["source_bos_sessiontemplate"])).stdout)
         bos_cfs_config_name = bos_template["cfs"]["configuration"]
 
-        if "cfs_config" not in args_dict or args_dict["cfs_config"] is None:
-            args_dict["cfs_config"] = bos_cfs_config_name
-        elif "cfs_config" in args_dict and args_dict["cfs_config"] is not None:
-            if args_dict["cfs_config"] != bos_cfs_config_name:
+        if "cfs_config" not in config.args or config.args["cfs_config"] is None:
+            config.args["cfs_config"] = bos_cfs_config_name
+        elif "cfs_config" in config.args and config.args["cfs_config"] is not None:
+            if config.args["cfs_config"] != bos_cfs_config_name:
                 msg = formatted("""
                     The cfs-config argument passed in ({}) will be used in
                     image building and creating the bos  sessiontemplate.
                     This differs from the one found in the bos
                     sessiontemplate ({}).  The one found in {} was {}""".format(
-                    args_dict["cfs_config"],
-                    args_dict["source_bos_sessiontemplate"],
-                    args_dict["source_bos_sessiontemplate"],
+                    config.args["cfs_config"],
+                    config.args["source_bos_sessiontemplate"],
+                    config.args["source_bos_sessiontemplate"],
                     bos_cfs_config_name))
                 install_logger.warning(msg)
 
     # Ensure that working_branch is specified if it's needed.
-    if ("working_branch" in args_dict and args_dict["working_branch"] is None) \
+    if ("working_branch" in config.args and config.args["working_branch"] is None) \
         and (("update_working_branches" in local_stages) \
         or ("update_ncn_config" in local_stages)):
             msg = formatted("""
@@ -94,7 +88,7 @@ def validate_stages(args_dict, stages):
 
     # Ensure that if a `sat bootprep` config was specified (and the stage
     # is being run) it exists.
-    bp_config = args_dict.get("bootprep_config", None)
+    bp_config = config.args.get("bootprep_config", None)
     if bp_config and "sat_bootprep" in local_stages:
         if not os.path.exists(bp_config):
             print("--bootprep-config/-bpc {} was specified but could not be found".format(bp_config))
@@ -103,36 +97,36 @@ def validate_stages(args_dict, stages):
     return
 
 
-def process_install(args_dict, stages):
+def process_install(config):
     """Run the install"""
-    all_stages = stages.get(list_fmt=True, all_stages=True)
-    exec_stages = stages.get(list_fmt=True, all_stages=False)
+    all_stages = config.stages.get(list_fmt=True, all_stages=True)
+    exec_stages = config.stages.get(list_fmt=True, all_stages=False)
 
     for stage in all_stages:
         if stage in exec_stages:
             install_logger.info("Beginning stage: {}".format(stage))
             # a logging message using exc_info must be the very first thing called after the except
             # block starts, so I can't make all these decisions there
-            if stages.abortable(stage):
+            if config.stages.abortable(stage):
                 log_level = LOG_LEVELS["ERROR"]
             else:
                 log_level = LOG_LEVELS["WARNING"]
 
-            stages.exec_stage(args_dict, stage)
+            config.stages.exec_stage(config, stage)
 
-    install_logger.info("Install completed in {}".format(elapsed_time(stages.installer_start)))
+    install_logger.info("Install completed in {}".format(elapsed_time(config.stages.installer_start)))
 
 
-def process_list(args, stages): #pylint: disable=unused-argument
+def process_list(config): #pylint: disable=unused-argument
     """Process the arguments to the list subparser"""
 
-    all_stages = stages.get(long=True, status=True, all_stages=True)
+    all_stages = config.stages.get(long=True, status=True, all_stages=True)
 
     print(all_stages)
 
-def process_products(args, stages):
-    products = get_product_prefixes(desc=True)
-    media = args['media_dir']
+def process_products(config):
+    products = config.location_dict.prefixes(formatting="description")
+    media = config.args['media_dir']
 
     def arc_wanted(f, prefix):
         if f.is_file() and f.name.startswith(prefix):
@@ -162,33 +156,33 @@ def process_products(args, stages):
         print ("  ",archive)
 
 
-def process_debug_level(cmdline_args):
-    install_logger_file_init(cmdline_args)
-    if "level" in cmdline_args.keys() and cmdline_args["level"] != None:
-        if cmdline_args["level"] in LOG_LEVELS.keys():
-            level = LOG_LEVELS[cmdline_args["level"]]
-            install_logger_stream_init(level, cmdline_args.get("verbose", False))
+def process_debug_level(config):
+
+    install_logger_file_init(config)
+    if "level" in config.args.keys() and config.args["level"] != None:
+        if config.args["level"] in LOG_LEVELS.keys():
+            level = LOG_LEVELS[config.args["level"]]
+            install_logger_stream_init(level, config.args.get("verbose", False))
         else:
             # when this runs we don't have a logger yet, just print and exit
-            print("ERROR: Unrecognized log level: {}".format(cmdline_args["level"]))
+            print("ERROR: Unrecognized log level: {}".format(config.args["level"]))
             sys.exit(1)
     else:
-        install_logger_stream_init(verbose=cmdline_args.get("verbose", False))
+        install_logger_stream_init(verbose=config.args.get("verbose", False))
 
-    log_dir_base = cmdline_args["log_dir"]
-    log_dir = os.path.join(log_dir_base, SESSION_TIMESTAMP)
-    if "func" in cmdline_args and cmdline_args["func"] == process_install:
+    log_dir_base = config.args["log_dir"]
+    log_dir = os.path.join(log_dir_base, config.timestamp)
+    if "func" in config.args and config.args["func"] == process_install:
         install_logger.info("All logs will be stored in {}".format(log_dir))
     return
 
 
-def process_dryrun(cmdline_args):
+def process_dryrun(config):
     """
     Sets the static CmdInterface interface to "dryrun" mode
     """
-    dryrun = cmdline_args.get("dryrun", False)
-    connection = CmdMgr.get_cmd_interface()
-    connection.dryrun = dryrun
+    dryrun = config.args.get("dryrun", False)
+    config.connection.dryrun = dryrun
 
     if dryrun:
         addLoggingLevel('DRYRUN', logging.INFO + 1)
@@ -210,6 +204,7 @@ def check_environment_variables():
 def main():
     """Main entry point."""
     check_environment_variables()
+    config = hpe.Config.Config()
 
     parser = argparse.ArgumentParser(description=
         """
@@ -345,14 +340,14 @@ reload ncn-w003;  --worker-nodes x3000c0s37b0n0 would also work.
     products_sp.set_defaults(func=process_products)
 
     # create a config object to store all of the configured options in the parser
-    config = Config()
-    config.load_parser_defaults(parser)
+    configfile = ConfigFile()
+    configfile.load_parser_defaults(parser)
 
     # parse the arguments once to get input file
     tmp_args = parser.parse_args()
 
     # load any defaults from the input file
-    config.set_defaults(parser,vars(tmp_args))
+    configfile.set_defaults(parser,vars(tmp_args))
 
     # parse the command line for real
     args = parser.parse_args()
@@ -361,27 +356,12 @@ reload ncn-w003;  --worker-nodes x3000c0s37b0n0 would also work.
     # object.  This is so that we have a dictionary of all options, so that
     # we can more easily determine which values can be passed via an input
     # deck.
-    args_dict = vars(args)
+    config.args = vars(args)
+    config.stages = utils.stages.Stages(stage_dict=STAGE_DICT, state_dir=config.args["state_dir"])
 
-    # Set up the media and state directories.  This needs to be done prior
-    # to any real processing, since most of the functionality is dependent on
-    # them.
-    if args_dict["media_dir"] is None:
-        media_default = os.path.join(os.getcwd(), "media")
-        args_dict["media_dir"] = media_default
-        if not os.path.exists(media_default):
-            os.mkdir(media_default)
-
-    if args_dict["state_dir"] is None:
-        state_default = os.path.join(os.getcwd(), "state")
-        args_dict["state_dir"] = state_default
-        if not os.path.exists(state_default):
-            os.mkdir(state_default)
-
-    stages = utils.stages.Stages(stage_dict=STAGE_DICT, state_dir=args_dict["state_dir"])
-    process_debug_level(args_dict)
-    process_dryrun(args_dict)
-    install_logger.debug(args_dict)
+    process_debug_level(config)
+    process_dryrun(config)
+    install_logger.debug(config.args)
 
     if len(sys.argv) < 2:
         install_logger.error("{} requires at least 1 argument".format(sys.argv[0]))
@@ -389,20 +369,20 @@ reload ncn-w003;  --worker-nodes x3000c0s37b0n0 would also work.
         sys.exit(1)
 
     # some sanity testing
-    if not os.path.exists(args_dict["media_dir"]):
-        install_logger.error("Media directory {} does not exist.".format(args_dict["media_dir"]))
+    if not os.path.exists(config.args["media_dir"]):
+        install_logger.error("Media directory {} does not exist.".format(config.args["media_dir"]))
         sys.exit(1)
 
-    if not os.path.exists(args_dict["state_dir"]):
-        install_logger.error("State directory {} does not exist.".format(args_dict["state_dir"]))
+    if not os.path.exists(config.args["state_dir"]):
+        install_logger.error("State directory {} does not exist.".format(config.args["state_dir"]))
         sys.exit(1)
-    validate_stages(args_dict, stages)
+    validate_stages(config)
 
-    if args_dict["write_input_file"]:
-        config.write(args_dict)
+    if config.args["write_input_file"]:
+        configfile.write(config.args)
 
     try:
-        args.func(args_dict, stages)
+        args.func(config)
     except AttributeError:
         install_logger.error("A subcommand was not specified.")
         parser.print_help(sys.stderr)

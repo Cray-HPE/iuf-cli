@@ -147,7 +147,7 @@ class Stages():
         return table.get_string()
 
 
-    def exec_stage(self, args_dict, stage):
+    def exec_stage(self, config, stage):
         """Run a stage."""
 
         #self.checkInit(args_dict['state_dir'])
@@ -155,7 +155,7 @@ class Stages():
         try:
             stage_func = eval("supdate.{}".format(self._stage_dict[stage]["func"]))
             stage_start = datetime.datetime.now()
-            stage_func(args_dict)
+            stage_func(config)
             duration = elapsed_time(stage_start)
             install_logger.info("  stage completed in %s", duration)
             self.stage_hist.update(stage, True, True, duration)
