@@ -290,7 +290,6 @@ class Product:
 
     @archive_md5.setter
     def archive_md5(self, value):
-        print("setting archive_md5 to", value)
         self.__dict__[self.__dict__["name"]]['archive_md5'] = value
 
 class Products:
