@@ -48,7 +48,7 @@ def validate_stages(args_dict, stages):
 
     stages.validate(state_dir, begin_stage, end_stage, run_stages, skip_stages)
 
-    if args_dict["func"] == process_install:
+    if args_dict.get("func", None) == process_install:
         install_logger.info("STAGE SUMMARY: begin_stage=%s, end_stage=%s", stages.beginStage, stages.endStage)
 
     local_stages = stages.get(all_stages=False, list_fmt=True)
@@ -125,9 +125,12 @@ def process_install(args_dict, stages):
 
 def process_list(args, stages): #pylint: disable=unused-argument
     """Process the arguments to the list subparser"""
-
-    all_stages = stages.get(long=True, status=True, all_stages=True)
-
+    output_format = args.get("format", None)
+    if output_format == "csv":
+        all_stages = ','.join(stages.get(long=True, status=True, all_stages=True, list_fmt=True))
+    else:
+        all_stages = stages.get(long=True, status=True, all_stages=True, list_fmt=False)
+    
     print(all_stages)
 
 def process_products(args, stages):
@@ -340,6 +343,7 @@ reload ncn-w003;  --worker-nodes x3000c0s37b0n0 would also work.
 
     list_sp = subparsers.add_parser("list-stages", aliases=["ls"])
     list_sp.set_defaults(func=process_list)
+    list_sp.add_argument("-f", "--format", action="store")
 
     products_sp = subparsers.add_parser("list-products")
     products_sp.set_defaults(func=process_products)
