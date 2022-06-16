@@ -259,10 +259,7 @@ def get_product_catalog(config, all=False):
         return all_product_data
 
     for product in config.location_dict:
-        if product.import_version:
-            product_version = product.import_version
-        else:
-            product_version = product.version
+        product_version = product.best_version
         install_logger.debug('using product_version {}'.format(product_version))
         try:
             working_type = product.product
@@ -360,7 +357,6 @@ def get_products( config,
 
     products = hpe.Products.Products()
     media_dir = config.args["media_dir"]
-    connection = config.connection
 
     if not prefixes:
         prefixes = products.prefixes()
@@ -397,7 +393,7 @@ def get_products( config,
 
         install_logger.debug('processing {}'.format(item))
         if item in SKIP_FILES:
-            install_logger.debug('skipping installer support file {}'.format(item))
+            install_logger.trace('skipping installer support file {}'.format(item))
             continue
 
         item_name = None
@@ -411,11 +407,11 @@ def get_products( config,
 
             for suffix in suffixes:
 
-                install_logger.debug('suffix {}'.format(suffix))
+                install_logger.trace('suffix {}'.format(suffix))
 
                 if item.endswith(suffixes[suffix]):
 
-                    install_logger.debug('suffix match {}'.format(suffix))
+                    install_logger.trace('suffix match {}'.format(suffix))
                     item_name = item.split(suffixes[suffix])[0]
                     install_logger.debug('item_name is {}'.format(item_name))
 
@@ -447,7 +443,6 @@ def get_products( config,
             # if there is no suffix, then just use the item name
             if not item_name:
 
-                install_logger.debug('no suffix handling')
                 install_logger.debug('setting item_name to {}'.format(item))
                 install_logger.debug('creating new product {}'.format(item_name))
                 install_logger.debug('setting archive to {}'.format(item))
@@ -503,84 +498,55 @@ def get_products( config,
             # don't bother trying to extract something with no archive
             if product.product and product.archive:
 
-                install_logger.debug('inside product test')
+                install_logger.trace('inside product test')
 
                 # only process items that have no work_dir (haven't been extracted yet)
                 if not product.work_dir:
 
-                    install_logger.debug('needs workdir')
+                    install_logger.trace('needs workdir')
                     work_dir = os.path.join(product.media_dir, product.name)
 
-                    # make dir
-                    if not os.path.isdir(work_dir):
-                        os.makedirs(work_dir)
 
                     archive = os.path.join(product.media_dir, product.archive)
 
-                    # handle md5 sums, if provided
-                    dist_sum = product.md5
-                    checked_sum = product.archive_md5
-
-                    if dist_sum and checked_sum:
-
+                    if product.md5:
                         install_logger.info('    validating md5 sum for {}'.format(product.archive))
-                        # check archive md5
-                        if dist_sum == checked_sum:
-
-                            install_logger.info('      sum validates {}'.format(checked_sum))
-
-                            # extract tarfile
-                            install_logger.info('    extracting {}'.format(archive))
-
-                            try:
-                                shutil.unpack_archive(archive, work_dir)
-                            except:
-                                # if tar fails, remove work dir
-                                install_logger.warning('    unable to process {}'.format(product.name))
-                                # remove dir to avoid thinking this is a valid workdir
-                                shutil.rmtree(work_dir)
-                                product.work_dir = None
-                                continue
-
-                            # find the directory created by the tar file and update the work_dir
-                            work_dir_contents = os.listdir(work_dir)
-
-                            if work_dir_contents:
-                                product.work_dir = os.path.join(work_dir, work_dir_contents[0])
-
-                            # take note that the md5 sum matched
-                            product.archive_check = 'passed'
-
+                        if product.archive_check == 'passed':
+                            install_logger.info('      sum validates {}'.format(product.archive_md5))
                         else:
-
                             # there is a problem with the archive or sum
                             install_logger.error("    distribution sum doesn't match archive sum!")
-                            install_logger.error('    distribution {}'.format(dist_sum))
-                            install_logger.error('    archive_sum {}'.format(checked_sum))
+                            install_logger.error('    distribution {}'.format(product.md5))
+                            install_logger.error('    archive_sum {}'.format(product.archive_md5))
                             install_logger.error('    skipping extraction of {}'.format(archive))
-                            shutil.rmtree(work_dir)
-
-                            # take note that the md5 sum did NOT match
-                            product.archive_check = 'failed'
-
-                    else:
-
-                        # extract tarfile
-                        install_logger.info('    extracting {}'.format(archive))
-
-                        try:
-                            shutil.unpack_archive(archive, work_dir)
-                        except:
-                            install_logger.warning('skipping {}'.format(product.name))
-                            # remove dir to avoid thinking this is a valid workdir
-                            shutil.rmtree(work_dir)
-                            product.work_dir = None
                             continue
 
-                        # find the directory created by the tar file and update the work_dir
-                        work_dir_contents = os.listdir(work_dir)
-                        if work_dir_contents:
-                            product.work_dir = os.path.join(work_dir, work_dir_contents[0])
+                    if config.dryrun:
+                        install_logger.dryrun('    skipping extraction of {}'.format(archive))
+                        continue
+
+                    # extract tarfile
+                    install_logger.info('    extracting {}'.format(archive))
+
+                    try:
+                        # make dir
+                        if not os.path.isdir(work_dir):
+                            os.makedirs(work_dir)
+
+                        shutil.unpack_archive(archive, work_dir)
+                    except:
+                        # if tar fails, remove work dir
+                        install_logger.warning('    unable to process {}'.format(product.name))
+                        # remove dir to avoid thinking this is a valid workdir
+                        shutil.rmtree(work_dir)
+                        product.work_dir = None
+                        continue
+
+                    # find the directory created by the tar file and update the work_dir
+                    work_dir_contents = os.listdir(work_dir)
+
+                    if work_dir_contents:
+                        product.work_dir = os.path.join(work_dir, work_dir_contents[0])
 
                 else:
                     # find the directory created by the tar file and update the work_dir

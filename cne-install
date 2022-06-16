@@ -177,16 +177,15 @@ def process_debug_level(config):
     return
 
 
-def process_dryrun(config):
+def update_logger_config(config):
     """
     Sets the static CmdInterface interface to "dryrun" mode
     """
-    dryrun = config.args.get("dryrun", False)
-    config.connection.dryrun = dryrun
-
-    if dryrun:
+    if config.dryrun:
         addLoggingLevel('DRYRUN', logging.INFO + 1)
         install_logger.dryrun("Dryrun enabled")
+
+    addLoggingLevel('TRACE', logging.DEBUG - 1)
 
 def check_environment_variables():
     """
@@ -360,7 +359,7 @@ reload ncn-w003;  --worker-nodes x3000c0s37b0n0 would also work.
     config.stages = utils.stages.Stages(stage_dict=STAGE_DICT, state_dir=config.args["state_dir"])
 
     process_debug_level(config)
-    process_dryrun(config)
+    update_logger_config(config)
     install_logger.debug(config.args)
 
     if len(sys.argv) < 2:
