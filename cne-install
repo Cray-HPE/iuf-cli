@@ -42,7 +42,7 @@ def validate_stages(config):
 
     config.stages.validate(state_dir, begin_stage, end_stage, run_stages, skip_stages)
 
-    if config.args["func"] == process_install:
+    if config.args.get("func", "") == process_install:
         install_logger.info("STAGE SUMMARY: begin_stage=%s, end_stage=%s", config.stages.beginStage, config.stages.endStage)
 
     local_stages = config.stages.get(all_stages=False, list_fmt=True)
@@ -159,7 +159,7 @@ def process_products(config):
 def process_debug_level(config):
 
     install_logger_file_init(config)
-    if "level" in config.args.keys() and config.args["level"] != None:
+    if config.args.get("level", None):
         if config.args["level"] in LOG_LEVELS.keys():
             level = LOG_LEVELS[config.args["level"]]
             install_logger_stream_init(level, config.args.get("verbose", False))
@@ -226,7 +226,7 @@ def main():
     parser.add_argument("-m", "--media-dir", action="store",
         help="Location of installation media you would like to install.  Defaults to $PWD/media")
 
-    parser.add_argument("--log-dir", action="store", default=LOG_DEFAULT_DIR,
+    parser.add_argument("--log-dir", action="store",
         help="Location used to store log files.  Defaults to $PWD/log")
 
     # hide DRYRUN for now until it's production ready
@@ -362,19 +362,13 @@ reload ncn-w003;  --worker-nodes x3000c0s37b0n0 would also work.
     update_logger_config(config)
     install_logger.debug(config.args)
 
+    config.logger = install_logger
+
     if len(sys.argv) < 2:
         install_logger.error("{} requires at least 1 argument".format(sys.argv[0]))
         parser.print_help(sys.stderr)
         sys.exit(1)
 
-    # some sanity testing
-    if not os.path.exists(config.args["media_dir"]):
-        install_logger.error("Media directory {} does not exist.".format(config.args["media_dir"]))
-        sys.exit(1)
-
-    if not os.path.exists(config.args["state_dir"]):
-        install_logger.error("State directory {} does not exist.".format(config.args["state_dir"]))
-        sys.exit(1)
     validate_stages(config)
 
     if config.args["write_input_file"]:

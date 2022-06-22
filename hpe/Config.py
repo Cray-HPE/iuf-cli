@@ -1,6 +1,8 @@
 import datetime
 import inspect
 import os
+from utils.ShastaUpdate import validate_products
+import sys
 
 from utils.vars import LOCATION_DICT
 from utils.Connection import CmdMgr
@@ -11,6 +13,7 @@ class Config:
     _location_dict_file = None
     _args = None
     _connection = None
+    _logger = None
     all_product_data = None
     timestamp = None
 
@@ -19,6 +22,12 @@ class Config:
 
     def __repr__(self):
         return repr(self.__dict__)
+
+    def _error(self, message):
+        if self._logger:
+            self._logger.error(message)
+        else:
+            print(f"ERROR: {message}")
 
     @property
     def location_dict(self):
@@ -64,22 +73,40 @@ class Config:
         return False
 
     @property
+    def logger(self):
+        return self._logger
+
+    @logger.setter
+    def logger(self, value):
+        self._logger = value
+
+    @property
     def args(self):
         return self._args
 
     @args.setter
     def args(self, value):
         self._args = value.copy()
+        validated = True
 
-        if self._args["media_dir"] is None:
-            media_default = os.path.join(os.getcwd(), "media")
-            self._args["media_dir"] = media_default
-            if not os.path.exists(media_default):
-                os.mkdir(media_default)
+        # sanity test the directories
+        for dir in ["media", "state", "log"]:
+            if not self._args.get(f"{dir}_dir", None):
+                dir_default = os.path.join(os.getcwd(), dir)
+                self._args[f"{dir}_dir"] = dir_default
+                if not os.path.exists(dir_default):
+                    try:
+                        os.mkdir(dir_default)
+                    except Exception as e:
+                        self._error(f"Unable to create {dir_default}")
+                        self._error(e)
+                        validated = False
 
-        if self._args["state_dir"] is None:
-            state_default = os.path.join(os.getcwd(), "state")
-            self._args["state_dir"] = state_default
-            if not os.path.exists(state_default):
-                os.mkdir(state_default)
+            dpath = self._args.get(f"{dir}_dir")
+            if not os.path.exists(dpath):
+                self._error(f"{dir.capitalize()} directory {dpath} does not exist.")
+                validated = False
+
+        if not validated:
+            sys.exit(1)
 
