@@ -2,6 +2,7 @@ import yaml
 import hashlib
 import os
 from distutils.version import LooseVersion
+from utils.vars import InstallError
 
 class ProductConfig:
     _new_product = { 'archive_type': None,
@@ -85,7 +86,7 @@ class ProductConfig:
             elif formatting == "prefix":
                 retval[prefix] = prefixes[prefix]['product']
             else:
-                raise InstallerError(f"Unknown prefix formatting {formatting}")
+                raise InstallError(f"Unknown prefix formatting {formatting}")
 
         if formatting == "product":
             return list(retval.keys())
@@ -115,25 +116,27 @@ class ProductCatalog:
     def __getitem__(self, x):
         return self._data[self._all[x]]
 
-    def get_versions(self, installed=True):
+    def get_versions(self):
         high = None
         short = None
         key = None
 
-        versions = list()
-        keys = list()
-        for p in self:
-            if installed:
-                check = p.installed
-            else:
-                check = p.work_dir
+        proplist = ["installed","import_branch","work_dir"]
+        for prop in proplist:
+                versions = list()
+                keys = list()
+                for p in self:
+                    check = getattr(p, prop)
 
-            if check:
-                if p.product_version:
-                    versions.append(p.product_version)
-                elif p.version:
-                    versions.append(p.version)
-                keys.append(p.name)
+                    if check:
+                        if p.product_version:
+                            versions.append(p.product_version)
+                        elif p.version:
+                            versions.append(p.version)
+                        keys.append(p.name)
+
+                if versions:
+                    break
 
         sorted_vers = sorted(versions, key=LooseVersion)
         if sorted_vers:
@@ -153,11 +156,8 @@ class ProductCatalog:
         self.short_version = short
         self.key = key
 
-    def best(self, installed=True):
-        if not installed:
-            high, short, key = self.get_versions(installed)
-            return self._data[key]
-
+    @property
+    def best(self):
         if not self._key:
             self.update_versions()
 

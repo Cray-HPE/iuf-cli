@@ -62,7 +62,11 @@ class NCNPersonalization(Exception):
     pass
 
 class GitError(Exception):
-    """A wrapper for raising an NCNPersonalization error"""
+    """A wrapper for raising an GitError error"""
+    pass
+
+class LoggingError(Exception):
+    """A wrapper for raising an LoggingError error"""
     pass
 
 # Note this isn't imported from InstallerUtils to avoid circular dependencies.

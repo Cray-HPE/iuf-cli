@@ -301,7 +301,6 @@ def get_product_catalog(config, all=False):
                 install_logger.debug('no exact version in {}, using {} for {}'.format(matching_versions, working_version, product))
                 product_catalog = product_data[working_version]
                 product.clone_url = product_catalog['configuration']['clone_url']
-                products[product]['clone_url'] = product_catalog['configuration']['clone_url']
                 if "recipes" in product_catalog:
                     product.recipe = list(product_catalog['recipes'].keys())[0]
 

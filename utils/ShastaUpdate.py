@@ -330,9 +330,9 @@ def verify_product_install(config): #pylint: disable=unused-argument
                     if "post-install-validation" in script:
                         # the post-install-validation scripts run the goss tests already
                         goss_wanted = False
-                    install_logger.debug(f"Running {script} for {product_name}")
+                    install_logger.debug(f"Running {script} for {product.name}")
                     try:
-                        connection.sudo(f"./{script}", cwd=os.path.join(product.work_dir), timeout=600)
+                        config.connection.sudo(f"./{script}", cwd=os.path.join(product.work_dir), timeout=600)
                         validated = True
                         install_logger.info("        {} {:.>32}".format(product.name, "succeeded"))
                     except RunTimeoutError as te:
@@ -648,7 +648,7 @@ def best_guess_working(config, product_key, gitobj, repo):
     return it.  Otherwise, find the one closest in version but lower."""
 
     integration_branch = None
-    if not ("working_branch" in args and  args["working_branch"]):
+    if not config.args.get("working_branch", None):
         raise InstallError("You must supply --working-branch")
 
     integration_branch = render_jinja(config, product_key, config.args["working_branch"])
@@ -1202,8 +1202,8 @@ def legacy_dvs_reload(config):
     install_logger.debug("get all pods ...")
     all_pods = config.connection.sudo("kubectl --kubeconfig=/etc/kubernetes/admin.conf get pods -Ao wide").stdout.splitlines()
 
-    statedir = args.get("state_dir")
-    ncnp_cfg = args.get("ncn_personalization")
+    statedir = config.args.get("state_dir")
+    ncnp_cfg = config.args.get("ncn_personalization")
 
     for w_xname, w_node in worker_tuples:
 
@@ -1215,7 +1215,7 @@ def legacy_dvs_reload(config):
         install_logger.debug("(unload_dvs_and_lnet)cps_cm_pods={}".format(cps_cm_pm_pods))
         if  cps_cm_pm_pods:
             install_logger.info("    Deleting CPS deployment")
-            connection.sudo("cray cps deployment delete --nodes {}".format(w_node))
+            config.connection.sudo("cray cps deployment delete --nodes {}".format(w_node))
             pod_line = cps_cm_pm_pods[0]
             fields = pod_line.split()
             pod_name = fields[1]
@@ -1403,7 +1403,7 @@ def boot_cos(config):
     """Boot a COS image"""
 
     #TODO figure out what sessiontemplate to boot with
-    # sessiontemplate_name = args.get("source_bos_sessiontemplate")
+    sessiontemplate_name = config.args.get("source_bos_sessiontemplate")
 
     boot_start_time = datetime.datetime.now()
     # Now reboot the compute nodes
@@ -1484,7 +1484,7 @@ def cleanup(config): # pylint: disable=unused-argument
     """Clean things up after a run."""
 
     # remove files containing passwords
-    statedir = args.get("state_dir")
+    statedir = config.args.get("state_dir")
     config.connection.sudo("rm -f {}/.vcspass {}/get_local_vcspw.sh".format(statedir, statedir))
 
 
@@ -1541,8 +1541,8 @@ def validate_weak_symbols(config, failures, flavor="cray_shasta_c", arch="x86_64
         install_logger.warning("    Unable to perform weak symbol check: No SHS packages found")
         return
 
-    cos = config.location_dict.product("cos").best(False)
-    shs = config.location_dict.product("slingshot-host-software").best(False)
+    cos = config.location_dict.product("cos").best
+    shs = config.location_dict.product("slingshot-host-software").best
 
     # find the COS kernel
     for fkernel in Path(cos.work_dir).rglob("kernel-{}-[0-9]*.{}.rpm".format(flavor,arch)):
@@ -1617,8 +1617,7 @@ def validate_cos_ncn_kernel(config, failures):
     verify media prior to installation
     """
 
-
-    cos = config.location_dict.product("cos").best(False)
+    cos = config.location_dict.product("cos").best
     if not cos:
         install_logger.warning('  Cannot perform kernel compatibility check due to no valid COS products')
         return
@@ -1728,7 +1727,7 @@ def render_jinja(config, product_key=None, jinja_string=None):
         install_logger.debug("AVAIL JINJA2 VARS")
         install_logger.debug("  product_key = {}".format(product_key))
         install_logger.debug("  product_type = {}".format(product.product))
-        install_logger.debug("  version_full = {}".format(version_full))
+        install_logger.debug("  version_full = {}".format(product.best_bersion))
         install_logger.debug("  version_x_y = {}".format(version_x_y))
         install_logger.debug("  version_x_y_z = {}".format(version_x_y_z))
 
@@ -1737,7 +1736,7 @@ def render_jinja(config, product_key=None, jinja_string=None):
         rendered_string = t.render(
             product_key=product_key,
             product_type=product.product,
-            version_full=version_full,
+            version_full=product.best_version,
             version_x_y=version_x_y,
             version_x_y_z=version_x_y_z
             )
