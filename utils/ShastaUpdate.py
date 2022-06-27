@@ -1534,15 +1534,15 @@ def validate_weak_symbols(config, failures, flavor="cray_shasta_c", arch="x86_64
     provided = []
     required = dict()
     kmps = []
-
+    work_dirs = []
 
     install_logger.info("  Performing kernel symbol check on the install media to verify COS and SHS compatibility")
-    if config.location_dict.product("slingshot-host-software").count != 1:
-        install_logger.warning("    Unable to perform weak symbol check: No SHS packages found")
-        return
 
     cos = config.location_dict.product("cos").best
-    shs = config.location_dict.product("slingshot-host-software").best
+    work_dirs.append(cos.work_dir)
+    shscos = config.location_dict.product("slingshot-host-software").type(f"cos")[0]
+    work_dirs.append(shscos.work_dir)
+
 
     # find the COS kernel
     for fkernel in Path(cos.work_dir).rglob("kernel-{}-[0-9]*.{}.rpm".format(flavor,arch)):
@@ -1570,7 +1570,7 @@ def validate_weak_symbols(config, failures, flavor="cray_shasta_c", arch="x86_64
     install_logger.debug("    kernel found: {}".format(kernel.name))
     # get all kmp files
 
-    for path in [cos.work_dir, shs.work_dir]:
+    for path in work_dirs:
         for kmp in Path(path).rglob("*-kmp-{}-*.{}.rpm".format(flavor,arch)):
             fullkmp = os.path.join(kmp.parent,kmp.name)
             kmps.append(fullkmp)
@@ -1673,26 +1673,48 @@ def validate_products(config):
 
     failures = []
     num_cos_products = config.location_dict.product("cos").count
-    num_shs_products = config.location_dict.product("slingshot-host-software").count
+    num_shs_products = len(config.location_dict.product("slingshot-host-software").type("cos"))
+    num_shs_versions = 1
+    if num_shs_products and config.location_dict.product("slingshot-host-software").count > 1:
+        shsvers = []
+        for shs in config.location_dict.product("slingshot-host-software"):
+            cver = ".".join(shs.version.split("-")[0].split(".")[0:3])
+            if cver not in shsvers:
+                shsvers.append(cver)
 
-    perform_validations = True
+        shsvercount = len(shsvers)
+        if shsvercount != 1:
+            num_shs_versions = shsvercount
+
+    perform_cos_validations = True
+    perform_shs_validations = True
     if num_cos_products != 1:
         install_logger.warning('  Can only run COS validations on a single release at a time ({} found)'.format(num_cos_products))
-        perform_validations = False
+        perform_cos_validations = False
 
-    if num_shs_products > 1:
-        install_logger.warning('  Can only run Slingshot validations on a single release at a time ({} found)'.format(num_shs_products))
-        perform_validations = False
+    if num_shs_versions != 1:
+        install_logger.warning('  Can only run Slingshot validations on a single release at a time ({} found)'.format(num_shs_versions))
+        perform_shs_validations = False
 
-    if not perform_validations:
-        install_logger.warning('  Skipping media validations.')
+    if num_shs_products != 1:
+        install_logger.warning('  Can only run Slingshot validations if you have a single "cos" subpackage ({} found)'.format(num_shs_products))
+        perform_shs_validations = False
+
+    if not perform_cos_validations and not perform_shs_validations:
+        install_logger.warning('  Skipping all media validations.')
         return
 
-    # see if the running kernel matches the COS NCN kernel
-    validate_cos_ncn_kernel(config, failures)
+    if perform_cos_validations:
+        # see if the running kernel matches the COS NCN kernel
+        validate_cos_ncn_kernel(config, failures)
+    else:
+        install_logger.warning('  Skipping cos media validations.')
 
-    # see if the kernels and ksyms all match
-    validate_weak_symbols(config, failures)
+    if perform_cos_validations and perform_shs_validations:
+        # see if the kernels and ksyms all match
+        validate_weak_symbols(config, failures)
+    else:
+        install_logger.warning('  Skipping shs media validations.')
 
     if failures:
         install_logger.error(" Validation failed:")

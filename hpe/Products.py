@@ -1,3 +1,4 @@
+from xml.sax.handler import property_declaration_handler
 import yaml
 import hashlib
 import os
@@ -23,6 +24,52 @@ class ProductConfig:
         'merged': None
     }
 
+    _prefixes = {
+        'cos': {
+            'product': 'cos',
+            'description': 'HPE Cray Operating System',
+            },
+        'SUSE-Backports-SLE': {
+            'product': 'sles',
+            'description': 'openSUSE packages backports provided by SUSE',
+            },
+        'SUSE-PTF': {
+            'product': 'sles',
+            'description': 'PTFs (Program Temporary Fixes) provided by SUSE',
+            },
+        'SUSE-Products': {
+            'product': 'sles',
+            'description': 'Base SLE software provided by SUSE',
+            },
+        'SUSE-Updates': {
+            'product': 'sles',
+            'description': 'Updates to base SLE software provided by SUSE',
+            },
+        'slingshot-host-software': {
+            'product': 'slingshot-host-software',
+            'description': 'Slingshot Host Software and Drivers',
+            },
+        # 'analytics': 'analytics',
+        'uan': {
+            'product': 'uan',
+            'description': 'HPE Cray User Access Node (UAN) Software',
+            },
+        # 'cpe': 'cpe',
+        # 'cpe-slurm': 'slurm',
+        # 'wlm-slurm': 'slurm',
+        # 'wlm-pbs': 'pbs',
+        # 'cpe-pbs': 'pbs',
+        # 'cray-sdu-rda': 'sdu'
+        'sma': {
+            'product': 'sma',
+            'description': 'HPE Cray EX System Monitoring Application',
+            },
+        'sat': {
+            'product': 'sat',
+            'description': 'HPE Cray System Admin Toolkit',
+            },
+        }
+    
     def __init__(self):
         pass
 
@@ -30,61 +77,15 @@ class ProductConfig:
         if not formatting:
             formatting = "prefix"
 
-        prefixes = {
-            'cos': {
-                'product': 'cos',
-                'description': 'HPE Cray Operating System',
-                },
-            'SUSE-Backports-SLE': {
-                'product': 'sles',
-                'description': 'openSUSE packages backports provided by SUSE',
-                },
-            'SUSE-PTF': {
-                'product': 'sles',
-                'description': 'PTFs (Program Temporary Fixes) provided by SUSE',
-                },
-            'SUSE-Products': {
-                'product': 'sles',
-                'description': 'Base SLE software provided by SUSE',
-                },
-            'SUSE-Updates': {
-                'product': 'sles',
-                'description': 'Updates to base SLE software provided by SUSE',
-                },
-            'slingshot-host-software': {
-                'product': 'slingshot-host-software',
-                'description': 'Slingshot Host Software and Drivers',
-                },
-            # 'analytics': 'analytics',
-            'uan': {
-                'product': 'uan',
-                'description': 'HPE Cray User Access Node (UAN) Software',
-                },
-            # 'cpe': 'cpe',
-            # 'cpe-slurm': 'slurm',
-            # 'wlm-slurm': 'slurm',
-            # 'wlm-pbs': 'pbs',
-            # 'cpe-pbs': 'pbs',
-            # 'cray-sdu-rda': 'sdu'
-            'sma': {
-                'product': 'sma',
-                'description': 'HPE Cray EX System Monitoring Application',
-                },
-            'sat': {
-                'product': 'sat',
-                'description': 'HPE Cray System Admin Toolkit',
-                },
-        }
- 
         retval = dict()
 
-        for prefix in prefixes:
+        for prefix in self._prefixes:
             if formatting == "description":
-                retval[prefix] = prefixes[prefix]['description']
+                retval[prefix] = self._prefixes[prefix]['description']
             elif formatting == "product":
-                retval[prefixes[prefix]['product']] = 1
+                retval[self._prefixes[prefix]['product']] = 1
             elif formatting == "prefix":
-                retval[prefix] = prefixes[prefix]['product']
+                retval[prefix] = self._prefixes[prefix]['product']
             else:
                 raise InstallError(f"Unknown prefix formatting {formatting}")
 
@@ -103,18 +104,59 @@ class ProductCatalog:
     _short_version = None
     _key = None
     _name = None
+    _types = None
 
     def __init__(self):
         self._data = dict()
         self._all = list()
+        self._types = dict()
 
     def insert(self, product):
         if product.name not in self._all:
             self._data[product.name] = product
             self._all.append(product.name)
+            self._update_types(product.name)
 
     def __getitem__(self, x):
         return self._data[self._all[x]]
+
+    def _update_types(self, name):
+        
+        ptype = None
+        for prefix in ProductConfig._prefixes:
+            if name.startswith(prefix):
+                parts = name.split("-")
+                if prefix == "slingshot-host-software":
+                    index = 5
+                    if parts[index] == "dev":
+                        index = 6
+                    if parts[index].startswith("sle"):
+                        ptype = "-".join(parts[index:])
+                    else:
+                        ptype = parts[index]
+                elif name.startswith("SUSE"):
+                    ptype = prefix
+                else:
+                    ptype = ProductConfig._prefixes[prefix]["product"]
+
+        # if this doesn't start with a known prefix, ignore it.  Shouldn't ever
+        # get to this section of code with an unknown image, but just in case
+        if not ptype:
+            return
+
+        if ptype not in self._types:
+            self._types[ptype] = list()
+        
+        if name not in self._types[ptype]:
+            self._types[ptype].append(name)
+
+    def type(self, ptype):
+        retval = list()
+        if ptype in self._types:
+            for product in self._types[ptype]:
+                retval.append(self._data[product])
+        
+        return retval
 
     def get_versions(self):
         high = None
@@ -240,6 +282,10 @@ class Product:
             return self.product_version
         else:
             return self.version
+
+    @property
+    def short_version(self):
+        return ".".join(self.best_version.split(".")[0:2])
 
     def yaml(self):
         curdict = self.__dict__.copy()
