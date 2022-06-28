@@ -1,3 +1,7 @@
+"""
+Copyright 2022 Hewlett Packard Enterprise Development LP
+"""
+
 import datetime
 import inspect
 import os

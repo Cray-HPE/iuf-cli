@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+"""
+Copyright 2022 Hewlett Packard Enterprise Development LP
+"""
 
 """This module contains the staging information and functionality."""
 

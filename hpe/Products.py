@@ -1,3 +1,7 @@
+"""
+Copyright 2022 Hewlett Packard Enterprise Development LP
+"""
+
 from xml.sax.handler import property_declaration_handler
 import yaml
 import hashlib
