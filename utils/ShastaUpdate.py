@@ -1842,10 +1842,13 @@ def validate_cos_ncn_kernel(args, valid_products, failures):
 
     # find a representive rpm from the cos media
     query_package = 'cray-dvs-kmp-default'
+    valid_dirs = [f"{os_release}-ncn", f"{os_release}-net-ncn"]
     rpms = []
     for rpm in Path(cos_workdir).rglob("cray-dvs-kmp-default-*"):
-        if "{}-ncn".format(os_release) in str(rpm.parent):
-            rpms.append(rpm.name)
+        for vdir in valid_dirs:
+            if vdir in str(rpm.parent) and rpm.name not in rpms:
+                # in some releases the same rpm is in multiple directories, don't duplicate
+                rpms.append(rpm.name)
 
     # see if our sample rpm matches the running NCN kernel
     if len(rpms) == 1:
