@@ -120,8 +120,11 @@ def process_install(config):
 def process_list(config): #pylint: disable=unused-argument
     """Process the arguments to the list subparser"""
 
-    all_stages = config.stages.get(long=True, status=True, all_stages=True)
-
+    if config.args.get("format", None) == "csv":
+        all_stages = ','.join(config.stages.get(long=True, status=True, all_stages=True, list_fmt=True))
+    else:
+        all_stages = config.stages.get(long=True, status=True, all_stages=True, list_fmt=False)
+    
     print(all_stages)
 
 def process_products(config):
@@ -334,6 +337,7 @@ reload ncn-w003;  --worker-nodes x3000c0s37b0n0 would also work.
 
     list_sp = subparsers.add_parser("list-stages", aliases=["ls"])
     list_sp.set_defaults(func=process_list)
+    list_sp.add_argument("-f", "--format", action="store")
 
     products_sp = subparsers.add_parser("list-products")
     products_sp.set_defaults(func=process_products)
