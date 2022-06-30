@@ -106,14 +106,17 @@ class ProductCatalog:
     _data = None
     _version = None
     _short_version = None
+    _long_version = None
     _key = None
     _name = None
     _types = None
+    _product = None
 
-    def __init__(self):
+    def __init__(self, product):
         self._data = dict()
         self._all = list()
         self._types = dict()
+        self._product = product
 
     def insert(self, product):
         if product.name not in self._all:
@@ -125,7 +128,6 @@ class ProductCatalog:
         return self._data[self._all[x]]
 
     def _update_types(self, name):
-        
         ptype = None
         for prefix in ProductConfig._prefixes:
             if name.startswith(prefix):
@@ -166,6 +168,7 @@ class ProductCatalog:
         high = None
         short = None
         key = None
+        long = None
 
         proplist = ["installed","import_branch","work_dir"]
         for prop in proplist:
@@ -187,20 +190,22 @@ class ProductCatalog:
         sorted_vers = sorted(versions, key=LooseVersion)
         if sorted_vers:
             high = sorted_vers[-1]
-            version_list = high.split('.')
+            if self._product == "sles":
+                version_list = high.split("-")[-1].split('.')
+            else:
+                version_list = high.split("-")[0].split('.')
+
             short = "{}.{}".format(version_list[0], version_list[1])
+            long = "{}.{}.{}".format(version_list[0], version_list[1], version_list[2])
 
         sorted_keys = sorted(keys, key=LooseVersion)
         if sorted_keys:
             key = sorted_keys[-1]
 
-        return high, short, key
+        return high, short, long, key
 
     def update_versions(self):
-        high, short, key = self.get_versions()
-        self.version = high
-        self.short_version = short
-        self.key = key
+        self.version, self.short_version, self.long_version, self.key = self.get_versions()
 
     @property
     def best(self):
@@ -244,6 +249,17 @@ class ProductCatalog:
     @version.setter
     def version(self, value):
         self._version = value
+
+    @property
+    def long_version(self):
+        if not self._long_version:
+            self.update_versions()
+
+        return self._long_version
+
+    @long_version.setter
+    def long_version(self, value):
+        self._long_version = value
 
     @property
     def short_version(self):
@@ -290,6 +306,10 @@ class Product:
     @property
     def short_version(self):
         return ".".join(self.best_version.split(".")[0:2])
+
+    @property
+    def long_version(self):
+        return ".".join(self.best_version.split("-")[0].split(".")[0:3])
 
     def yaml(self):
         curdict = self.__dict__.copy()
@@ -374,7 +394,7 @@ class Products:
     def _initialize_catalog(self):
         self._catalog = dict()
         for product in self.prefixes('product'):
-            self._catalog[product] = ProductCatalog()
+            self._catalog[product] = ProductCatalog(product)
 
     def get(self, name, create=True):
         if name not in self.__dict__:
@@ -420,6 +440,15 @@ class Products:
         self._update_installable(product)
         #self._update_version(product)
         self.write_location_dict()
+
+    @property
+    def available_products(self):
+        retval = list()
+        for pname in self._catalog.keys():
+            if self._catalog[pname].count:
+                retval.append(pname)
+
+        return retval
 
     def prefixes(self, formatting=None):
         return self.config.product_prefixes(formatting)

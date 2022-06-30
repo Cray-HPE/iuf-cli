@@ -124,7 +124,7 @@ def process_list(config): #pylint: disable=unused-argument
         all_stages = ','.join(config.stages.get(long=True, status=True, all_stages=True, list_fmt=True))
     else:
         all_stages = config.stages.get(long=True, status=True, all_stages=True, list_fmt=False)
-    
+
     print(all_stages)
 
 def process_products(config):
