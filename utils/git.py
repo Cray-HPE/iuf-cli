@@ -132,6 +132,11 @@ class Git:
 
         return found
 
+    def contains(self, repo, commit):
+        branches = self.run("branch -r --contains {}".format(commit), subdir=repo, quiet=True).stdout.splitlines()
+        return [branch.replace("origin/", "").strip() for branch in branches]
+
+
     def checkout(self, repo, branch, quiet=False, create=False):
         """
         Checkout objects in a repo, mostly branches.
