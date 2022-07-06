@@ -792,17 +792,18 @@ def create_bootprep_config(config):
     bootprep_dict["configurations"] = []
     cfs_arg = config.args.get("cfs_config")
     cfs_name = "{}-{}".format(cfs_arg, config.timestamp)
+    warning_urls = []
+    git = Git(config)
 
     prod_repos = {
-        repo_name(location_dict[prod_key]["clone_url"]):
+        repo_name(prod_key.clone_url):
             {
-                "product_key": prod_key,
-                "product": location_dict[prod_key]["product"],
-            } for prod_key in location_dict.keys()
+                "product_key": prod_key.name,
+                "product": prod_key.product,
+            } for prod_key in config.location_dict
         }
     bp_layers = []
 
-    print("prod_repos keys={}".format(prod_repos.keys()))
     for cfsd in cfs_dict["layers"]:
         # Use an OrderedDict so that if a person edits the resulting
         # bootprep-config.yaml, it looks normal, rather than in alphabetical
@@ -814,20 +815,16 @@ def create_bootprep_config(config):
         url = cfsd["cloneUrl"]
         repo = repo_name(url)
         branches = git.ls_remote(repo, just_branches=True)
-        print("repo={}, url={}".format(repo, url))
         if repo in prod_repos:
-            print("found repo={}".format(repo))
             prod_info = prod_repos[repo]
-            working_branch = render_jinja(args, prod_info["product_key"], args["working_branch"])
+            working_branch = render_jinja(config, prod_info["product_key"], config.args["working_branch"])
 
             if working_branch not in branches:
                 working_branch = best_guess_working(args, prod_info["product"], git, repo)
                 warning_urls.append(url)
         else:
-            print("didn't find url={}".format(url))
             # The url is not in location_dict, and we need to do do some guessing.
-            args_working = args["working_branch"]
-            print("args_working={}".format(args_working))
+            args_working = config.args["working_branch"]
             if args_working in branches:
                 working_branch = args_working
             else:
@@ -841,23 +838,19 @@ def create_bootprep_config(config):
                     # We can't use best_guess_working or render_jinja since
                     # the product isn't in the location dictionary.  Check to see of any of commit_branches
                     # contains 'integration' and a version in it.  Choose the highest versioned integration branch.
-                    print("*****Not in location dict, and args_working --NOT-- in commit_branches******")
                     int_candidates = {intb: None for intb in commit_branches if 'integration' in intb}
                     vers_re = re.compile("(\d+\.\d+)")
                     for int_c in int_candidates:
                         vers_match = re.search(vers_re, int_c)
                         if vers_match:
                             int_candidates[int_c] = vers_match.group(1)
-                    print("int_candidates = {}".format(pformat(int_candidates)))
                     ic_vals = int_candidates.values()
                     sorted_versions = sorted(int_candidates.values(), key=LooseVersion)
                     for branch, vers in int_candidates.items():
                         if vers == sorted_versions[-1]:
                             working_branch = branch
-                            print("(for) found working_branch={}".format(working_branch))
                             break
                     warning_urls.append(url)
-        print("(end of for loop)working_branch={}".format(working_branch))
         elt["git"] = OrderedDict({
             "url": url,
             "branch": working_branch,
@@ -914,8 +907,6 @@ def create_bootprep_config(config):
 
     bootprep_dict["session_templates"] = session_templates
 
-    print("bottom of create_bootprep_config, args={}".format(args))
-
     # Dump the yaml. bp_layers contains an OrderedDict, which isn't
     # serializable.  So it needs to be converted back into a serializable
     # object.
@@ -928,21 +919,21 @@ def create_bootprep_config(config):
             rep.append((key, val))
         return yaml.nodes.MappingNode(u'tag:yaml.org,2002:map', rep)
 
-    with open(os.path.join(get_dirs(args, "state"), SAT_BOOTPREP_CFG), "w", encoding="UTF-8") as fhandle:
+    bootprep_cfg_path =os.path.join(config.args["state_dir"], SAT_BOOTPREP_CFG)
+    with open(bootprep_cfg_path, "w", encoding="UTF-8") as fhandle:
         Dumper = yaml.SafeDumper
         Dumper.ignore_aliases = lambda self, data: True
         yaml.add_representer(OrderedDict, represent_ordereddict, Dumper=Dumper)
         yaml.dump(bootprep_dict, fhandle,  default_flow_style=False, Dumper=Dumper)
 
     if warning_urls:
-        msg = """
-        The following urls have suspect branches.  Please verify
-        them before continuing on to the `sat_bootprep` stage:
-        {}""".format("\n\t".join(warning_urls))
-        install_logger.error(msg)
-
-    with open(os.path.join(config.args["state_dir"], SAT_BOOTPREP_CFG), "w", encoding="UTF-8") as fhandle:
-        yaml.dump(bootprep_dict, fhandle)
+        errmsg1 = utils.formatted("""
+            The following urls have suspect branches.  Please verify
+            them in {}
+            before continuing on to the `sat_bootprep` stage:""".format(bootprep_cfg_path))
+        errmsg2 = "\n\t".join(warning_urls)
+        errmsg = errmsg1 + "\n\t" + errmsg2
+        install_logger.error(errmsg)
 
 
 def sat_bootprep(config):
