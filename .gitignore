@@ -1,0 +1,5 @@
+log
+media
+*/__pycache__
+state
+install.log

@@ -33,12 +33,12 @@ class Git:
     clone_info = dict()
     dryrun = False
 
-    def __init__(self, args, connection):
+    def __init__(self, config):
         """
         Initialize various variables when the class is created
         """
         # all clones live in the statedir
-        self.state_dir = args["state_dir"]
+        self.state_dir = config.args["state_dir"]
         # don't blow up if ssl is wrong
         self.env["GIT_SSL_NO_VERIFY"] = "true"
         # move HOME to statedir for git commands
@@ -46,11 +46,10 @@ class Git:
         self.env["HOME"] = self.state_dir
 
         # use the connection object passed in
-        self.connection = connection
+        self.connection = config.connection
 
         # see if we need dryrun set
-        self.dryrun = args.get("dryrun", False)
-        #self.connection.dryrun = self.dryrun
+        self.dryrun = config.dryrun
 
         # create an askpass script so the git password is never exposed
         askpass = os.path.join(self.state_dir, "askpass.sh")
