@@ -10,7 +10,7 @@ import sys
 
 from utils.vars import LOCATION_DICT
 from utils.Connection import CmdMgr
-import hpe.Products as p
+import hpe.Products
 
 class Config:
     _location_dict = None
@@ -37,7 +37,7 @@ class Config:
     def location_dict(self):
         if self._location_dict is None:
             print(self.location_dict_file)
-            self._location_dict = p.Products(self.location_dict_file)
+            self._location_dict = hpe.Products.Products(self.location_dict_file)
 
         return self._location_dict
 

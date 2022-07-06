@@ -240,7 +240,7 @@ def wait_for_ncn_personalization(config, xnames, timeout=600, sleep_time=30):
 
     return bad_nodes
 
-def get_product_catalog(config, all=False):
+def get_product_catalog(config, all_products=False):
     """
     update product dictionary with gitea urls
     """
@@ -255,7 +255,7 @@ def get_product_catalog(config, all=False):
     else:
         all_product_data = config.all_product_data
 
-    if all:
+    if all_products:
         return all_product_data
 
     for product in config.location_dict:
