@@ -105,6 +105,14 @@ STAGE_DICT = OrderedDict({
             being installed that contains a config management repo.  See help for
             --working-branch for details on setting the working branch.""")
         },
+    "create_bootprep_config": {
+        "func" : "create_bootprep_config",
+        "description" : "Generate the `sat bootprep` input config."
+        },
+    "sat_bootprep": {
+        "func" : "sat_bootprep",
+        "description" : "Run `sat bootprep`."
+        },
     "update_ncn_config": {
         "func" : "update_ncn_config",
         "description" : _formatted("""
@@ -126,18 +134,6 @@ STAGE_DICT = OrderedDict({
     "check_services": {
         "func" : "check_services",
         "description" : "Check CPS, DVS, LNET. and NMD services."
-        },
-    "create_cos_cfs_config": {
-        "func" : "create_cos_cfs_config",
-        "description" : "Write the CFS config used for building the COS image."
-        },
-    "create_bootprep_config": {
-        "func" : "create_bootprep_config",
-        "description" : "Generate the `sat bootprep` input config."
-        },
-    "sat_bootprep": {
-        "func" : "sat_bootprep",
-        "description" : "Run `sat bootprep`."
         },
 })
 
