@@ -27,7 +27,7 @@ class InvertableArgument(argparse.Action):
         else:
             setattr(namespace, self.dest, True)
 
-class Config:
+class ConfigFile:
     remove_args = [
             "func",
             "input_file",

@@ -62,7 +62,11 @@ class NCNPersonalization(Exception):
     pass
 
 class GitError(Exception):
-    """A wrapper for raising an NCNPersonalization error"""
+    """A wrapper for raising an GitError error"""
+    pass
+
+class LoggingError(Exception):
+    """A wrapper for raising an LoggingError error"""
     pass
 
 # Note this isn't imported from InstallerUtils to avoid circular dependencies.
@@ -157,7 +161,6 @@ NCNP_VARS = "ncnp-vars.yaml"
 SAT_BOOTPREP_CFG = "bootprep-config.yaml"
 
 LOG_DEFAULT_CONSOLE_LEVEL = logging.INFO
-LOG_DEFAULT_DIR = os.path.join(os.getcwd(), "log")
 LOG_DEFAULT_FILE_LEVEL = logging.DEBUG
 LOG_DEFAULT_FILENAME = "install.log"
 SESSION_TIMESTAMP = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
