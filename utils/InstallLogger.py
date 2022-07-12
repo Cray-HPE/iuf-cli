@@ -1,6 +1,7 @@
 # Copyright 2022 Hewlett Packard Enterprise Development LP
 
 import logging
+import os
 from utils.vars import *
 
 def addLoggingLevel(levelName, levelNum, methodName=None):

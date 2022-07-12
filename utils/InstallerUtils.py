@@ -8,13 +8,8 @@ import datetime
 import json
 import os
 import re
-import shlex
-import asyncio
-import sys
 import textwrap
 import time
-import urllib
-import shlex
 import shutil
 import yaml
 import rpm

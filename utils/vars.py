@@ -2,7 +2,6 @@
 
 from collections import OrderedDict
 import datetime
-import os
 import logging
 
 import textwrap

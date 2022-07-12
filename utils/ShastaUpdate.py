@@ -8,11 +8,8 @@ import copy
 import datetime
 import json
 import os
-import platform
 import re
 import shutil
-import stat
-import sys
 import time
 import jinja2
 from pprint import pformat
