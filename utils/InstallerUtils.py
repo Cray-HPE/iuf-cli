@@ -221,7 +221,7 @@ def wait_for_ncn_personalization(config, xnames, timeout=600, sleep_time=30):
             keep_waiting = False
 
         if seconds_waited >= timeout:
-            install_logger.warning("Timed out waiting for components to go from a "
+            install_logger.error("Timed out waiting for components to go from a "
                    "pending to configured status during ncn personalization")
             keep_waiting = False
         else:

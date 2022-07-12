@@ -7,6 +7,7 @@ Copyright 2022 Hewlett Packard Enterprise Development LP
 import copy
 import datetime
 import json
+from collections import OrderedDict
 import os
 import re
 import shutil
@@ -768,6 +769,7 @@ def create_bootprep_config(config):
     """Generate the bootprep config."""
     # Generate the  CFS config.
 
+
     bp_conf_arg = config.args.get("bootprep_config", None)
     if bp_conf_arg:
         install_logger.info("Using the following: `sat bootprep` config: {}".format(bp_conf_arg))
@@ -775,28 +777,87 @@ def create_bootprep_config(config):
 
     install_logger.info("Generating the `sat bootprep` config")
 
+    def repo_name(url):
+        """Take an url of the format http://.../myrepo.git
+        and returns myrepo.
+        """
+        return os.path.basename(url).replace(".git", "")
+
     # Generate the configuration section.
     bootprep_dict = {}
     cfs_dict = create_cos_cfs_config(config)
     bootprep_dict["configurations"] = []
     cfs_arg = config.args.get("cfs_config")
     cfs_name = "{}-{}".format(cfs_arg, config.timestamp)
+    warning_urls = []
+    git = Git(config)
 
-    bp_layers = [
-        {
+    prod_repos = {
+        repo_name(prod_key.clone_url):
+            {
+                "product_key": prod_key.name,
+                "product": prod_key.product,
+            } for prod_key in config.location_dict
+        }
+    bp_layers = []
+
+    for cfsd in cfs_dict["layers"]:
+        # Use an OrderedDict so that if a person edits the resulting
+        # bootprep-config.yaml, it looks normal, rather than in alphabetical
+        # order.
+        elt = OrderedDict({
             "name": cfsd["name"],
             "playbook": cfsd["playbook"],
-            "git":
-                {
-                    "url": cfsd["cloneUrl"],
-                    "commit": cfsd["commit"]
+        })
+        url = cfsd["cloneUrl"]
+        repo = repo_name(url)
+        branches = git.ls_remote(repo, just_branches=True)
+        if repo in prod_repos:
+            prod_info = prod_repos[repo]
+            working_branch = render_jinja(config, prod_info["product_key"], config.args["working_branch"])
 
-                }
-        } for cfsd in cfs_dict["layers"]
-    ]
+            if working_branch not in branches:
+                working_branch = best_guess_working(args, prod_info["product"], git, repo)
+                warning_urls.append(url)
+        else:
+            # The url is not in location_dict, and we need to do do some guessing.
+            args_working = config.args["working_branch"]
+            if args_working in branches:
+                working_branch = args_working
+            else:
+                # See what branch the commit is on.  If it's one branch, no problem.
+                # What branch is checked out doesn't really matter.
+                git.clone(repo)
+                commit_branches = git.contains(repo, cfsd["commit"])
+                if args_working in commit_branches:
+                    working_branch = args_working
+                else:
+                    # We can't use best_guess_working or render_jinja since
+                    # the product isn't in the location dictionary.  Check to see of any of commit_branches
+                    # contains 'integration' and a version in it.  Choose the highest versioned integration branch.
+                    int_candidates = {intb: None for intb in commit_branches if 'integration' in intb}
+                    vers_re = re.compile("(\d+\.\d+)")
+                    for int_c in int_candidates:
+                        vers_match = re.search(vers_re, int_c)
+                        if vers_match:
+                            int_candidates[int_c] = vers_match.group(1)
+                    ic_vals = int_candidates.values()
+                    sorted_versions = sorted(int_candidates.values(), key=LooseVersion)
+                    for branch, vers in int_candidates.items():
+                        if vers == sorted_versions[-1]:
+                            working_branch = branch
+                            break
+                    warning_urls.append(url)
+        elt["git"] = OrderedDict({
+            "url": url,
+            "branch": working_branch,
+        })
+        bp_layers.append(elt)
+
+
     cfs_elt = {
         "name": cfs_name,
-        "layers": bp_layers
+        "layers": bp_layers,
     }
     bootprep_dict["configurations"].append(cfs_elt)
 
@@ -843,8 +904,33 @@ def create_bootprep_config(config):
 
     bootprep_dict["session_templates"] = session_templates
 
-    with open(os.path.join(config.args["state_dir"], SAT_BOOTPREP_CFG), "w", encoding="UTF-8") as fhandle:
-        yaml.dump(bootprep_dict, fhandle)
+    # Dump the yaml. bp_layers contains an OrderedDict, which isn't
+    # serializable.  So it needs to be converted back into a serializable
+    # object.
+    def represent_ordereddict(dumper, data):
+        """Represent an OrderedDict as a list.  Will work with normal dictionaries as well."""
+        rep = []
+        for key,val in data.items():
+            key = dumper.represent_data(key)
+            val = dumper.represent_data(val)
+            rep.append((key, val))
+        return yaml.nodes.MappingNode(u'tag:yaml.org,2002:map', rep)
+
+    bootprep_cfg_path =os.path.join(config.args["state_dir"], SAT_BOOTPREP_CFG)
+    with open(bootprep_cfg_path, "w", encoding="UTF-8") as fhandle:
+        Dumper = yaml.SafeDumper
+        Dumper.ignore_aliases = lambda self, data: True
+        yaml.add_representer(OrderedDict, represent_ordereddict, Dumper=Dumper)
+        yaml.dump(bootprep_dict, fhandle,  default_flow_style=False, Dumper=Dumper)
+
+    if warning_urls:
+        errmsg1 = utils.formatted("""
+            The following urls have suspect branches.  Please verify
+            them in {}
+            before continuing on to the `sat_bootprep` stage:""".format(bootprep_cfg_path))
+        errmsg2 = "\n\t".join(warning_urls)
+        errmsg = errmsg1 + "\n\t" + errmsg2
+        install_logger.error(errmsg)
 
 
 def sat_bootprep(config):
