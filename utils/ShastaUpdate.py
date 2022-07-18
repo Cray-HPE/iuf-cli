@@ -9,14 +9,10 @@ import datetime
 import json
 from collections import OrderedDict
 import os
-import platform
 import re
 import shutil
-import stat
-import sys
 import time
 import jinja2
-from pprint import pformat
 from pathlib import Path
 
 from distutils.version import LooseVersion
@@ -820,7 +816,7 @@ def create_bootprep_config(config):
             working_branch = render_jinja(config, prod_info["product_key"], config.args["working_branch"])
 
             if working_branch not in branches:
-                working_branch = best_guess_working(args, prod_info["product"], git, repo)
+                working_branch = best_guess_working(config, prod_info["product"], git, repo)
                 warning_urls.append(url)
         else:
             # The url is not in location_dict, and we need to do do some guessing.

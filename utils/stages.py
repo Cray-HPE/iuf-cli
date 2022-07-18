@@ -13,7 +13,7 @@ import sys
 from prettytable import PrettyTable
 import yaml
 from utils.InstallLogger import get_install_logger
-from utils.InstallerUtils import elapsed_time, formatted
+from utils.InstallerUtils import elapsed_time
 
 # Note: utils.ShastaUpdate needs to be imported `as supdate` because of the
 # Naming convention used in vars.py to get at the functions.

@@ -3,7 +3,6 @@ Copyright 2022 Hewlett Packard Enterprise Development LP
 """
 
 import datetime
-import inspect
 import os
 from utils.ShastaUpdate import validate_products
 import sys
