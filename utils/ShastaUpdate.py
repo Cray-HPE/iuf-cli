@@ -436,6 +436,8 @@ def check_services(config): #pylint: disable=unused-argument
 def get_mergeable_repos(config):
 
     repos = {}
+    # Update the product catalog if necessary.
+    utils.get_product_catalog(config)
 
     # only products with an import_branch are mergable
     for product in config.location_dict:
@@ -452,7 +454,7 @@ def update_working_branches(config):
 
     # first things first, get a copy of all the config repos
     install_logger.debug("Cloning all of the configuration repositories...")
-
+    #
     # get dict of mergeable repos
     repos = get_mergeable_repos(config)
     git = Git(config)
