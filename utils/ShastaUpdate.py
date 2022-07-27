@@ -93,12 +93,16 @@ def install(config):
                     if not config.dryrun:
                         prod.installed = True
                 except Exception as err:
-                    install_logger.error('   Failed')
+                    if hasattr(err, "stderr"):
+                        errtxt = err.stderr.splitlines()[-5:]
+                    else:
+                        errtxt = [str(err)]
                     err_summary = {
                         'product': prod.name,
-                        'stderr': err.stderr.splitlines()[-5:]
+                        'stderr': errtxt
                     }
                     unsuccessful_products.append(err_summary)
+                    install_logger.error('   Failed')
                     prod.installed = False
 
             else:
