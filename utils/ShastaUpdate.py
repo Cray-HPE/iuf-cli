@@ -802,7 +802,7 @@ def create_bootprep_config(config):
             {
                 "product_key": prod_key.name,
                 "product": prod_key.product,
-            } for prod_key in config.location_dict
+            } for prod_key in config.location_dict if prod_key.clone_url
         }
     bp_layers = []
 
@@ -825,7 +825,8 @@ def create_bootprep_config(config):
                 working_branch = best_guess_working(config, prod_info["product"], git, repo)
                 warning_urls.append(url)
         else:
-            # The url is not in location_dict, and we need to do do some guessing.
+            # The url is not in location_dict or doesn't have a clone_url,
+            # and we need to do do some guessing.
             args_working = config.args["working_branch"]
             if args_working in branches:
                 working_branch = args_working
@@ -936,6 +937,7 @@ def create_bootprep_config(config):
         errmsg2 = "\n\t".join(warning_urls)
         errmsg = errmsg1 + "\n\t" + errmsg2
         install_logger.error(errmsg)
+        raise UnexpectedState("Suspect Branches")
 
 
 def sat_bootprep(config):
