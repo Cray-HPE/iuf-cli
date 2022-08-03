@@ -35,7 +35,6 @@ class Config:
     @property
     def location_dict(self):
         if self._location_dict is None:
-            print(self.location_dict_file)
             self._location_dict = hpe.Products.Products(self.location_dict_file)
 
         return self._location_dict
