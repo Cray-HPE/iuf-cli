@@ -137,7 +137,7 @@ class Stages():
                 if duration == None:
                     duration = "N/A"
 
-                run_result = "Not Ran"
+                run_result = "N/A"
                 if ran == True:
                     if succeeded == True:
                         run_result = "Succeeded"
