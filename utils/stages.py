@@ -89,6 +89,9 @@ class Stages():
         self.skip_stages = []
         self._noabort_stages = NOABORT_STAGES
 
+    @property
+    def stage_hist_file(self):
+        return self.stage_hist._stage_hist_file
 
     @property
     def beginStage(self):

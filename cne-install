@@ -11,6 +11,8 @@ import os
 import sys
 import logging
 import tarfile
+import atexit
+import shutil
 
 from utils.vars import *
 from utils.InstallLogger import *
@@ -203,6 +205,17 @@ def check_environment_variables():
         if var in os.environ:
             del os.environ[var]
 
+def log_state_files(config):
+    if not hasattr(config, "args"):
+        return
+    log_dir_base = config.args["log_dir"]
+    logdir = os.path.join(log_dir_base, config.timestamp)
+    if hasattr(config, "location_dict"):
+        shutil.copy2(config.location_dict_file, logdir)
+    if hasattr(config, "stages"):
+        shutil.copy2(config.stages.stage_hist_file, logdir)
+
+
 def main():
     """Main entry point."""
     check_environment_variables()
@@ -377,6 +390,8 @@ reload ncn-w003;  --worker-nodes x3000c0s37b0n0 would also work.
 
     if config.args["write_input_file"]:
         configfile.write(config.args)
+
+    atexit.register(log_state_files, config)
 
     try:
         args.func(config)
