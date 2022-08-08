@@ -94,7 +94,12 @@ class Config:
         # sanity test the directories
         for dir in ["media", "state", "log"]:
             if not self._args.get(f"{dir}_dir", None):
-                dir_default = os.path.join(os.getcwd(), dir)
+                base_dir = self._args.get("base_dir", os.getcwd())
+                if not os.path.isdir(base_dir):
+                    self._error(f"{base_dir} is not a valid directory")
+                    validated = False
+                    break
+                dir_default = os.path.join(base_dir, dir)
                 self._args[f"{dir}_dir"] = dir_default
                 if not os.path.exists(dir_default):
                     try:
