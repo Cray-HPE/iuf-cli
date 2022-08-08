@@ -939,6 +939,35 @@ def create_bootprep_config(config):
         install_logger.error(errmsg)
         raise UnexpectedState("Suspect Branches")
 
+def create_product_versions_yaml(config):
+    """Create the product versions yaml file.
+
+    This file is used to specify the product versions for the products
+    that are being installed.  It is used by the `sat_bootprep` stage.
+    """
+    product_versions_path = os.path.join(config.logdir, "product_versions.yaml")
+    product_versions = {}
+    for prod in config.location_dict._catalog:
+        if prod.startswith("sles"):
+            continue
+
+        version = config.location_dict.product(prod).version
+        if version is None:
+            continue
+
+        if prod.startswith("slingshot-host-software"):
+            version = version.split("-")[0]
+        product_versions[prod] = dict()
+        product_versions[prod]["version"] = version
+
+    if not product_versions:
+        return None
+
+    with open(product_versions_path, "w", encoding="UTF-8") as fhandle:
+        fhandle.write("---\n")
+        yaml.dump(product_versions, fhandle)
+
+    return product_versions_path
 
 def sat_bootprep(config):
     """Run `sat bootprep`.  This builds images and customized images, and generates a bos sessiontemplate."""
@@ -952,11 +981,24 @@ def sat_bootprep(config):
     ims_public_key = utils.get_ims_public_key(config)
     timeout = 60 * 60 # 1 hour
 
+    sat_extra = ""
+    if config.dryrun:
+        sat_extra = " --dry-run"
+
+    sat_version = config.connection.sudo("sat --version", dryrun=False).stdout
+    if sat_version.startswith("sat"):
+        sat_version = sat_version.split()[1]
+
+    if LooseVersion(sat_version) >= LooseVersion("3.18.0"):
+        vars_file = create_product_versions_yaml(config)
+        if vars_file:
+            sat_extra += " --vars-file {}".format(vars_file)
+
     # Run `sat bootprep`
     logname = get_log_filename(config, "sat_bootprep")
     install_logger.info("Running `sat bootprep`.  This can take around 30 minutes, depending on the number of layers, images, and bos sessiontemplates.")
     install_logger.info('  Logging to {}'.format(logname))
-    config.connection.sudo("sat bootprep run --overwrite-configs --overwrite-images --overwrite-templates --public-key-id {} {}".format(ims_public_key, os.path.relpath(bootprep_if)), timeout=timeout, tee=True, store_output=logname)
+    config.connection.sudo("sat bootprep run{} --overwrite-configs --overwrite-images --overwrite-templates --public-key-id {} {}".format(sat_extra, ims_public_key, os.path.relpath(bootprep_if)), timeout=timeout, tee=True, store_output=logname, dryrun=False)
 
     # Read in the configuration used for `sat bootprep` and give a summary.
     with open(bootprep_if, "r", encoding='UTF-8') as fhandle:

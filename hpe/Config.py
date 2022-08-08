@@ -33,6 +33,10 @@ class Config:
             print(f"ERROR: {message}")
 
     @property
+    def logdir(self):
+        return os.path.join(self._args["log_dir"], self.timestamp)
+
+    @property
     def location_dict(self):
         if self._location_dict is None:
             print(self.location_dict_file)
