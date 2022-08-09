@@ -88,7 +88,7 @@ def install(config):
                             logname = get_log_filename(config, f"{prod.name}-{cmd}")
                             prod.log_name.append(logname)
                             install_logger.info('    Logging to {}'.format(logname))
-                            config.connection.sudo('./{}'.format(cmd), cwd=loc, timeout=900, store_output=logname)
+                            config.connection.sudo('./{}'.format(cmd), cwd=loc, timeout=1800, store_output=logname)
                         elif cmd == 'install.sh':
                                 raise InstallError("install.sh not found")
                     install_logger.info('    OK')
