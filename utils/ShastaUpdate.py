@@ -32,7 +32,6 @@ import utils.pod as pod
 
 install_logger = get_install_logger(__name__)
 
-
 def get_prods(config):
     """A passthrough function to InstallerUtils.get_products."""
 
@@ -82,12 +81,16 @@ def install(config):
                     except Exception as err:
                         install_logger.debug('failed to patch LINUX-3213 due to {}, perhaps obsolete?'.format(err))
 
-                cmd = './install.sh'
                 try:
-                    logname = get_log_filename(config, prod.name)
-                    prod.log_name = logname
-                    install_logger.info('    Logging to {}'.format(logname))
-                    result = config.connection.sudo(cmd, cwd=loc, timeout=900, store_output=logname)
+                    prod.log_name = []
+                    for cmd in ['install.sh', 'deploy.sh' ]:
+                        if os.path.exists(os.path.join(loc, cmd)):
+                            logname = get_log_filename(config, f"{prod.name}-{cmd}")
+                            prod.log_name.append(logname)
+                            install_logger.info('    Logging to {}'.format(logname))
+                            config.connection.sudo('./{}'.format(cmd), cwd=loc, timeout=900, store_output=logname)
+                        elif cmd == 'install.sh':
+                                raise InstallError("install.sh not found")
                     install_logger.info('    OK')
                     valid_products += 1
                     if not config.dryrun:
@@ -104,7 +107,6 @@ def install(config):
                     unsuccessful_products.append(err_summary)
                     install_logger.error('   Failed')
                     prod.installed = False
-
             else:
                 install_logger.info('  {} already installed'.format(prod.name))
 
