@@ -59,7 +59,7 @@ def formatted(text):
 
 
 def get_ims_public_key(config):
-    created_public_keys = json.loads(config.connection.sudo("cray ims public-keys list --format json").stdout)
+    created_public_keys = json.loads(config.connection.sudo("cray ims public-keys list --format json", dryrun=False).stdout)
     inst_pkey_list = [k for k in created_public_keys if k["name"] == "installer_public_key"]
     rsa_pub = os.path.join(os.path.expanduser("~"), ".ssh", "id_rsa.pub")
     if len(inst_pkey_list) <= 0:
