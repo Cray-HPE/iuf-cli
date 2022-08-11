@@ -613,32 +613,21 @@ def ncn_personalization(config): #pylint: disable=unused-argument
     """Do the NCN personalization as described in HPE Cray EX System
     Installation and Configuration Guide (1.4.2_S-8000 RevA)"""
 
-    # Get a list of all worker and manaagement ncns. We need to skip the
-    # ncn-s00* nodes for now.  So use the m_ncn_tuples + w_ncn_tuples and
-    # consider that to be all the ncns.
-    all_ncn_tuples = utils.get_ncn_tuples(config)
-
-    ncn_list_xnames = [n[0] for n in all_ncn_tuples]
-
-    ncn_p_file = os.path.join(config.args["state_dir"],NCNP_VARS)
+    ncn_p_file = os.path.join(config.args["state_dir"], NCNP_VARS)
     with open(ncn_p_file, "r") as fhandle:
         ncnp_dict = yaml.load(fhandle, yaml.SafeLoader)
 
     template_name = ncnp_dict["template_name"]
     pzation_file = ncnp_dict["file_location"]
 
-    # Disable cfs.
-    for ncn in ncn_list_xnames:
-        config.connection.sudo("cray cfs components update {} --enabled false".format(ncn))
+    switch_ncn_enablement(config, template_name, False)
 
     # Upload the file to CFS.
     config.connection.sudo("cray cfs configurations update {} --file {} --format json".format(template_name, pzation_file))
 
-    # Update the CFS component for all ncns.  Skip the ncn-s* nodes for now;
-    # so this is basically the worker and management nodes.
-    for ncn in ncn_list_xnames:
-        config.connection.sudo("cray cfs components update --desired-config {} --enabled true --format json --error-count 0 --state [] {}".format(template_name, ncn))
+    switch_ncn_enablement(config, template_name, True)
 
+    ncn_list_xnames = get_ncn_list_xnames(config)
     bad_nodes = utils.wait_for_ncn_personalization(config, ncn_list_xnames, timeout=3600)
 
     if bad_nodes:
@@ -773,16 +762,16 @@ def bos_sessiontemplate_name(config):
 
 
 def create_bootprep_config(config):
-    """Generate the bootprep config."""
+    """Generate the bootprep config for the compute nodes."""
     # Generate the  CFS config.
 
 
-    bp_conf_arg = config.args.get("bootprep_config", None)
+    bp_conf_arg = config.args.get("bootprep_cn", None)
     if bp_conf_arg:
         install_logger.info("Using the following: `sat bootprep` config: {}".format(bp_conf_arg))
         return
 
-    install_logger.info("Generating the `sat bootprep` config")
+    install_logger.info("Generating the `sat bootprep` compute node config")
 
     def repo_name(url):
         """Take an url of the format http://.../myrepo.git
@@ -924,7 +913,7 @@ def create_bootprep_config(config):
             rep.append((key, val))
         return yaml.nodes.MappingNode(u'tag:yaml.org,2002:map', rep)
 
-    bootprep_cfg_path =os.path.join(config.args["state_dir"], SAT_BOOTPREP_CFG)
+    bootprep_cfg_path =os.path.join(config.args["state_dir"], SAT_BOOTPREP_CFG_CN)
     with open(bootprep_cfg_path, "w", encoding="UTF-8") as fhandle:
         Dumper = yaml.SafeDumper
         Dumper.ignore_aliases = lambda self, data: True
@@ -971,15 +960,16 @@ def create_product_versions_yaml(config):
 
     return product_versions_path
 
-def sat_bootprep(config):
+def sat_bootprep_cn(config):
     """Run `sat bootprep`.  This builds images and customized images, and generates a bos sessiontemplate."""
 
     bp_conf_arg = config.args.get("bootprep_config", None)
     if bp_conf_arg:
         bootprep_if = bp_conf_arg
     else:
-        bootprep_if = os.path.join(config.args["state_dir"], SAT_BOOTPREP_CFG)
-
+        bootprep_if = os.path.join(config.args["state_dir"], SAT_BOOTPREP_CFG_CN)
+    install_logger.info("Using the the following `sat bootprep` config for the compute nodes:")
+    install_logger.info("     {}".format(bootprep_if))
     ims_public_key = utils.get_ims_public_key(config)
     timeout = 60 * 60 # 1 hour
 
@@ -1014,6 +1004,67 @@ def sat_bootprep(config):
     install_logger.info("  cfs configs: {}".format(cfs_cfg_names))
     install_logger.info("  images: {}".format(image_names))
     install_logger.info("  BOS sessiontemplates: {}".format(st_names))
+
+def get_ncn_list_xnames(config):
+    """Get a list of all worker and manaagement ncns."""
+    # FIXME: We need to skip the ncn-s00* nodes for now.  Is this fixed yet!?
+
+    if not hasattr(get_ncn_list_xnames, "ncn_list_xnames"):
+        all_ncn_tuples = utils.get_ncn_tuples(config)
+        get_ncn_list_xnames.ncn_list_xnames = [n[0] for n in all_ncn_tuples]
+
+    return get_ncn_list_xnames.ncn_list_xnames
+
+def switch_ncn_enablement(config, template_name, enable=True):
+    """Enable or disable the ncns"""
+    ncn_list_xnames = get_ncn_list_xnames(config)
+
+
+    if enable:
+        for ncn in ncn_list_xnames:
+            config.connection.sudo("cray cfs components update --desired-config {} --enabled true --format json --error-count 0 --state [] {}".format(template_name, ncn))
+    else:
+    # Disable cfs.
+        for ncn in ncn_list_xnames:
+            config.connection.sudo("cray cfs components update {} --enabled false".format(ncn))
+
+    return
+
+
+def sat_bootprep_ncn(config):
+    """Generates the CFS config used for NCN personalization."""
+    ncn_bp_conf_file = config.args.get("bootprep_config_ncn", None)
+    if not ncn_bp_conf_file:
+        # We will be using the default NCN Personalization config.
+        install_logger.info("No bootprep ncn config specified.  Using the the following default ncn config:")
+        install_logger.info("     {}".format(config.args.get("ncn_personalization")))
+        return
+
+    install_logger.info("Using the following sat bootprep config for NCNs:")
+    install_logger.info("     {}".format(ncn_bp_conf_file))
+    # Check the syntax.
+    try:
+        with open(ncn_bp_conf_file, "r") as fhandle:
+            ncn_bp_conf = yaml.load(fhandle, yaml.SafeLoader)
+    except yaml.scanner.ScannerError as ex:
+        print("Syntax error in {}:\n\t{}".format(ncn_bp_conf_file, ex))
+        raise Exception(ex.__class__.__name__)
+
+    # Delete the name and lastUpdated keys if necessary.
+    if 'name' in ncn_bp_conf.keys():
+            del ncn_bp_conf['name']
+    if 'lastUpdated' in ncn_bp_conf.keys():
+            del ncn_bp_conf['lastUpdated']
+
+    fixed_json = os.path.join(config.args["state_dir"], "bp_ncn_conf.json")
+    with open(fixed_json, "w") as fhandle:
+        json.dump(ncn_bp_conf, fhandle)
+
+    # Read in the SAT NCN config file and update the NCN Personalization layer.
+    # This will be used later for NCN Personalization.
+    ncnp_cfg = config.args.get("ncn_personalization")
+    switch_ncn_enablement(config, ncnp_cfg, False)
+    config.connection.sudo("cray cfs configurations update {} --file {} --format json".format(ncnp_cfg, fixed_json))
 
 
 def create_dvs_reload_config(config):

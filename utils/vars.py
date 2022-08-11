@@ -109,9 +109,13 @@ STAGE_DICT = OrderedDict({
         "func" : "create_bootprep_config",
         "description" : "Generate the `sat bootprep` input config."
         },
-    "sat_bootprep": {
-        "func" : "sat_bootprep",
-        "description" : "Run `sat bootprep`."
+    "sat_bootprep_cn": {
+        "func" : "sat_bootprep_cn",
+        "description" : "Run `sat bootprep` for compute nodes."
+        },
+    "sat_bootprep_ncn": {
+        "func" : "sat_bootprep_ncn",
+        "description" : "Run `sat bootprep` for non-compute nodes."
         },
     "update_ncn_config": {
         "func" : "update_ncn_config",
@@ -153,7 +157,7 @@ BOS_SESSIONTEMPLATE_FILENAME = "bos_sessiontemplate.json"
 STAGE_HIST_FILENAME = "stage_hist.yaml"
 NCNP_VARS = "ncnp-vars.yaml"
 
-SAT_BOOTPREP_CFG = "bootprep-config.yaml"
+SAT_BOOTPREP_CFG_CN = "bootprep-config-cn.yaml"
 
 LOG_DEFAULT_CONSOLE_LEVEL = logging.INFO
 LOG_DEFAULT_FILE_LEVEL = logging.DEBUG

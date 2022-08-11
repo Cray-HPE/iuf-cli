@@ -90,10 +90,16 @@ def validate_stages(config):
 
     # Ensure that if a `sat bootprep` config was specified (and the stage
     # is being run) it exists.
-    bp_config = config.args.get("bootprep_config", None)
-    if bp_config and "sat_bootprep" in local_stages:
+    bp_config = config.args.get("bootprep_config_cn", None)
+    if bp_config and "sat_bootprep_cn" in local_stages:
         if not os.path.exists(bp_config):
-            print("--bootprep-config/-bpc {} was specified but could not be found".format(bp_config))
+            print("--bootprep-config-cn/-bpc {} was specified but could not be found".format(bp_config))
+            sys.exit(1)
+
+    bp_config = config.args.get("bootprep_config_ncn", None)
+    if bp_config and "sat_bootprep_ncn" in local_stages:
+        if not os.path.exists(bp_config):
+            print("--bootprep-config-ncn/-bpn {} was specified but could not be found".format(bp_config))
             sys.exit(1)
 
     return
@@ -319,11 +325,17 @@ As a result, the update_working_branches stage would perform the following merge
         """)
 
     bpc_help = formatted("""
-    Use an alternate `sat bootprep` config file than is generated during the
-    `create_bootprep_config` stage.""")
+    Use an alternate `sat bootprep` config file for the compute nodes than is generated during the
+    `create_bootprep_config` stage.  This is used by sat_bootprep_cn""")
 
-    install_sp.add_argument("-bpc", "--bootprep-config", action="store",
+    install_sp.add_argument("-bpc", "--bootprep-config-cn", action="store",
         help=bpc_help)
+
+    bpn_help = formatted("""
+    Use an alternate `sat bootprep` config file for the NCN nodes than is generated during the
+    sat_bootprep_NCN stage.""")
+    install_sp.add_argument("-bpn", "--bootprep-config-ncn", action="store",
+                            help=bpn_help)
     install_sp.add_argument("-t", "--source-bos-sessiontemplate", action="store",
         help="BOS template to start from when booting COS")
 
