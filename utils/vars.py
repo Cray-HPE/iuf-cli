@@ -68,10 +68,6 @@ class LoggingError(Exception):
     """A wrapper for raising an LoggingError error"""
     pass
 
-class SatError(Exception):
-    """A wrapper for raising sat-related errors"""
-    pass
-
 # Note this isn't imported from InstallerUtils to avoid circular dependencies.
 def _formatted(text):
     """Format a text string for a standard 80-line terminal."""

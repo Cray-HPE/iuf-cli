@@ -968,7 +968,8 @@ def sat_bootprep_cn(config):
         bootprep_if = bp_conf_arg
     else:
         bootprep_if = os.path.join(config.args["state_dir"], SAT_BOOTPREP_CFG_CN)
-
+    install_logger.info("Using the the following `sat bootprep` config for the compute nodes:")
+    install_logger.info("     {}".format(bootprep_if))
     ims_public_key = utils.get_ims_public_key(config)
     timeout = 60 * 60 # 1 hour
 
@@ -1032,12 +1033,15 @@ def switch_ncn_enablement(config, template_name, enable=True):
 
 def sat_bootprep_ncn(config):
     """Generates the CFS config used for NCN personalization."""
-    print("running sat_bootprep_ncn ...")
     ncn_bp_conf_file = config.args.get("bootprep_config_ncn", None)
     if not ncn_bp_conf_file:
         # We will be using the default NCN Personalization config.
+        install_logger.info("No bootprep ncn config specified.  Using the the following default ncn config:")
+        install_logger.info("     {}".format(config.args.get("ncn_personalization")))
         return
 
+    install_logger.info("Using the following sat bootprep config for NCNs:")
+    install_logger.info("     {}".format(ncn_bp_conf_file))
     # Check the syntax.
     try:
         with open(ncn_bp_conf_file, "r") as fhandle:
