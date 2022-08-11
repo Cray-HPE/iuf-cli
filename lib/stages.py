@@ -12,13 +12,13 @@ import os
 import sys
 from prettytable import PrettyTable
 import yaml
-from utils.InstallLogger import get_install_logger
-from utils.InstallerUtils import elapsed_time
+from lib.InstallLogger import get_install_logger
+from lib.InstallerUtils import elapsed_time
 
-# Note: utils.ShastaUpdate needs to be imported `as supdate` because of the
+# Note: lib.ShastaUpdate needs to be imported `as supdate` because of the
 # Naming convention used in vars.py to get at the functions.
-import utils.ShastaUpdate as supdate
-from utils.vars import RunException, STAGE_HIST_FILENAME, STAGE_DICT, NOABORT_STAGES
+import lib.ShastaUpdate as supdate
+from lib.vars import RunException, STAGE_HIST_FILENAME, STAGE_DICT, NOABORT_STAGES
 
 install_logger = get_install_logger(__name__)
 

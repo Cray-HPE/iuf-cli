@@ -4,12 +4,12 @@ Copyright 2022 Hewlett Packard Enterprise Development LP
 
 import datetime
 import os
-from utils.ShastaUpdate import validate_products
+from lib.ShastaUpdate import validate_products
 import sys
 
-from utils.vars import LOCATION_DICT
-from utils.Connection import CmdMgr
-import hpe.Products
+from lib.vars import LOCATION_DICT
+from lib.Connection import CmdMgr
+import lib.Products
 
 class Config:
     _location_dict = None
@@ -39,7 +39,7 @@ class Config:
     @property
     def location_dict(self):
         if self._location_dict is None:
-            self._location_dict = hpe.Products.Products(self.location_dict_file)
+            self._location_dict = lib.Products.Products(self.location_dict_file)
 
         return self._location_dict
 

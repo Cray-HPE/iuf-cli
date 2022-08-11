@@ -7,8 +7,8 @@ import base64
 import os
 import shutil
 
-from utils.vars import GitError, RunException
-from utils.InstallLogger import get_install_logger
+from lib.vars import GitError, RunException
+from lib.InstallLogger import get_install_logger
 install_logger = get_install_logger(__name__)
 
 class Git:

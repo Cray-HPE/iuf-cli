@@ -14,10 +14,10 @@ import shutil
 import yaml
 import rpm
 import prettytable
-import hpe.Products
+import lib.Products
 
-from utils.InstallLogger import get_install_logger
-from utils.vars import *
+from lib.InstallLogger import get_install_logger
+from lib.vars import *
 
 install_logger = get_install_logger(__name__)
 # pylint: disable=consider-using-f-string
@@ -349,7 +349,7 @@ def get_products( config,
 
     """
 
-    products = hpe.Products.Products()
+    products = lib.Products.Products()
     media_dir = config.args["media_dir"]
 
     if not prefixes:
