@@ -5,12 +5,12 @@ Copyright 2022 Hewlett Packard Enterprise Development LP
 import asyncio
 import shlex
 import sys
-import utils.InstallLogger
+import lib.InstallLogger
 import shutil
 import os
-from utils.vars import RunException, RunTimeoutError
+from lib.vars import RunException, RunTimeoutError
 
-install_logger = utils.InstallLogger.get_install_logger(__name__)
+install_logger = lib.InstallLogger.get_install_logger(__name__)
 
 class RunOutput():
     def __init__(self, cmd, args, returncode, stdout, stderr):

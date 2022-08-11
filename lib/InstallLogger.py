@@ -2,7 +2,7 @@
 
 import logging
 import os
-from utils.vars import *
+from lib.vars import *
 
 def addLoggingLevel(levelName, levelNum, methodName=None):
     """

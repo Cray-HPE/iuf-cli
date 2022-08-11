@@ -7,7 +7,7 @@ import yaml
 import hashlib
 import os
 from distutils.version import LooseVersion
-from utils.vars import InstallError
+from lib.vars import InstallError
 
 class ProductConfig:
     _new_product = { 'archive_type': None,

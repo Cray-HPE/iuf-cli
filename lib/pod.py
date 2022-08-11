@@ -6,9 +6,9 @@ import datetime
 import json
 import time
 
-from utils.Connection import CmdMgr
-from utils.InstallLogger import get_install_logger
-from utils.vars import *
+from lib.Connection import CmdMgr
+from lib.InstallLogger import get_install_logger
+from lib.vars import *
 
 install_logger = get_install_logger(__name__)
 

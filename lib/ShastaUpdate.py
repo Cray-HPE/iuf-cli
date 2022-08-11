@@ -19,14 +19,14 @@ from distutils.version import LooseVersion
 
 import yaml #pylint: disable=import-error
 
-from utils.git import Git
-from utils.InstallLogger import get_install_logger, get_log_filename
+from lib.git import Git
+from lib.InstallLogger import get_install_logger, get_log_filename
 
-from utils.vars import *
-import utils.InstallerUtils as utils #pylint: disable=wrong-import-position,import-error
-from utils.InstallerUtils import getenv #pylint: disable=wrong-import-position,import-error
+from lib.vars import *
+import lib.InstallerUtils as utils #pylint: disable=wrong-import-position,import-error
+from lib.InstallerUtils import getenv #pylint: disable=wrong-import-position,import-error
 
-import utils.pod as pod
+import lib.pod as pod
 
 # pylint: disable=consider-using-f-string
 
@@ -1409,7 +1409,7 @@ def legacy_dvs_reload(config):
 
         # Unmount PE
         install_logger.info("    Unmounting PE")
-        config.connection.sudo("scp tools/unmount_pe.sh {}:/tmp/unmount_pe.sh".format(w_node))
+        config.connection.sudo("scp lib/tools/unmount_pe.sh {}:/tmp/unmount_pe.sh".format(w_node))
         config.connection.sudo("ssh {} /tmp/unmount_pe.sh".format(w_node))
 
         # Make sure the reference count for dvs is 0.

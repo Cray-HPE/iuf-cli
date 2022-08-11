@@ -14,18 +14,18 @@ import tarfile
 import atexit
 import shutil
 
-from utils.vars import *
-from utils.InstallLogger import *
+from lib.vars import *
+from lib.InstallLogger import *
 
-from utils.InstallerUtils import elapsed_time
-from utils.InstallerUtils import formatted
-from utils.InstallerUtils import print_table
-from utils.ConfigFile import ConfigFile
-from utils.ConfigFile import InvertableArgument
-import hpe.Config
+from lib.InstallerUtils import elapsed_time
+from lib.InstallerUtils import formatted
+from lib.InstallerUtils import print_table
+from lib.ConfigFile import ConfigFile
+from lib.ConfigFile import InvertableArgument
+import lib.Config
 
-# Import utils.stages without the 'as stages' to prevent namespace collisions.
-import utils.stages
+# Import lib.stages without the 'as stages' to prevent namespace collisions.
+import lib.stages
 
 # pylint: disable=consider-using-f-string
 
@@ -221,7 +221,7 @@ def log_state_files(config):
 def main():
     """Main entry point."""
     check_environment_variables()
-    config = hpe.Config.Config()
+    config = lib.Config.Config()
 
     parser = argparse.ArgumentParser(description=
         """
@@ -268,7 +268,7 @@ def main():
     # install stage.  The install stage needs to install what was unpacked.
 
     subparsers = parser.add_subparsers(title="subcommands", metavar='{install,list-stages|ls,list-products}')
-    stage_list = utils.stages.get_stage_help()
+    stage_list = lib.stages.get_stage_help()
 
     install_sp = subparsers.add_parser("install", epilog="Valid stages:\n{}".format(stage_list),
         formatter_class=argparse.RawTextHelpFormatter)
@@ -378,7 +378,7 @@ reload ncn-w003;  --worker-nodes x3000c0s37b0n0 would also work.
     # we can more easily determine which values can be passed via an input
     # deck.
     config.args = vars(args)
-    config.stages = utils.stages.Stages(stage_dict=STAGE_DICT, state_dir=config.args["state_dir"])
+    config.stages = lib.stages.Stages(stage_dict=STAGE_DICT, state_dir=config.args["state_dir"])
 
     process_debug_level(config)
     update_logger_config(config)
