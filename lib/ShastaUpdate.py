@@ -52,11 +52,16 @@ def install(config):
 
     valid_products = 0
     unsuccessful_products = []
+    cmds = {
+        'install_products': 'install.sh',
+        'deploy_products': 'deploy.sh'
+    }
+    cmd = cmds[config.stages.current_stage]
     for prod in config.location_dict:
         # only look at entries that are identified as products
         if prod.product:
             # work_dir will not be set for invalid products
-            if prod.work_dir and not prod.installed:
+            if prod.work_dir and not (prod.installed and cmd == 'install.sh'):
                 install_logger.info('  installing {}'.format(prod.name))
                 loc = prod.work_dir
                 product = prod.product
@@ -82,15 +87,17 @@ def install(config):
                         install_logger.debug('failed to patch LINUX-3213 due to {}, perhaps obsolete?'.format(err))
 
                 try:
-                    prod.log_name = []
-                    for cmd in ['install.sh', 'deploy.sh' ]:
-                        if os.path.exists(os.path.join(loc, cmd)):
-                            logname = get_log_filename(config, f"{prod.name}-{cmd}")
-                            prod.log_name.append(logname)
-                            install_logger.info('    Logging to {}'.format(logname))
-                            config.connection.sudo('./{}'.format(cmd), cwd=loc, timeout=1800, store_output=logname)
-                        elif cmd == 'install.sh':
-                                raise InstallError("install.sh not found")
+                    if not prod.log_name:
+                        prod.log_name = []
+
+                    if os.path.exists(os.path.join(loc, cmd)):
+                        logname = get_log_filename(config, "{}-{}".format(prod.name, cmd))
+                        prod.log_name.append(logname)
+                        install_logger.info('    Logging to {}'.format(logname))
+                        config.connection.sudo('./{}'.format(cmd), cwd=loc, timeout=1800, store_output=logname)
+                    elif cmd == 'install.sh':
+                        raise InstallError('Install script was not found at {}'.format(os.path.join(loc, cmd)))
+
                     install_logger.info('    OK')
                     valid_products += 1
                     if not config.dryrun:

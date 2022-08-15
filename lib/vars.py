@@ -89,6 +89,10 @@ STAGE_DICT = OrderedDict({
         "func" : "install",
         "description" : "Install products identified in the process_product_media stage."
         },
+    "deploy_products": {
+        "func" : "install",
+        "description" : "Deploy products"
+        },
     "verify_product_import": {
         "func" : "verify_product_import",
         "description" : "Verify all product import PODS and Jobs have completed."

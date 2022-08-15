@@ -88,6 +88,7 @@ class Stages():
         self.stage_hist = StageHist(state_dir, self._all_stages)
         self.skip_stages = []
         self._noabort_stages = NOABORT_STAGES
+        self.current_stage = None
 
     @property
     def stage_hist_file(self):
@@ -156,9 +157,8 @@ class Stages():
     def exec_stage(self, config, stage):
         """Run a stage."""
 
-        #self.checkInit(args_dict['state_dir'])
-
         try:
+            self.current_stage = stage
             stage_func = eval("supdate.{}".format(self._stage_dict[stage]["func"]))
             stage_start = datetime.datetime.now()
             stage_func(config)
