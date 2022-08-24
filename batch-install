@@ -112,7 +112,7 @@ def process_install(config):
 
     for stage in all_stages:
         if stage in exec_stages:
-            install_logger.info("Beginning stage: {}".format(stage))
+            install_logger.info("BATCH beginning stage: {}".format(stage))
             # a logging message using exc_info must be the very first thing called after the except
             # block starts, so I can't make all these decisions there
             if config.stages.abortable(stage):
