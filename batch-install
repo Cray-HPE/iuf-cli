@@ -45,7 +45,7 @@ def validate_stages(config):
     config.stages.validate(state_dir, begin_stage, end_stage, run_stages, skip_stages)
 
     if config.args.get("func", "") == process_install:
-        install_logger.info("STAGE SUMMARY: begin_stage=%s, end_stage=%s", config.stages.beginStage, config.stages.endStage)
+        install_logger.info("BATCH STAGE SUMMARY: begin_stage=%s, end_stage=%s", config.stages.beginStage, config.stages.endStage)
 
     local_stages = config.stages.get(all_stages=False, list_fmt=True)
 
