@@ -47,6 +47,29 @@ def get_prods(config):
             install_logger.info("    {}".format(item))
 
 
+def stub_pre_install_check(config):
+    install_logger.info("  checked system ready for update and checked software compatability")
+
+def stub_deliver_product(config):
+    install_logger.info("  product content uploaded to system")
+
+def stub_update_config(config):
+    install_logger.info("  updated VCS branches, run automated config updates")
+
+def stub_deploy_product(config):
+    install_logger.info("  deployed services to system")
+
+def stub_post_install_check(config):
+    install_logger.info("  verified product successfully deployed")
+
+
+
+
+
+
+
+
+
 def install(config):
     """Install COS, Slingshot-host, or SLE"""
 
