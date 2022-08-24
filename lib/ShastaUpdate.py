@@ -52,6 +52,13 @@ def stub_pre_install_check(config):
 
 def stub_deliver_product(config):
     install_logger.info("  product content uploaded to system")
+    for prod in config.location_dict:
+        cmd = '../common/product-install -m {} install -r {}'.format(prod.work_dir, config.stages.current_stage)
+        logname = 'log/{}-{}'.format(prod.name, config.stages.current_stage)
+        install_logger.info('    Running {}'.format(cmd))
+        install_logger.info('    Logging to {}'.format(logname))
+        config.connection.sudo('{}'.format(cmd), timeout=1800, store_output=logname)
+        #install_logger.info("../common/product-install -m {} install -r deliver_product".format(prod.work_dir))
 
 def stub_update_config(config):
     install_logger.info("  updated VCS branches, run automated config updates")
@@ -62,11 +69,8 @@ def stub_deploy_product(config):
 def stub_post_install_check(config):
     install_logger.info("  verified product successfully deployed")
 
-
-
-
-
-
+def stub_build_images(config):
+    install_logger.info("  build and configure images")
 
 
 

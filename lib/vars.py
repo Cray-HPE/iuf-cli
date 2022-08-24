@@ -93,6 +93,10 @@ STAGE_DICT = OrderedDict({
         "func" : "stub_update_config",
         "description" : "Merge working branches and perform any automated configuration"
         },
+    "build_images": {
+        "func" : "stub_build_images",
+        "description" : "Build and customize all images"
+        },
     "deploy_product": {
         "func" : "stub_deploy_product",
         "description" : "Deploy services to system"
