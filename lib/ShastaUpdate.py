@@ -100,9 +100,11 @@ def stub_post_install_check(config):
         #install_logger.info('    Logging to {}'.format(logname))
         config.connection.sudo('{}'.format(cmd), timeout=1800, tee=True, store_output=logname)
 
-def stub_build_images(config):
-    install_logger.info("  build and configure images")
+def stub_sat_bootprep(config):
+    install_logger.info("  run sat bootprep against N number of configs")
 
+def stub_rolling_ncn_reboot(config):
+    install_logger.info("  rolling reboot of ncn worker nodes")
 
 
 def install(config):
