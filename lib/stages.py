@@ -224,10 +224,10 @@ class Stages():
                 install_logger.error("argument -r/--run-stages: not allowed with -b/--begin-stage or -e/--end-stage")
                 error=True
 
-        # run and skip at the same time is equally nonsensical
-        if run_stages and skip_stages:
-            install_logger.error("argument -r/--run-stages: not allowed with -s/--skip-stages")
-            error=True
+        # # run and skip at the same time is equally nonsensical
+        # if run_stages and skip_stages:
+        #     install_logger.error("argument -r/--run-stages: not allowed with -s/--skip-stages")
+        #     error=True
 
         if begin_stage is None:
             begin_stage = stages_list[0]

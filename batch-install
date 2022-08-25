@@ -363,7 +363,8 @@ For example, --worker-nodes ncn-w003 would cause the ncn_personalization stage t
 reload ncn-w003;  --worker-nodes x3000c0s37b0n0 would also work.
 """)
 
-    install_sp.set_defaults(func=process_install, skip_stages=list(), run_stages=list())
+    #install_sp.set_defaults(func=process_install, skip_stages=list(), run_stages=list())
+    install_sp.set_defaults(func=process_install, skip_stages=['rolling_ncn_liveupdate'], run_stages=list())
 
     list_sp = subparsers.add_parser("list-stages", aliases=["ls"])
     list_sp.set_defaults(func=process_list)
