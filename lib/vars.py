@@ -97,6 +97,14 @@ STAGE_DICT = OrderedDict({
         "func" : "stub_build_images",
         "description" : "Build and customize all images"
         },
+    "ncn_personalization": {
+        "func" : "stub_ncn_personalization",
+        "description" : "Update currently running NCN nodes (LIVE UPDATE PATCHES ONLY)"
+        },
+    "dvs_reload": {
+        "func" : "stub_dvs_reload",
+        "description" : "RELOAD DVS on worker nodes (LIVE UPDATE PATCHES ONLY)"
+        },
     "deploy_product": {
         "func" : "stub_deploy_product",
         "description" : "Deploy services to system"
