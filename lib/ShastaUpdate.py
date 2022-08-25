@@ -47,6 +47,13 @@ def get_prods(config):
             install_logger.info("    {}".format(item))
 
 
+def stub_ncn_personalization(config):
+    install_logger.info("  updated ncn on worker nodes")
+
+def stub_dvs_reload(config):
+    install_logger.info("  reloaded dvs on worker nodes")
+
+
 def stub_pre_install_check(config):
     install_logger.info("  checked system ready for update and checked software compatability")
     for prod in config.location_dict:
@@ -54,10 +61,7 @@ def stub_pre_install_check(config):
         logname = 'log/{}-{}'.format(prod.name, config.stages.current_stage)
         install_logger.info('    Running {}'.format(cmd))
         #install_logger.info('    Logging to {}'.format(logname))
-        print("waldo")
-        print('vvvvvv')
         config.connection.sudo('{}'.format(cmd), timeout=1800, tee=True, store_output=logname)
-        print('^^^^^^')
 
 def stub_deliver_product(config):
     install_logger.info("  product content uploaded to system")
