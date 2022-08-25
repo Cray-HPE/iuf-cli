@@ -93,9 +93,13 @@ STAGE_DICT = OrderedDict({
         "func" : "stub_update_config",
         "description" : "Merge working branches and perform any automated configuration"
         },
-    "build_images": {
-        "func" : "stub_build_images",
-        "description" : "Build and customize all images"
+    "sat_bootprep": {
+        "func" : "stub_sat_bootprep",
+        "description" : "Call sat bootprep"
+        },
+    "rolling_ncn_reboot": {
+        "func" : "stub_rolling_ncn_reboot",
+        "description" : "Reboot NCN nodes into new image"
         },
     "ncn_personalization": {
         "func" : "stub_ncn_personalization",
