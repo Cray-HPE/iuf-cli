@@ -48,9 +48,11 @@ def get_prods(config):
 
 
 def stub_ncn_personalization(config):
+    time.sleep(4)
     install_logger.info("  updated ncn on worker nodes")
 
 def stub_dvs_reload(config):
+    time.sleep(6)
     install_logger.info("  reloaded dvs on worker nodes")
 
 
@@ -101,9 +103,11 @@ def stub_post_install_check(config):
         config.connection.sudo('{}'.format(cmd), timeout=1800, tee=True, store_output=logname)
 
 def stub_sat_bootprep(config):
+    time.sleep(2)
     install_logger.info("  run sat bootprep against N number of configs")
 
 def stub_rolling_ncn_reboot(config):
+    time.sleep(5)
     install_logger.info("  rolling reboot of ncn worker nodes")
 
 
