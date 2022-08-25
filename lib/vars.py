@@ -101,13 +101,9 @@ STAGE_DICT = OrderedDict({
         "func" : "stub_rolling_ncn_reboot",
         "description" : "Reboot NCN nodes into new image"
         },
-    "ncn_personalization": {
-        "func" : "stub_ncn_personalization",
-        "description" : "Update currently running NCN nodes (LIVE UPDATE PATCHES ONLY)"
-        },
-    "dvs_reload": {
-        "func" : "stub_dvs_reload",
-        "description" : "RELOAD DVS on worker nodes (LIVE UPDATE PATCHES ONLY)"
+    "rolling_ncn_liveupdate": {
+        "func" : "stub_rolling_ncn_liveupdate",
+        "description" : "Update and reload software on NCN nodes (LIVE UPDATE PATCHES ONLY)"
         },
     "deploy_product": {
         "func" : "stub_deploy_product",

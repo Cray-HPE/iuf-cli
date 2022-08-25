@@ -51,9 +51,9 @@ def stub_ncn_personalization(config):
     time.sleep(4)
     install_logger.info("  updated ncn on worker nodes")
 
-def stub_dvs_reload(config):
+def stub_rolling_ncn_liveupdate(config):
     time.sleep(6)
-    install_logger.info("  reloaded dvs on worker nodes")
+    install_logger.info("  update and reload services on worker nodes")
 
 
 def stub_pre_install_check(config):
