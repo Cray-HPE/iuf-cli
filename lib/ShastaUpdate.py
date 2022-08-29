@@ -78,7 +78,7 @@ def stub_deliver_product(config):
 def stub_update_config(config):
     install_logger.info("  updated VCS branches, run automated config updates")
     for prod in config.location_dict:
-        cmd = '../common/product-install -m {} install -r {}'.format(prod.work_dir, config.stages.current_stage)
+        cmd = '../common/product-install -m {} install -r {} --working-branch {}'.format(prod.work_dir, config.stages.current_stage, config.args['working_branch'])
         logname = 'log/{}-{}'.format(prod.name, config.stages.current_stage)
         install_logger.info('    Running {}'.format(cmd))
         #install_logger.info('    Logging to {}'.format(logname))
