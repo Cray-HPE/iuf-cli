@@ -45,7 +45,7 @@ def validate_stages(config):
     config.stages.validate(state_dir, begin_stage, end_stage, run_stages, skip_stages)
 
     if config.args.get("func", "") == process_install:
-        install_logger.info("BATCH STAGE SUMMARY: begin_stage=%s, end_stage=%s", config.stages.beginStage, config.stages.endStage)
+        install_logger.info("STAGE SUMMARY: begin_stage=%s, end_stage=%s", config.stages.beginStage, config.stages.endStage)
 
     local_stages = config.stages.get(all_stages=False, list_fmt=True)
 
@@ -112,7 +112,7 @@ def process_install(config):
 
     for stage in all_stages:
         if stage in exec_stages:
-            install_logger.info("BATCH beginning stage: {}".format(stage))
+            install_logger.info("BEGINNING STAGE: {}".format(stage))
             # a logging message using exc_info must be the very first thing called after the except
             # block starts, so I can't make all these decisions there
             if config.stages.abortable(stage):
@@ -273,10 +273,10 @@ def main():
     # are fully independent; for example, we have an unpack stage, and an
     # install stage.  The install stage needs to install what was unpacked.
 
-    subparsers = parser.add_subparsers(title="subcommands", metavar='{install,list-stages|ls,list-products}')
+    subparsers = parser.add_subparsers(title="subcommands", metavar='{run,list-stages|ls,list-products}')
     stage_list = lib.stages.get_stage_help()
 
-    install_sp = subparsers.add_parser("install", epilog="Valid stages:\n{}".format(stage_list),
+    install_sp = subparsers.add_parser("run", epilog="Valid stages:\n{}".format(stage_list),
         formatter_class=argparse.RawTextHelpFormatter)
 
     install_sp.add_argument("-b", "--begin-stage", action="store",
@@ -363,8 +363,7 @@ For example, --worker-nodes ncn-w003 would cause the ncn_personalization stage t
 reload ncn-w003;  --worker-nodes x3000c0s37b0n0 would also work.
 """)
 
-    #install_sp.set_defaults(func=process_install, skip_stages=list(), run_stages=list())
-    install_sp.set_defaults(func=process_install, skip_stages=['rolling_ncn_liveupdate'], run_stages=list())
+    install_sp.set_defaults(func=process_install, skip_stages=list(), run_stages=list())
 
     list_sp = subparsers.add_parser("list-stages", aliases=["ls"])
     list_sp.set_defaults(func=process_list)
