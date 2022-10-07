@@ -79,12 +79,12 @@ def validate_stages(config):
                     bos_cfs_config_name))
                 install_logger.warning(msg)
 
-    # Ensure that working_branch is specified if it's needed.
-    if ("working_branch" in config.args and config.args["working_branch"] is None) \
-        and (("update_working_branches" in local_stages) \
+    # Ensure that customer_branch is specified if it's needed.
+    if ("customer_branch" in config.args and config.args["customer_branch"] is None) \
+        and (("update_customer_branches" in local_stages) \
         or ("update_ncn_config" in local_stages)):
             msg = formatted("""
-                Please supply --working-branch with stages update_working_branches or update_ncn_config.""")
+                Please supply --customer-branch with stages update_customer_branches or update_ncn_config.""")
             print(msg)
             sys.exit(1)
 
@@ -294,7 +294,7 @@ def main():
     install_sp.add_argument("-s", "--skip-stages", nargs="+", default=['ncn_personalization'], action="store",
         help="Skip the execution of the specified stages")
 
-    install_sp.add_argument("-B", "--working-branch", action="store",
+    install_sp.add_argument("-B", "--customer-branch", action="store",
         help="""String representing the working branch in each product config
 management repo that the product release branch will be merged to.
 
@@ -311,14 +311,14 @@ The following substitutions may be used:
 
 For example, if the following value was used for COS 2.2.93 and SHS 1.7.1:
 
-    --working-branch '{{product_type}}-{{version_x_y_z}}-integration'
+    --customer-branch '{{product_type}}-{{version_x_y_z}}-integration'
 
 Then the following would be the branches used:
 
     For COS: 'cos-2.2.93-integration'
     For SHS: 'slingshot-host-software-1.7.1-integration'
 
-As a result, the update_working_branches stage would perform the following merges:
+As a result, the update_customer_branches stage would perform the following merges:
 
     cray/cos/2.2.93 --> cos-2.2.93-integration
     cray/slingshot-host-software/1.7.1 --> slingshot-host-software-1.7.1-integration
