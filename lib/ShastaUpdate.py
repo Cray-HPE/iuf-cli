@@ -35,6 +35,9 @@ install_logger = get_install_logger(__name__)
 def get_prods(config):
     """A passthrough function to InstallerUtils.get_products."""
 
+### TODO: create activity session
+###       this should probably be a class
+
     extract_archives = not config.dryrun
     config.location_dict = utils.get_products(config, extract_archives=extract_archives)
 
@@ -46,69 +49,77 @@ def get_prods(config):
         for item in config.location_dict.uninstallable_products:
             install_logger.info("    {}".format(item))
 
+    install_logger.info('  CREATE/READ activity session')
 
-def stub_ncn_personalization(config):
-    time.sleep(4)
-    install_logger.info("  updated ncn on worker nodes")
-
-def stub_rolling_ncn_liveupdate(config):
-    time.sleep(6)
-    install_logger.info("  update and reload services on worker nodes")
 
 
 def stub_pre_install_check(config):
-    install_logger.info("  checked system ready for update and checked software compatability")
     for prod in config.location_dict:
-        cmd = '../common/product-install -m {} install -r {}'.format(prod.work_dir, config.stages.current_stage)
-        logname = 'log/{}-{}'.format(prod.name, config.stages.current_stage)
-        install_logger.info('    Running {}'.format(cmd))
-        #install_logger.info('    Logging to {}'.format(logname))
-        config.connection.sudo('{}'.format(cmd), timeout=1800, tee=True, store_output=logname)
+        opargs = { 'prod': prod.product, 'dir': prod.work_dir }
+        install_logger.info('  operation preflight_checks_for_services')
+        printopargs(opargs)
+    time.sleep(2)
 
 def stub_deliver_product(config):
-    install_logger.info("  product content uploaded to system")
     for prod in config.location_dict:
-        cmd = '../common/product-install -m {} install -r {}'.format(prod.work_dir, config.stages.current_stage)
-        logname = 'log/{}-{}'.format(prod.name, config.stages.current_stage)
-        install_logger.info('    Running {}'.format(cmd))
-        #install_logger.info('    Logging to {}'.format(logname))
-        config.connection.sudo('{}'.format(cmd), timeout=1800, tee=True, store_output=logname)
-        #install_logger.info("../common/product-install -m {} install -r deliver_product".format(prod.work_dir))
+        opargs = { 'prod': prod.product, 'dir': prod.work_dir }
+        install_logger.info('  operation loftsman_manifest_upload')
+        printopargs(opargs)
+        install_logger.info('  operation s3_upload')
+        printopargs(opargs)
+        install_logger.info('  operation nexus_setup')
+        printopargs(opargs)
+        install_logger.info('  operation helm_upload')
+        printopargs(opargs)
+        install_logger.info('  operation rpm_upload')
+        printopargs(opargs)
+        install_logger.info('  operation vcs_upload')
+        printopargs(opargs)
+        install_logger.info('  operation ims_upload')
+        printopargs(opargs)
+    time.sleep(2)
 
 def stub_update_config(config):
-    install_logger.info("  updated VCS branches, run automated config updates")
+    #install_logger.info("  updated VCS branches, run automated config updates")
     for prod in config.location_dict:
-        cmd = '../common/product-install -m {} install -r {} --working-branch {}'.format(prod.work_dir, config.stages.current_stage, config.args['working_branch'])
-        logname = 'log/{}-{}'.format(prod.name, config.stages.current_stage)
-        install_logger.info('    Running {}'.format(cmd))
-        #install_logger.info('    Logging to {}'.format(logname))
-        config.connection.sudo('{}'.format(cmd), timeout=1800, tee=True, store_output=logname)
+        opargs = { 'prod': prod.product, 'dir': prod.work_dir, 'branch': config.args['working_branch'] }
+        install_logger.info('  operation update_working_branch')
+        printopargs(opargs)
+        install_logger.info('  operation update_cfs_config')
+        printopargs(opargs)
+    time.sleep(2)
 
 def stub_deploy_product(config):
-    install_logger.info("  deployed services to system")
+    #install_logger.info("  deployed services to system")
     for prod in config.location_dict:
-        cmd = '../common/product-install -m {} install -r {}'.format(prod.work_dir, config.stages.current_stage)
-        logname = 'log/{}-{}'.format(prod.name, config.stages.current_stage)
-        install_logger.info('    Running {}'.format(cmd))
-        #install_logger.info('    Logging to {}'.format(logname))
-        config.connection.sudo('{}'.format(cmd), timeout=1800, tee=True, store_output=logname)
+        opargs = { 'prod': prod.product, 'dir': prod.work_dir }
+        install_logger.info('  operation loftsman_manifest_deploy')
+        printopargs(opargs)
+        install_logger.info('  operation set_product_active')
+        printopargs(opargs)
+    time.sleep(2)
+
+def stub_prepare_images(config):
+    install_logger.info('  operation prepare_images')
+    time.sleep(2)
+
+def stub_rollout(config):
+    install_logger.info('  operation rollout')
+    time.sleep(4)
 
 def stub_post_install_check(config):
-    install_logger.info("  verified product successfully deployed")
     for prod in config.location_dict:
-        cmd = '../common/product-install -m {} install -r {}'.format(prod.work_dir, config.stages.current_stage)
-        logname = 'log/{}-{}'.format(prod.name, config.stages.current_stage)
-        install_logger.info('    Running {}'.format(cmd))
-        #install_logger.info('    Logging to {}'.format(logname))
-        config.connection.sudo('{}'.format(cmd), timeout=1800, tee=True, store_output=logname)
-
-def stub_sat_bootprep(config):
+        opargs = { 'prod': prod.product, 'dir': prod.work_dir }
+        install_logger.info('  operation post_install_check')
+        printopargs(opargs)
     time.sleep(2)
-    install_logger.info("  run sat bootprep against N number of configs")
 
-def stub_rolling_ncn_reboot(config):
-    time.sleep(5)
-    install_logger.info("  rolling reboot of ncn worker nodes")
+def printopargs(opargs):
+    install_logger.info('      {')
+    for key, value in opargs.items():
+        install_logger.info('      {}: {}'.format(repr(key), repr(value)))
+    install_logger.info('      }')
+
 
 
 def install(config):
