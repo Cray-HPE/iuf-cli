@@ -82,8 +82,8 @@ def stub_deliver_product(config):
 def stub_update_config(config):
     #install_logger.info("  updated VCS branches, run automated config updates")
     for prod in config.location_dict:
-        opargs = { 'prod': prod.product, 'dir': prod.work_dir, 'branch': config.args['working_branch'] }
-        install_logger.info('  operation update_working_branch')
+        opargs = { 'prod': prod.product, 'dir': prod.work_dir, 'branch': config.args['customer_branch'] }
+        install_logger.info('  operation update_customer_branch')
         printopargs(opargs)
         install_logger.info('  operation update_cfs_config')
         printopargs(opargs)
@@ -533,7 +533,7 @@ def get_mergeable_repos(config):
     return repos
 
 
-def update_working_branches(config):
+def update_customer_branches(config):
     """Merge the product git branch to the working config"""
 
     # first things first, get a copy of all the config repos
@@ -551,24 +551,24 @@ def update_working_branches(config):
             repo = repos[product.product]
             cos_checkout_dir = git.clone(repo)
 
-            # Get the working branch with product key and --working-branch
+            # Get the working branch with product key and --customer-branch
             # If the passed working branch doesn't exist,it is created. 
 
             # check out a local copy of the import_branch (release version)
             git.checkout(repo, product.import_branch)
 
-            working_branch = render_jinja(config, product.name, config.args["working_branch"])
+            customer_branch = render_jinja(config, product.name, config.args["customer_branch"])
             best_guess = best_guess_working(config, product.name, git, repo)
-            if best_guess != working_branch:
+            if best_guess != customer_branch:
                 # The working branch does not exist.
                 # Checkout best_guess (which will be the closest lower version
-                # working_working branch.  working_branch will then be created
-                # from it if working_branch does not exist.
+                # working_working branch.  customer_branch will then be created
+                # from it if customer_branch does not exist.
                 git.checkout(repo, best_guess)
-            git.checkout(repo, working_branch, create=True)
+            git.checkout(repo, customer_branch, create=True)
 
             # fourth, merge the import branch to the integration branch
-            install_logger.info("  Merging branch {} into {}".format(product.import_branch, working_branch))
+            install_logger.info("  Merging branch {} into {}".format(product.import_branch, customer_branch))
             git.merge(repo, product.import_branch)
             git.push(repo)
 
@@ -724,10 +724,10 @@ def best_guess_working(config, product_key, gitobj, repo):
     return it.  Otherwise, find the one closest in version but lower."""
 
     integration_branch = None
-    if not config.args.get("working_branch", None):
-        raise InstallError("You must supply --working-branch")
+    if not config.args.get("customer_branch", None):
+        raise InstallError("You must supply --customer-branch")
 
-    integration_branch = render_jinja(config, product_key, config.args["working_branch"])
+    integration_branch = render_jinja(config, product_key, config.args["customer_branch"])
     branches = gitobj.ls_remote(repo, just_branches=True)
     branch_versions = {}
     if integration_branch in branches:
@@ -892,24 +892,24 @@ def create_bootprep_config(config):
         branches = git.ls_remote(repo, just_branches=True)
         if repo in prod_repos:
             prod_info = prod_repos[repo]
-            working_branch = render_jinja(config, prod_info["product_key"], config.args["working_branch"])
+            customer_branch = render_jinja(config, prod_info["product_key"], config.args["customer_branch"])
 
-            if working_branch not in branches:
-                working_branch = best_guess_working(config, prod_info["product"], git, repo)
+            if customer_branch not in branches:
+                customer_branch = best_guess_working(config, prod_info["product"], git, repo)
                 warning_urls.append(url)
         else:
             # The url is not in location_dict or doesn't have a clone_url,
             # and we need to do do some guessing.
-            args_working = config.args["working_branch"]
+            args_working = config.args["customer_branch"]
             if args_working in branches:
-                working_branch = args_working
+                customer_branch = args_working
             else:
                 # See what branch the commit is on.  If it's one branch, no problem.
                 # What branch is checked out doesn't really matter.
                 git.clone(repo)
                 commit_branches = git.contains(repo, cfsd["commit"])
                 if args_working in commit_branches:
-                    working_branch = args_working
+                    customer_branch = args_working
                 else:
                     # We can't use best_guess_working or render_jinja since
                     # the product isn't in the location dictionary.  Check to see of any of commit_branches
@@ -924,12 +924,12 @@ def create_bootprep_config(config):
                     sorted_versions = sorted(int_candidates.values(), key=LooseVersion)
                     for branch, vers in int_candidates.items():
                         if vers == sorted_versions[-1]:
-                            working_branch = branch
+                            customer_branch = branch
                             break
                     warning_urls.append(url)
         elt["git"] = OrderedDict({
             "url": url,
-            "branch": working_branch,
+            "branch": customer_branch,
         })
         bp_layers.append(elt)
 
@@ -2041,4 +2041,4 @@ def render_jinja(config, product_key=None, jinja_string=None):
 
         install_logger.debug("encountered {} when rendering jinja".format(err))
         install_logger.error("Couldn't perform subsitutions in '{}' for product '{}'!".format(jinja_string, product_key))
-        raise InstallError("Please check your --working-branch value")
+        raise InstallError("Please check your --customer-branch value")
