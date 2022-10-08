@@ -82,7 +82,8 @@ def stub_deliver_product(config):
 def stub_update_config(config):
     #install_logger.info("  updated VCS branches, run automated config updates")
     for prod in config.location_dict:
-        opargs = { 'prod': prod.product, 'dir': prod.work_dir, 'branch': config.args['customer_branch'] }
+        customer_branch = render_jinja(config, prod.name, config.args["customer_branch"])
+        opargs = { 'prod': prod.product, 'dir': prod.work_dir, 'branch': customer_branch }
         install_logger.info('  operation update_customer_branch')
         printopargs(opargs)
         install_logger.info('  operation update_cfs_config')
