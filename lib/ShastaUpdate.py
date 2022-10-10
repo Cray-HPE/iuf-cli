@@ -49,20 +49,20 @@ def get_prods(config):
         for item in config.location_dict.uninstallable_products:
             install_logger.info("    {}".format(item))
 
-    install_logger.info('  CREATE/READ activity session')
+    install_logger.info('  CREATE/READ activity session {}'.format(config.args['activity_session']))
 
 
 
 def stub_pre_install_check(config):
     for prod in config.location_dict:
-        opargs = { 'prod': prod.product, 'dir': prod.work_dir }
+        opargs = { 'prod': prod.product, 'dir': prod.work_dir, 'activity-session': config.args['activity_session'] }
         install_logger.info('  operation preflight_checks_for_services')
         printopargs(opargs)
     time.sleep(2)
 
 def stub_deliver_product(config):
     for prod in config.location_dict:
-        opargs = { 'prod': prod.product, 'dir': prod.work_dir }
+        opargs = { 'prod': prod.product, 'dir': prod.work_dir, 'activity-session': config.args['activity_session'] }
         install_logger.info('  operation loftsman_manifest_upload')
         printopargs(opargs)
         install_logger.info('  operation s3_upload')
@@ -83,17 +83,18 @@ def stub_update_config(config):
     #install_logger.info("  updated VCS branches, run automated config updates")
     for prod in config.location_dict:
         customer_branch = render_jinja(config, prod.name, config.args["customer_branch"])
-        opargs = { 'prod': prod.product, 'dir': prod.work_dir, 'branch': customer_branch }
+        opargs = { 'prod': prod.product, 'dir': prod.work_dir, 'branch': customer_branch, 'activity-session': config.args['activity_session'] }
         install_logger.info('  operation update_customer_branch')
         printopargs(opargs)
-        install_logger.info('  operation update_cfs_config')
+        opargs = { 'prod': prod.product, 'dir': prod.work_dir, 'branch': customer_branch, 'activity-session': config.args['activity_session'], 'bootprep_config': config.args['bootprep_config'] }
+        install_logger.info('  operation update_cfs_config (sat bootprep --config)')
         printopargs(opargs)
     time.sleep(2)
 
 def stub_deploy_product(config):
     #install_logger.info("  deployed services to system")
     for prod in config.location_dict:
-        opargs = { 'prod': prod.product, 'dir': prod.work_dir }
+        opargs = { 'prod': prod.product, 'dir': prod.work_dir, 'activity-session': config.args['activity_session'] }
         install_logger.info('  operation loftsman_manifest_deploy')
         printopargs(opargs)
         install_logger.info('  operation set_product_active')
@@ -101,16 +102,20 @@ def stub_deploy_product(config):
     time.sleep(2)
 
 def stub_prepare_images(config):
-    install_logger.info('  operation prepare_images')
+    opargs = { 'activity-session': config.args['activity_session'], 'bootprep_config': config.args['bootprep_config'] }
+    install_logger.info('  operation prepare_images (sat bootprep --images)')
+    printopargs(opargs)
     time.sleep(2)
 
-def stub_rollout(config):
-    install_logger.info('  operation rollout')
+def stub_ncn_rollout(config):
+    opargs = { 'method': config.args["ncn_update_method"], 'activity-session': config.args['activity_session'] }
+    install_logger.info('  operation ncn_rollout')
+    printopargs(opargs)
     time.sleep(4)
 
 def stub_post_install_check(config):
     for prod in config.location_dict:
-        opargs = { 'prod': prod.product, 'dir': prod.work_dir }
+        opargs = { 'prod': prod.product, 'dir': prod.work_dir, 'activity-session': config.args['activity_session'] }
         install_logger.info('  operation post_install_check')
         printopargs(opargs)
     time.sleep(2)

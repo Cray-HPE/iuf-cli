@@ -101,8 +101,8 @@ STAGE_DICT = OrderedDict({
         "func" : "stub_prepare_images",
         "description" : "Call sat bootprep"
         },
-    "rollout": {
-        "func" : "stub_rollout",
+    "ncn_rollout": {
+        "func" : "stub_ncn_rollout",
         "description" : "Reboot NCN nodes into new image"
         },
     "post_install_check": {
