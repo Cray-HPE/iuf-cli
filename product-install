@@ -253,6 +253,10 @@ def main():
     parser.add_argument("-m", "--media-dir", action="store",
         help="Location of installation media you would like to install.  Defaults to [base-dir]]/media")
 
+    ### TODO, make default value product_vars.yaml 'recipe', fallback to pwd
+    parser.add_argument("-a", "--activity-session", action="store", default=os.path.basename(os.getcwd()),
+        help="Activity session name.  Must be a unique identifier.  Defaults to media dir")
+
     parser.add_argument("--log-dir", action="store",
         help="Location used to store log files.  Defaults to [base-dir]/log")
 
@@ -282,8 +286,8 @@ def main():
     install_sp.add_argument("-b", "--begin-stage", action="store",
         help="The first stage to execute")
 
-    install_sp.add_argument("-c", "--cfs-config", action="store",
-        help="The CFS configuration to be used during image building.")
+    # install_sp.add_argument("-c", "--cfs-config", action="store",
+    #     help="The CFS configuration to be used during image building.")
 
     install_sp.add_argument("-e", "--end-stage", action="store",
         help="The last stage to execute")
@@ -291,7 +295,7 @@ def main():
     install_sp.add_argument("-r", "--run-stages", nargs="+", action="store",
         help="Run only the specified stages")
 
-    install_sp.add_argument("-s", "--skip-stages", nargs="+", default=['ncn_personalization'], action="store",
+    install_sp.add_argument("-s", "--skip-stages", nargs="+", action="store",
         help="Skip the execution of the specified stages")
 
     install_sp.add_argument("-B", "--customer-branch", action="store",
@@ -325,40 +329,48 @@ As a result, the update_customer_branches stage would perform the following merg
         """)
 
     bpc_help = formatted("""
-    Use an alternate `sat bootprep` config file for the compute nodes than is generated during the
-    `create_bootprep_config` stage.  This is used by sat_bootprep_cn""")
+    List of `sat bootprep` config files.""")
 
-    install_sp.add_argument("-bpc", "--bootprep-config-cn", action="store",
+    install_sp.add_argument("-bpc", "--bootprep-config", action="store", nargs='+',
+        default = ['vcs/bootprep/compute-and-uan-bootprep.yaml', 'vcs/bootprep/management-bootprep.yaml'],
         help=bpc_help)
 
-    bpn_help = formatted("""
-    Use an alternate `sat bootprep` config file for the NCN nodes than is generated during the
-    sat_bootprep_NCN stage.""")
-    install_sp.add_argument("-bpn", "--bootprep-config-ncn", action="store",
-                            help=bpn_help)
-    install_sp.add_argument("-t", "--source-bos-sessiontemplate", action="store",
-        help="BOS template to start from when booting COS")
+    # install_sp.add_argument("-bpc", "--bootprep-config-cn", action="store",
+    #     help=bpc_help)
 
-    install_sp.add_argument("-crn", "--cos-recipe-name", action="store",
-        help="The name of the recipe to build the COS compute image")
+    # bpn_help = formatted("""
+    # Use an alternate `sat bootprep` config file for the NCN nodes than is generated during the
+    # sat_bootprep_NCN stage.""")
+    # install_sp.add_argument("-bpn", "--bootprep-config-ncn", action="store",
+    #                         help=bpn_help)
+    # install_sp.add_argument("-t", "--source-bos-sessiontemplate", action="store",
+    #     help="BOS template to start from when booting COS")
+
+    # install_sp.add_argument("-crn", "--cos-recipe-name", action="store",
+    #     help="The name of the recipe to build the COS compute image")
 
     install_sp.add_argument("-ncnp", "--ncn-personalization", action="store",
         default="ncn-personalization",
         help="The name of the ncn personalization config to update.  Defaults to 'ncn-personalization'")
 
-    install_sp.add_argument("-D", "--dvs-update-method", action="store",
-        choices=["auto", "legacy", "ncn-upgrade"],
-        default="auto",
-        help="""Defaults to 'auto'.  Method used to update COS on the NCN nodes.  This is primarily to
-update from one version of DVS to another.  The 'legacy' mode is the proceedure used in
-COS <= 2.2.  The 'ncn-upgrade' mode utilizes the 'ncn-upgrade.yml' playbook introduced
-in COS 2.3.  The 'auto' mode will utilize the ncn-upgrade mode if all the needed conditions
-are present (the ncn-upgrade.yml playbook must be in the COS working branch AND the
-ncn-personalization config must contain the slingshot-host-software layer) and the
-'legacy' mode if not.""")
+
+    install_sp.add_argument("-N", "--ncn-update-method", action="store",
+        default="rolling-reboot",
+        help="Method to update the NCN nodes.  (rolling) 'reboot' or (rolling) 'live' (update in place).  Defaults to 'reboot'")
+
+#     install_sp.add_argument("-D", "--dvs-update-method", action="store",
+#         choices=["auto", "legacy", "ncn-upgrade"],
+#         default="auto",
+#         help="""Defaults to 'auto'.  Method used to update COS on the NCN nodes.  This is primarily to
+# update from one version of DVS to another.  The 'legacy' mode is the proceedure used in
+# COS <= 2.2.  The 'ncn-upgrade' mode utilizes the 'ncn-upgrade.yml' playbook introduced
+# in COS 2.3.  The 'auto' mode will utilize the ncn-upgrade mode if all the needed conditions
+# are present (the ncn-upgrade.yml playbook must be in the COS working branch AND the
+# ncn-personalization config must contain the slingshot-host-software layer) and the
+# 'legacy' mode if not.""")
 
     install_sp.add_argument("-wn", "--worker-nodes", action="store", nargs='+',
-        help="""Override worker list used in DVS reload stage to assist with repairing broken nodes.
+        help="""Override worker list used in rolling stage to assist with repairing broken nodes.
 For example, --worker-nodes ncn-w003 would cause the ncn_personalization stage to only
 reload ncn-w003;  --worker-nodes x3000c0s37b0n0 would also work.
 """)
