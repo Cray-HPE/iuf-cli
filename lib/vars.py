@@ -105,9 +105,17 @@ STAGE_DICT = OrderedDict({
         "func" : "stub_ncn_rollout",
         "description" : "Reboot NCN nodes into new image"
         },
-    "post_install_check": {
-        "func" : "stub_post_install_check",
+    "post_install_service_check": {
+        "func" : "stub_post_install_service_check",
         "description" : "Perform post-install checks"
+        },
+    "cn_rollout": {
+        "func" : "stub_cn_rollout",
+        "description" : "Reboot compute nodes into new image"
+        },
+    "post_install_compute_check": {
+        "func" : "stub_post_install_compute_check",
+        "description" : "Perform compute post-install checks"
         }
 })
 
