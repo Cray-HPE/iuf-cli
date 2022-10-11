@@ -111,9 +111,22 @@ def stub_ncn_rollout(config):
     opargs = { 'method': config.args["ncn_update_method"], 'activity-session': config.args['activity_session'] }
     install_logger.info('  operation ncn_rollout')
     printopargs(opargs)
-    time.sleep(4)
+    time.sleep(2)
 
-def stub_post_install_check(config):
+def stub_post_install_service_check(config):
+    for prod in config.location_dict:
+        opargs = { 'prod': prod.product, 'dir': prod.work_dir, 'activity-session': config.args['activity_session'] }
+        install_logger.info('  operation post_install_check')
+        printopargs(opargs)
+    time.sleep(2)
+
+def stub_cn_rollout(config):
+    opargs = { 'method': config.args["ncn_update_method"], 'activity-session': config.args['activity_session'] }
+    install_logger.info('  operation cn_rollout')
+    printopargs(opargs)
+    time.sleep(2)
+
+def stub_post_install_compute_check(config):
     for prod in config.location_dict:
         opargs = { 'prod': prod.product, 'dir': prod.work_dir, 'activity-session': config.args['activity_session'] }
         install_logger.info('  operation post_install_check')
