@@ -83,15 +83,19 @@ STAGE_DICT = OrderedDict({
         },
     "pre_install_check":  {
         "func" : "stub_pre_install_check",
-        "description" : "Perform pre-install sanity checks and compatability checks"
+        "description" : "Perform pre-install readyness checks"
         },
     "deliver_product": {
         "func" : "stub_deliver_product",
         "description" : "Upload product content onto the system"
         },
-    "update_config": {
+    "update_vcs_config": {
         "func" : "stub_update_config",
-        "description" : "Merge working branches and perform, automated VCS configuration and update CFS configuration (sat bootprep run --config)"
+        "description" : "Merge working branches and perform, automated VCS configuration"
+        },
+    "update_cfs_config": {
+        "func" : "stub_update_config",
+        "description" : "Update CFS configuration (sat bootprep run --config)"
         },
     "deploy_product": {
         "func" : "stub_deploy_product",
@@ -99,23 +103,23 @@ STAGE_DICT = OrderedDict({
         },
     "prepare_images": {
         "func" : "stub_prepare_images",
-        "description" : "Build and configure NCN and/or Compute/UAN images (sat bootprep run --images)"
+        "description" : "Build and configure management node and/or managed node images (sat bootprep run --images)"
         },
-    "ncn_rollout": {
+    "management_nodes_rollout": {
         "func" : "stub_ncn_rollout",
-        "description" : "Rolling reboot or liveupdate of management NCN nodes"
+        "description" : "Rolling reboot or liveupdate of management nodes"
         },
     "post_install_service_check": {
         "func" : "stub_post_install_service_check",
-        "description" : "Perform post-install management checks"
+        "description" : "Perform post-install checks of processed services"
         },
-    "cn_rollout": {
+    "managed_nodes_rollout": {
         "func" : "stub_cn_rollout",
-        "description" : "Rolling reboot or liveupdate compute nodes into new image"
+        "description" : "Rolling reboot or liveupdate of managed nodes nodes"
         },
-    "post_install_compute_check": {
+    "post_install_check": {
         "func" : "stub_post_install_compute_check",
-        "description" : "Perform compute post-install checks"
+        "description" : "Perform post-install checks"
         }
 })
 
