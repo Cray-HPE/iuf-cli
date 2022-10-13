@@ -25,7 +25,8 @@ class ProductConfig:
         'clone_url': None,
         'import_branch': None,
         'installed': None,
-        'merged': None
+        'merged': None,
+        'product_manifest': None
     }
 
     _prefixes = {
@@ -361,6 +362,20 @@ class Product:
     @archive_md5.setter
     def archive_md5(self, value):
         self.__dict__[self.__dict__["name"]]['archive_md5'] = value
+
+
+    @property
+    def product_manifest(self):
+        if not self.__dict__[self.__dict__["name"]]['product_manifest']:
+            work_dir = self.__dict__[self.__dict__["name"]]['work_dir']
+            if work_dir:
+                filename = os.path.join(work_dir, 'iuf-product-manifest.yaml')
+                with open(filename, "r") as f:
+                    product_manifest = yaml.load(f, yaml.SafeLoader)
+                self.__dict__[self.__dict__["name"]]['product_manifest'] = product_manifest
+        return self.__dict__[self.__dict__["name"]]['product_manifest']
+
+
 
 class Products:
     config = ProductConfig()

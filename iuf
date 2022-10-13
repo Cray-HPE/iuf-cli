@@ -52,55 +52,61 @@ def validate_stages(config):
     # Check the BOS sessiontemplate and CFS config arguments.  If the CFS
     # config is not explicitly specified, it can be obtained from the BOS
     # sessiontemplate.
-    if "source_bos_sessiontemplate" in config.args and config.args["source_bos_sessiontemplate"] is None \
-        and "create_bootprep_config" in local_stages:
-        msg = formatted("""
-            When creating a bos session template,  a source bos sessiontemplate
-            (-t or --source-bos-sessiontemplate) is required""")
-        print(msg)
-        sys.exit(1)
-    elif "source_bos_sessiontemplate" in config.args and config.args["source_bos_sessiontemplate"]:
-        bos_template = json.loads(config.connection.sudo("cray bos sessiontemplate describe {} --format json".format(
-            config.args["source_bos_sessiontemplate"])).stdout)
-        bos_cfs_config_name = bos_template["cfs"]["configuration"]
+    # if "source_bos_sessiontemplate" in config.args and config.args["source_bos_sessiontemplate"] is None \
+    #     and "create_bootprep_config" in local_stages:
+    #     msg = formatted("""
+    #         When creating a bos session template,  a source bos sessiontemplate
+    #         (-t or --source-bos-sessiontemplate) is required""")
+    #     print(msg)
+    #     sys.exit(1)
+    # elif "source_bos_sessiontemplate" in config.args and config.args["source_bos_sessiontemplate"]:
+    #     bos_template = json.loads(config.connection.sudo("cray bos sessiontemplate describe {} --format json".format(
+    #         config.args["source_bos_sessiontemplate"])).stdout)
+    #     bos_cfs_config_name = bos_template["cfs"]["configuration"]
 
-        if "cfs_config" not in config.args or config.args["cfs_config"] is None:
-            config.args["cfs_config"] = bos_cfs_config_name
-        elif "cfs_config" in config.args and config.args["cfs_config"] is not None:
-            if config.args["cfs_config"] != bos_cfs_config_name:
-                msg = formatted("""
-                    The cfs-config argument passed in ({}) will be used in
-                    image building and creating the bos  sessiontemplate.
-                    This differs from the one found in the bos
-                    sessiontemplate ({}).  The one found in {} was {}""".format(
-                    config.args["cfs_config"],
-                    config.args["source_bos_sessiontemplate"],
-                    config.args["source_bos_sessiontemplate"],
-                    bos_cfs_config_name))
-                install_logger.warning(msg)
+    #     if "cfs_config" not in config.args or config.args["cfs_config"] is None:
+    #         config.args["cfs_config"] = bos_cfs_config_name
+    #     elif "cfs_config" in config.args and config.args["cfs_config"] is not None:
+    #         if config.args["cfs_config"] != bos_cfs_config_name:
+    #             msg = formatted("""
+    #                 The cfs-config argument passed in ({}) will be used in
+    #                 image building and creating the bos  sessiontemplate.
+    #                 This differs from the one found in the bos
+    #                 sessiontemplate ({}).  The one found in {} was {}""".format(
+    #                 config.args["cfs_config"],
+    #                 config.args["source_bos_sessiontemplate"],
+    #                 config.args["source_bos_sessiontemplate"],
+    #                 bos_cfs_config_name))
+    #             install_logger.warning(msg)
 
     # Ensure that customer_branch is specified if it's needed.
+
+    ### TODO get branch info from the site.yaml file
+
     if ("customer_branch" in config.args and config.args["customer_branch"] is None) \
-        and (("update_customer_branches" in local_stages) \
-        or ("update_ncn_config" in local_stages)):
+        and (("update_config" in local_stages)):
             msg = formatted("""
-                Please supply --customer-branch with stages update_customer_branches or update_ncn_config.""")
+                Please supply --customer-branch with stages update_config.""")
             print(msg)
             sys.exit(1)
 
     # Ensure that if a `sat bootprep` config was specified (and the stage
     # is being run) it exists.
     bp_config = config.args.get("bootprep_config_cn", None)
-    if bp_config and "sat_bootprep_cn" in local_stages:
-        if not os.path.exists(bp_config):
-            print("--bootprep-config-cn/-bpc {} was specified but could not be found".format(bp_config))
-            sys.exit(1)
+    if bp_config and "cn_rollout" in local_stages:
+        for entry in bp_config:
+            print('cn',entry)
+            if not os.path.exists(entry):
+                print("--bootprep-config-cn {} was specified but could not be found".format(entry))
+                sys.exit(1)
 
-    bp_config = config.args.get("bootprep_config_ncn", None)
-    if bp_config and "sat_bootprep_ncn" in local_stages:
-        if not os.path.exists(bp_config):
-            print("--bootprep-config-ncn/-bpn {} was specified but could not be found".format(bp_config))
-            sys.exit(1)
+    bp_config = config.args.get("bootprep_config_mgmt", None)
+    if bp_config and "ncn_rollout" in local_stages:
+        for entry in bp_config:
+            print('ncn',bp_config)
+            if not os.path.exists(entry):
+                print("--bootprep-config-ncn {} was specified but could not be found".format(entry))
+                sys.exit(1)
 
     return
 
@@ -250,12 +256,17 @@ def main():
     parser.add_argument("-s", "--state-dir", action="store",
         help="A directory used to store the current state of stages.  Defaults to [base-dir]/state.")
 
+    #### TODO handle both directories or list of files
+    #### TODO change to default to pwd
     parser.add_argument("-m", "--media-dir", action="store",
         help="Location of installation media you would like to install.  Defaults to [base-dir]]/media")
 
     ### TODO, make default value product_vars.yaml 'recipe', fallback to pwd
     parser.add_argument("-a", "--activity-session", action="store", default=os.path.basename(os.getcwd()),
         help="Activity session name.  Must be a unique identifier.  Defaults to media dir")
+
+    parser.add_argument("-sp", "--site-parameter", action="store", default=False,
+        help="Path the the site.yaml parameter config.")
 
     parser.add_argument("--log-dir", action="store",
         help="Location used to store log files.  Defaults to [base-dir]/log")
@@ -298,6 +309,10 @@ def main():
     install_sp.add_argument("-s", "--skip-stages", nargs="+", action="store",
         help="Skip the execution of the specified stages")
 
+    install_sp.add_argument("-F", "--force", action="store",
+        help="Force re-execution of stage operations.")
+
+    #### TODO: replace with site parameters
     install_sp.add_argument("-B", "--customer-branch", action="store",
         help="""String representing the working branch in each product config
 management repo that the product release branch will be merged to.
@@ -329,14 +344,18 @@ As a result, the update_customer_branches stage would perform the following merg
         """)
 
     bpc_help = formatted("""
-    List of `sat bootprep` config files.""")
+    List of `sat bootprep` config files for non-mgmt nodes (compute, UAN).""")
 
-    install_sp.add_argument("-bpc", "--bootprep-config", action="store", nargs='+',
-        default = ['vcs/bootprep/compute-and-uan-bootprep.yaml', 'vcs/bootprep/management-bootprep.yaml'],
+    install_sp.add_argument("-bpc", "--bootprep-config-cn", action="store", nargs='+',
+        default = ['vcs/bootprep/compute-and-uan-bootprep.yaml'],
         help=bpc_help)
 
-    # install_sp.add_argument("-bpc", "--bootprep-config-cn", action="store",
-    #     help=bpc_help)
+    bpc_help = formatted("""
+    List of `sat bootprep` config files for management NCN nodes.""")
+
+    install_sp.add_argument("-bpm", "--bootprep-config-mgmt", action="store",
+        default = ['vcs/bootprep/management-bootprep.yaml'],
+        help=bpc_help)
 
     # bpn_help = formatted("""
     # Use an alternate `sat bootprep` config file for the NCN nodes than is generated during the
@@ -354,9 +373,9 @@ As a result, the update_customer_branches stage would perform the following merg
         help="The name of the ncn personalization config to update.  Defaults to 'ncn-personalization'")
 
 
-    install_sp.add_argument("-N", "--ncn-update-method", action="store",
+    install_sp.add_argument("-N", "--rolling-update-method", action="store",
         default="rolling-reboot",
-        help="Method to update the NCN nodes.  (rolling) 'reboot' or (rolling) 'live' (update in place).  Defaults to 'reboot'")
+        help="Method to update the nodes.  (rolling) 'reboot' or (rolling) 'live' (update in place).  Defaults to 'reboot'")
 
 #     install_sp.add_argument("-D", "--dvs-update-method", action="store",
 #         choices=["auto", "legacy", "ncn-upgrade"],
@@ -369,11 +388,17 @@ As a result, the update_customer_branches stage would perform the following merg
 # ncn-personalization config must contain the slingshot-host-software layer) and the
 # 'legacy' mode if not.""")
 
-    install_sp.add_argument("-wn", "--worker-nodes", action="store", nargs='+',
-        help="""Override worker list used in rolling stage to assist with repairing broken nodes.
-For example, --worker-nodes ncn-w003 would cause the ncn_personalization stage to only
-reload ncn-w003;  --worker-nodes x3000c0s37b0n0 would also work.
+    install_sp.add_argument("-ln", "--limit-nodes", action="store", nargs='+',
+        help="""Override list used in rolling stage to assist with repairing broken nodes.
+For example, --limit-nodes ncn-w003 would cause the rollout stage to only
+reload ncn-w003;  --limit-nodes x3000c0s37b0n0 would also work.
 """)
+
+    install_sp.add_argument("-co", "--compute-only", action="store",
+        help="Skip NCN node rollout actions")
+
+    install_sp.add_argument("-mo", "--mgmt-only", action="store",
+        help="Skip mgmt NCN node rollout actions")
 
     install_sp.set_defaults(func=process_install, skip_stages=list(), run_stages=list())
 
