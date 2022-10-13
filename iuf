@@ -288,7 +288,7 @@ def main():
     # are fully independent; for example, we have an unpack stage, and an
     # install stage.  The install stage needs to install what was unpacked.
 
-    subparsers = parser.add_subparsers(title="subcommands", metavar='{run,list-stages|ls,list-products}')
+    subparsers = parser.add_subparsers(title="subcommands", metavar='{run,activity,list-stages|ls,list-products}')
     stage_list = lib.stages.get_stage_help()
 
     install_sp = subparsers.add_parser("run", epilog="Valid stages:\n{}".format(stage_list),
