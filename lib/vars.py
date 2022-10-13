@@ -91,7 +91,7 @@ STAGE_DICT = OrderedDict({
         },
     "update_config": {
         "func" : "stub_update_config",
-        "description" : "Merge working branches and perform any automated configuration"
+        "description" : "Merge working branches and perform, automated VCS configuration and update CFS configuration (sat bootprep run --config)"
         },
     "deploy_product": {
         "func" : "stub_deploy_product",
@@ -99,19 +99,19 @@ STAGE_DICT = OrderedDict({
         },
     "prepare_images": {
         "func" : "stub_prepare_images",
-        "description" : "Call sat bootprep"
+        "description" : "Build and configure NCN and/or Compute/UAN images (sat bootprep run --images)"
         },
     "ncn_rollout": {
         "func" : "stub_ncn_rollout",
-        "description" : "Reboot NCN nodes into new image"
+        "description" : "Rolling reboot or liveupdate of management NCN nodes"
         },
     "post_install_service_check": {
         "func" : "stub_post_install_service_check",
-        "description" : "Perform post-install checks"
+        "description" : "Perform post-install management checks"
         },
     "cn_rollout": {
         "func" : "stub_cn_rollout",
-        "description" : "Reboot compute nodes into new image"
+        "description" : "Rolling reboot or liveupdate compute nodes into new image"
         },
     "post_install_compute_check": {
         "func" : "stub_post_install_compute_check",
