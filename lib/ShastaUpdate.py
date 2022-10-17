@@ -91,7 +91,7 @@ def stub_deploy_product(config):
     time.sleep(2)
 
 def stub_prepare_images(config):
-    opargs = { 'activity-session': config.args['activity_session'], 'bootprep_config': config.args['bootprep_config_cn'] }
+    opargs = { 'activity-session': config.args['activity_session'], 'bootprep_config': config.args['bootprep_config_managed_nodes'] }
     install_logger.info('  operation prepare_images (sat bootprep --images)')
     printopargs(opargs)
     time.sleep(2)
