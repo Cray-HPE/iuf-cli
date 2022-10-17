@@ -92,18 +92,18 @@ def validate_stages(config):
 
     # Ensure that if a `sat bootprep` config was specified (and the stage
     # is being run) it exists.
-    bp_config = config.args.get("bootprep_config_managed_nodes", None)
+    bp_config = config.args.get("bootprep_config_managed", None)
     if bp_config and "managed_nodes_rollout" in local_stages:
         for entry in bp_config:
-            print('cn',entry)
+            # print('cn',entry)
             if not os.path.exists(entry):
                 print("--bootprep-config-managed-nodes {} was specified but could not be found".format(entry))
                 sys.exit(1)
 
-    bp_config = config.args.get("bootprep_config_management_nodes", None)
+    bp_config = config.args.get("bootprep_config_management", None)
     if bp_config and "management_nodes_rollout" in local_stages:
         for entry in bp_config:
-            print('ncn',bp_config)
+            # print('ncn',bp_config)
             if not os.path.exists(entry):
                 print("--bootprep-config-management-nodes {} was specified but could not be found".format(entry))
                 sys.exit(1)
@@ -279,8 +279,8 @@ def main():
     parser.add_argument("-l", "--level", action="store", default='INFO',
         help="Set the debug level to the console", choices=levelhelp)
 
-    # parser.add_argument("-v", "--verbose", action="store_true",
-    #     help="Generates more verbose messages")
+    parser.add_argument("-v", "--verbose", action="store_true",
+        help="Generates more verbose messages")
 
     # TODO: The stage-dir usage could use more verbiage. We might want to add
     # this to the install docs.  Describing it in detail in the help section
@@ -296,9 +296,6 @@ def main():
 
     install_sp.add_argument("-b", "--begin-stage", action="store",
         help="The first stage to execute")
-
-    # install_sp.add_argument("-c", "--cfs-config", action="store",
-    #     help="The CFS configuration to be used during image building.")
 
     install_sp.add_argument("-e", "--end-stage", action="store",
         help="The last stage to execute")
@@ -328,47 +325,24 @@ Currently you can:
     bpc_help = formatted("""
     List of `sat bootprep` config files for non-mgmt nodes (compute, UAN).""")
 
-    install_sp.add_argument("-bpc", "--bootprep-config-managed-nodes", action="store", nargs='+',
+    install_sp.add_argument("-bc", "--bootprep-config-managed", action="store", nargs='+',
         default = ['vcs/bootprep/compute-and-uan-bootprep.yaml'],
         help=bpc_help)
 
     bpc_help = formatted("""
     List of `sat bootprep` config files for management NCN nodes.""")
 
-    install_sp.add_argument("-bpm", "--bootprep-config-management-nodes", action="store",
+    install_sp.add_argument("-bm", "--bootprep-config-management", action="store",
         default = ['vcs/bootprep/management-bootprep.yaml'],
         help=bpc_help)
 
-    # bpn_help = formatted("""
-    # Use an alternate `sat bootprep` config file for the NCN nodes than is generated during the
-    # sat_bootprep_NCN stage.""")
-    # install_sp.add_argument("-bpn", "--bootprep-config-management-nodes", action="store",
-    #                         help=bpn_help)
-    # install_sp.add_argument("-t", "--source-bos-sessiontemplate", action="store",
-    #     help="BOS template to start from when booting COS")
+    install_sp.add_argument("-um", "--update-method-management", action="store",
+        default="reboot",
+        help="Method to update the management nodes.  (rolling) 'reboot' or (rolling) 'in_place' (update running nodes).  Defaults to 'reboot'")
 
-    # install_sp.add_argument("-crn", "--cos-recipe-name", action="store",
-    #     help="The name of the recipe to build the COS compute image")
-
-    # install_sp.add_argument("-ncnp", "--ncn-personalization", action="store",
-    #     default="ncn-personalization",
-    #     help="The name of the ncn personalization config to update.  Defaults to 'ncn-personalization'")
-
-
-    install_sp.add_argument("-M", "--rolling-update-method", action="store",
-        default="rolling-reboot",
-        help="Method to update the nodes.  (rolling) 'reboot' or (rolling) 'in_place' (update running nodes).  Defaults to 'reboot'")
-
-#     install_sp.add_argument("-D", "--dvs-update-method", action="store",
-#         choices=["auto", "legacy", "ncn-upgrade"],
-#         default="auto",
-#         help="""Defaults to 'auto'.  Method used to update COS on the NCN nodes.  This is primarily to
-# update from one version of DVS to another.  The 'legacy' mode is the proceedure used in
-# COS <= 2.2.  The 'ncn-upgrade' mode utilizes the 'ncn-upgrade.yml' playbook introduced
-# in COS 2.3.  The 'auto' mode will utilize the ncn-upgrade mode if all the needed conditions
-# are present (the ncn-upgrade.yml playbook must be in the COS working branch AND the
-# ncn-personalization config must contain the slingshot-host-software layer) and the
-# 'legacy' mode if not.""")
+    install_sp.add_argument("-uc", "--update-method-managed", action="store",
+        default="reboot",
+        help="Method to update the managed nodes.  (rolling) 'reboot' or (rolling) 'in_place' (update running nodes).  Defaults to 'reboot'")
 
     install_sp.add_argument("-ln", "--limit-nodes", action="store", nargs='+',
         help="""Override list used in rolling stage to assist with repairing broken nodes.
@@ -376,14 +350,8 @@ For example, --limit-nodes ncn-w003 would cause the rollout stage to only
 reload ncn-w003;  --limit-nodes x3000c0s37b0n0 would also work.
 """)
 
-    install_sp.add_argument("-ls", "--limit-scope", action="store", default=None,
-        help="""Limit the scope of actions.  Options are 'management', 'managed', default is None.""")
-
-    # install_sp.add_argument("-co", "--compute-only", action="store",
-    #     help="Skip NCN node rollout actions")
-
-    # install_sp.add_argument("-mo", "--mgmt-only", action="store",
-    #     help="Skip mgmt NCN node rollout actions")
+    # install_sp.add_argument("-ls", "--limit-scope", action="store", default=None,
+    #     help="""Limit the scope of actions.  Options are 'management', 'managed', default is None.""")
 
     install_sp.set_defaults(func=process_install, skip_stages=list(), run_stages=list())
 
@@ -396,6 +364,13 @@ reload ncn-w003;  --limit-nodes x3000c0s37b0n0 would also work.
 
     install_sp = subparsers.add_parser("activity",
         formatter_class=argparse.RawTextHelpFormatter)
+
+    # install_sp.add_argument("activity", action="store",
+    #     default=None, nargs='?',
+    #     help="one of 'in_progress', 'paused', 'debug', 'blocked'")
+
+    # install_sp.add_argument("-C", "--create", action="store", default=False,
+    #     help="""create a new activity section""")
 
     # create a config object to store all of the configured options in the parser
     configfile = ConfigFile()
