@@ -92,20 +92,20 @@ def validate_stages(config):
 
     # Ensure that if a `sat bootprep` config was specified (and the stage
     # is being run) it exists.
-    bp_config = config.args.get("bootprep_config_cn", None)
-    if bp_config and "cn_rollout" in local_stages:
+    bp_config = config.args.get("bootprep_config_managed_nodes", None)
+    if bp_config and "managed_nodes_rollout" in local_stages:
         for entry in bp_config:
             print('cn',entry)
             if not os.path.exists(entry):
-                print("--bootprep-config-cn {} was specified but could not be found".format(entry))
+                print("--bootprep-config-managed-nodes {} was specified but could not be found".format(entry))
                 sys.exit(1)
 
-    bp_config = config.args.get("bootprep_config_mgmt", None)
-    if bp_config and "ncn_rollout" in local_stages:
+    bp_config = config.args.get("bootprep_config_management_nodes", None)
+    if bp_config and "management_nodes_rollout" in local_stages:
         for entry in bp_config:
             print('ncn',bp_config)
             if not os.path.exists(entry):
-                print("--bootprep-config-ncn {} was specified but could not be found".format(entry))
+                print("--bootprep-config-management-nodes {} was specified but could not be found".format(entry))
                 sys.exit(1)
 
     return
@@ -237,7 +237,7 @@ def main():
 
     parser = argparse.ArgumentParser(description=
         """
-       The Compute Node Environment (CNE) installer.
+       The CSM Install and Upgrade Framework (IUF) Installer.
         """
     )
 
@@ -279,8 +279,8 @@ def main():
     parser.add_argument("-l", "--level", action="store", default='INFO',
         help="Set the debug level to the console", choices=levelhelp)
 
-    parser.add_argument("-v", "--verbose", action="store_true",
-        help="Generates more verbose messages")
+    # parser.add_argument("-v", "--verbose", action="store_true",
+    #     help="Generates more verbose messages")
 
     # TODO: The stage-dir usage could use more verbiage. We might want to add
     # this to the install docs.  Describing it in detail in the help section
@@ -309,58 +309,40 @@ def main():
     install_sp.add_argument("-s", "--skip-stages", nargs="+", action="store",
         help="Skip the execution of the specified stages")
 
-    install_sp.add_argument("-F", "--force", action="store",
+    install_sp.add_argument("-F", "--force", action="store", default=False,
         help="Force re-execution of stage operations.")
 
     #### TODO: replace with site parameters
     install_sp.add_argument("-B", "--customer-branch", action="store",
-        help="""String representing the working branch in each product config
-management repo that the product release branch will be merged to.
-
-The following substitutions may be used:
-
-    {{product_key}}    Product name + version formatted per distribution media
-                       ex: slingshot-host-software-1.7.1-32-cos-2.2
+        help="""TODO: This will be replaced by the site_parameters.yaml file
+Currently you can:
     {{product_type}}   Type of product.
                        ex: 'cos', 'slingshot-host-software', 'sles'
-    {{version_full}}   Full product version as it appears in the product catalog.
-                       ex: 1.7.1-32-1.0.19
     {{version_x_y_z}}  x.y.z version of the product
     {{version_x_y}}    x.y version of the product
-
-For example, if the following value was used for COS 2.2.93 and SHS 1.7.1:
-
-    --customer-branch '{{product_type}}-{{version_x_y_z}}-integration'
-
-Then the following would be the branches used:
-
-    For COS: 'cos-2.2.93-integration'
-    For SHS: 'slingshot-host-software-1.7.1-integration'
-
-As a result, the update_customer_branches stage would perform the following merges:
-
-    cray/cos/2.2.93 --> cos-2.2.93-integration
-    cray/slingshot-host-software/1.7.1 --> slingshot-host-software-1.7.1-integration
         """)
+
+    install_sp.add_argument("-sp", "--site-parameters", action="store", default='site_parameters.yaml',
+        help="Path to site parameters file.  Default is site_parameters.yaml")
 
     bpc_help = formatted("""
     List of `sat bootprep` config files for non-mgmt nodes (compute, UAN).""")
 
-    install_sp.add_argument("-bpc", "--bootprep-config-cn", action="store", nargs='+',
+    install_sp.add_argument("-bpc", "--bootprep-config-managed-nodes", action="store", nargs='+',
         default = ['vcs/bootprep/compute-and-uan-bootprep.yaml'],
         help=bpc_help)
 
     bpc_help = formatted("""
     List of `sat bootprep` config files for management NCN nodes.""")
 
-    install_sp.add_argument("-bpm", "--bootprep-config-mgmt", action="store",
+    install_sp.add_argument("-bpm", "--bootprep-config-management-nodes", action="store",
         default = ['vcs/bootprep/management-bootprep.yaml'],
         help=bpc_help)
 
     # bpn_help = formatted("""
     # Use an alternate `sat bootprep` config file for the NCN nodes than is generated during the
     # sat_bootprep_NCN stage.""")
-    # install_sp.add_argument("-bpn", "--bootprep-config-ncn", action="store",
+    # install_sp.add_argument("-bpn", "--bootprep-config-management-nodes", action="store",
     #                         help=bpn_help)
     # install_sp.add_argument("-t", "--source-bos-sessiontemplate", action="store",
     #     help="BOS template to start from when booting COS")
@@ -368,14 +350,14 @@ As a result, the update_customer_branches stage would perform the following merg
     # install_sp.add_argument("-crn", "--cos-recipe-name", action="store",
     #     help="The name of the recipe to build the COS compute image")
 
-    install_sp.add_argument("-ncnp", "--ncn-personalization", action="store",
-        default="ncn-personalization",
-        help="The name of the ncn personalization config to update.  Defaults to 'ncn-personalization'")
+    # install_sp.add_argument("-ncnp", "--ncn-personalization", action="store",
+    #     default="ncn-personalization",
+    #     help="The name of the ncn personalization config to update.  Defaults to 'ncn-personalization'")
 
 
-    install_sp.add_argument("-N", "--rolling-update-method", action="store",
+    install_sp.add_argument("-M", "--rolling-update-method", action="store",
         default="rolling-reboot",
-        help="Method to update the nodes.  (rolling) 'reboot' or (rolling) 'live' (update in place).  Defaults to 'reboot'")
+        help="Method to update the nodes.  (rolling) 'reboot' or (rolling) 'in_place' (update running nodes).  Defaults to 'reboot'")
 
 #     install_sp.add_argument("-D", "--dvs-update-method", action="store",
 #         choices=["auto", "legacy", "ncn-upgrade"],
@@ -394,11 +376,14 @@ For example, --limit-nodes ncn-w003 would cause the rollout stage to only
 reload ncn-w003;  --limit-nodes x3000c0s37b0n0 would also work.
 """)
 
-    install_sp.add_argument("-co", "--compute-only", action="store",
-        help="Skip NCN node rollout actions")
+    install_sp.add_argument("-ls", "--limit-scope", action="store", default=None,
+        help="""Limit the scope of actions.  Options are 'management', 'managed', default is None.""")
 
-    install_sp.add_argument("-mo", "--mgmt-only", action="store",
-        help="Skip mgmt NCN node rollout actions")
+    # install_sp.add_argument("-co", "--compute-only", action="store",
+    #     help="Skip NCN node rollout actions")
+
+    # install_sp.add_argument("-mo", "--mgmt-only", action="store",
+    #     help="Skip mgmt NCN node rollout actions")
 
     install_sp.set_defaults(func=process_install, skip_stages=list(), run_stages=list())
 
@@ -406,8 +391,11 @@ reload ncn-w003;  --limit-nodes x3000c0s37b0n0 would also work.
     list_sp.set_defaults(func=process_list)
     list_sp.add_argument("-f", "--format", action="store")
 
-    products_sp = subparsers.add_parser("list-products")
-    products_sp.set_defaults(func=process_products)
+    # products_sp = subparsers.add_parser("list-products")
+    # products_sp.set_defaults(func=process_products)
+
+    install_sp = subparsers.add_parser("activity",
+        formatter_class=argparse.RawTextHelpFormatter)
 
     # create a config object to store all of the configured options in the parser
     configfile = ConfigFile()
