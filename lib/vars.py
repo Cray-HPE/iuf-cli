@@ -90,7 +90,7 @@ STAGE_DICT = OrderedDict({
         "description" : "Upload product content onto the system"
         },
     "update_vcs_config": {
-        "func" : "stub_update_config",
+        "func" : "update_vcs_config",
         "description" : "Merge working branches and perform, automated VCS configuration"
         },
     "update_cfs_config": {
