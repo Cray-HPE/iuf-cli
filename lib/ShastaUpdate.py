@@ -52,13 +52,13 @@ def get_prods(config):
     install_logger.info('  CREATE/READ activity session {}'.format(config.args['activity_session']))
 
 
-
 def stub_pre_install_check(config):
     for prod in config.location_dict:
         opargs = { 'dir': prod.work_dir, 'activity-session': config.args['activity_session'], 'product_manifest': prod.product_manifest['version'] }
         install_logger.info('  operation preflight_checks_for_services')
         printopargs(opargs)
     time.sleep(2)
+
 
 def stub_deliver_product(config):
     for prod in config.location_dict:
@@ -73,6 +73,7 @@ def stub_deliver_product(config):
         printopargs(opargs)
     time.sleep(2)
 
+
 def stub_update_config(config):
     for prod in config.location_dict:
         customer_branch = render_jinja(config, prod.name, config.args["customer_branch"])
@@ -82,6 +83,7 @@ def stub_update_config(config):
         printopargs(opargs)
     time.sleep(2)
 
+
 def stub_deploy_product(config):
     for prod in config.location_dict:
         opargs = { 'dir': prod.work_dir, 'activity-session': config.args['activity_session'], 'product_manifest': prod.product_manifest['version'] }
@@ -90,17 +92,20 @@ def stub_deploy_product(config):
         printopargs(opargs)
     time.sleep(2)
 
+
 def stub_prepare_images(config):
     opargs = { 'activity-session': config.args['activity_session'], 'bootprep_config': config.args['bootprep_config_managed'] }
     install_logger.info('  operation prepare_images (sat bootprep --images)')
     printopargs(opargs)
     time.sleep(2)
 
+
 def stub_ncn_rollout(config):
     opargs = { 'method': config.args["update_method_management"], 'activity-session': config.args['activity_session'] }
     install_logger.info('  operation ncn_rollout')
     printopargs(opargs)
     time.sleep(2)
+
 
 def stub_post_install_service_check(config):
     for prod in config.location_dict:
@@ -109,11 +114,13 @@ def stub_post_install_service_check(config):
         printopargs(opargs)
     time.sleep(2)
 
+
 def stub_cn_rollout(config):
     opargs = { 'method': config.args["update_method_managed"], 'activity-session': config.args['activity_session'] }
     install_logger.info('  operation cn_rollout')
     printopargs(opargs)
     time.sleep(2)
+
 
 def stub_post_install_compute_check(config):
     for prod in config.location_dict:
@@ -125,7 +132,6 @@ def stub_post_install_compute_check(config):
 
 def printopargs(opargs):
     print(json.dumps(opargs, indent=4))
-
 
 
 def install(config):
@@ -539,7 +545,7 @@ def get_mergeable_repos(config):
     return repos
 
 
-def update_customer_branches(config):
+def update_vcs_config(config):
     """Merge the product git branch to the working config"""
 
     # first things first, get a copy of all the config repos
@@ -548,6 +554,8 @@ def update_customer_branches(config):
     # get dict of mergeable repos
     repos = get_mergeable_repos(config)
     git = Git(config)
+
+    target_branch = config.args["target_branches"]
 
     for product in config.location_dict:
         if product.import_branch:
@@ -561,17 +569,14 @@ def update_customer_branches(config):
             # If the passed working branch doesn't exist,it is created. 
 
             # check out a local copy of the import_branch (release version)
+            print("product={}, target_branch={}, product.name={}".format(product.product, target_branch[product.product], product.name))
             git.checkout(repo, product.import_branch)
+            customer_branch = render_jinja(config, product.name, target_branch[product.product])
 
-            customer_branch = render_jinja(config, product.name, config.args["customer_branch"])
-            best_guess = best_guess_working(config, product.name, git, repo)
-            if best_guess != customer_branch:
                 # The working branch does not exist.
                 # Checkout best_guess (which will be the closest lower version
                 # working_working branch.  customer_branch will then be created
                 # from it if customer_branch does not exist.
-                git.checkout(repo, best_guess)
-            git.checkout(repo, customer_branch, create=True)
 
             # fourth, merge the import branch to the integration branch
             install_logger.info("  Merging branch {} into {}".format(product.import_branch, customer_branch))
@@ -885,6 +890,7 @@ def create_bootprep_config(config):
         }
     bp_layers = []
 
+    target_branch = config.args["target_branches"]
     for cfsd in cfs_dict["layers"]:
         # Use an OrderedDict so that if a person edits the resulting
         # bootprep-config.yaml, it looks normal, rather than in alphabetical
@@ -898,7 +904,7 @@ def create_bootprep_config(config):
         branches = git.ls_remote(repo, just_branches=True)
         if repo in prod_repos:
             prod_info = prod_repos[repo]
-            customer_branch = render_jinja(config, prod_info["product_key"], config.args["customer_branch"])
+            customer_branch = render_jinja(config, prod_info["product_key"], target_branch[prod_info["product"]])
 
             if customer_branch not in branches:
                 customer_branch = best_guess_working(config, prod_info["product"], git, repo)

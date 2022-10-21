@@ -5,14 +5,15 @@
 """The Compute Node Environment (CNE) Installer"""
 
 import argparse
-
-import json
-import os
-import sys
-import logging
-import tarfile
 import atexit
+import json
+import logging
+import os
 import shutil
+import sys
+import tarfile
+
+import yaml
 
 from lib.vars import *
 from lib.InstallLogger import *
@@ -83,12 +84,22 @@ def validate_stages(config):
 
     ### TODO get branch info from the site.yaml file
 
-    if ("customer_branch" in config.args and config.args["customer_branch"] is None) \
-        and (("update_config" in local_stages)):
+    if ("site_parameters" in config.args and config.args["site_parameters"] is None) \
+        and (("update_vcs_config" in local_stages)):
             msg = formatted("""
                 Please supply --customer-branch with stages update_config.""")
             print(msg)
             sys.exit(1)
+    elif "site_parameters" in config.args and config.args["site_parameters"]:
+        sp_path = config.args["site_parameters"]
+        if not os.path.exists(sp_path):
+            print("The `--site-parameters` {} cannot be found".format(sp_path))
+            sys.exit(1)
+        with open(sp_path, "r") as fhandle:
+            site_params = yaml.load(fhandle, yaml.SafeLoader)
+            if "target_branches" in site_params and site_params["target_branches"]:
+                config.args["target_branches"] = site_params["target_branches"]
+
 
     # Ensure that if a `sat bootprep` config was specified (and the stage
     # is being run) it exists.
@@ -140,6 +151,7 @@ def process_list(config): #pylint: disable=unused-argument
         all_stages = config.stages.get(long=True, status=True, all_stages=True, list_fmt=False)
 
     print(all_stages)
+
 
 def process_products(config):
     products = config.location_dict.prefixes(formatting="description")
@@ -326,14 +338,14 @@ Currently you can:
     List of `sat bootprep` config files for non-mgmt nodes (compute, UAN).""")
 
     install_sp.add_argument("-bc", "--bootprep-config-managed", action="store", nargs='+',
-        default = ['vcs/bootprep/compute-and-uan-bootprep.yaml'],
+        default = ['../vcs/bootprep/compute-and-uan-bootprep.yaml'],
         help=bpc_help)
 
     bpc_help = formatted("""
     List of `sat bootprep` config files for management NCN nodes.""")
 
     install_sp.add_argument("-bm", "--bootprep-config-management", action="store",
-        default = ['vcs/bootprep/management-bootprep.yaml'],
+        default = ['../vcs/bootprep/management-bootprep.yaml'],
         help=bpc_help)
 
     install_sp.add_argument("-um", "--update-method-management", action="store",
