@@ -1,0 +1,20 @@
+---
+
+defaults:
+    - &default_target_branch
+     '{{product_type}}-{{version_x_y}}-integration'
+    - &default_network
+      'mellanox'
+
+# When upgrading, this will be the branch that gets merged into.
+target_branches:
+    cos: *default_target_branch
+    cpe: cpe-22.06-integration
+    analytics: integration
+    slingshot-host-software: *default_target_branch
+    sat: *default_target_branch
+    csm: csm-1.13-integration
+    sma: *default_target_branch
+    uan: *default_target_branch
+
+network: *default_network
