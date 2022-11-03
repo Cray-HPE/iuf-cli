@@ -8,6 +8,11 @@ import hashlib
 import os
 from distutils.version import LooseVersion
 from lib.vars import InstallError
+from lib.InstallLogger import get_install_logger
+
+from yaml.scanner import ScannerError
+
+install_logger = get_install_logger()
 
 class ProductConfig:
     _new_product = { 'archive_type': None,
@@ -370,9 +375,17 @@ class Product:
             work_dir = self.__dict__[self.__dict__["name"]]['work_dir']
             if work_dir:
                 filename = os.path.join(work_dir, 'iuf-product-manifest.yaml')
-                with open(filename, "r") as f:
-                    product_manifest = yaml.load(f, yaml.SafeLoader)
-                self.__dict__[self.__dict__["name"]]['product_manifest'] = product_manifest
+                try:
+                    with open(filename, "r") as f:
+                        product_manifest = yaml.load(f, yaml.SafeLoader)
+                    self.__dict__[self.__dict__["name"]]['product_manifest'] = product_manifest
+                except FileNotFoundError:
+                    errmsg = "Could not find iuf-product-manifest.yaml for {}".format(
+                        self.__dict__[self.__dict__["name"]]["product"])
+                    raise FileNotFoundError(errmsg)
+                except ScannerError as ex:
+                    install_logger.error(ex)
+                    raise ScannerError("Syntax Problem in {}".format(filename))
         return self.__dict__[self.__dict__["name"]]['product_manifest']
 
 

@@ -28,14 +28,16 @@ class StageHist:
     def __init__(self, state_dir, all_stages=[]):
         self._stages = all_stages
         self._status = {}
-        self._stage_hist_file = None
         self._stage_hist_file = os.path.join(state_dir, STAGE_HIST_FILENAME)
+        self.summary = {}
 
         # Load the stage history from a previous run and return.
         if os.path.exists(self._stage_hist_file):
             with open(self._stage_hist_file, "r", encoding='UTF-8') as fhandle:
-              self._status = yaml.full_load(fhandle)
-              return
+                all_data = yaml.full_load(fhandle)
+                self._status = all_data["status"]
+                self.summary = all_data["summary"]
+            return
 
         # We have not returned.  This must be a new run.
         for stage in self._stages:
@@ -48,23 +50,20 @@ class StageHist:
         self.dump_status()
 
 
-    def create_new_status(self):
-          for stage in self._stages:
-                self._status[stage] = {
-                    "ran": False,
-                    "succeeded": False,
-                    "duration": None,
-                }
-
-
     def load_status(self):
         with open(self._stage_hist_file, "r", encoding='UTF-8') as fhandle:
-              self._status = yaml.full_load(fhandle)
+              all_data = yaml.full_load(fhandle)
+              self._status = all_data["status"]
+              self.summary = all_data["summary"]
 
 
     def dump_status(self):
+        dump_dict = {
+            "status": self._status,
+            "summary": self.summary
+        }
         with open(self._stage_hist_file, "w", encoding='UTF-8') as fhandle:
-            yaml.dump(self._status, fhandle)
+            yaml.dump(dump_dict, fhandle)
 
 
     def update(self, stage, ran=False, succeeded=False, duration=None):
@@ -85,10 +84,14 @@ class Stages():
         self._stages = list(self._stage_dict.keys())
         self._all_stages = self._stages
         self.installer_start = datetime.datetime.now()
+
         self.stage_hist = StageHist(state_dir, self._all_stages)
         self.skip_stages = []
         self._noabort_stages = NOABORT_STAGES
         self.current_stage = None
+        self.summary = {}
+
+        self.set_summary("command line", " ".join(sys.argv))
 
     @property
     def stage_hist_file(self):
@@ -102,11 +105,58 @@ class Stages():
     def endStage(self):
         return self._stages[-1]
 
+    def set_summary(self, summary_key, summary_value):
+        """Set a key (summary_key) in the summary dict to a particular value
+        (summary_value)"""
+        self.stage_hist.summary[summary_key] = summary_value
+
+
+    def get_summary(self, load=False):
+        """Get the high-level summary.  Return it as a block of text."""
+        if load:
+            self.stage_hist.load_status()
+        return_str = []
+        return_str.append("Session Summary")
+
+        for elt in self.stage_hist.summary:
+            return_str.append("{}: {}".format(elt.replace("_", " "), self.stage_hist.summary[elt]))
+
+        return "\n".join(return_str)
+
     def abortable(self, stage):
         """Return true if a stage can be aborted."""
         return stage not in self._noabort_stages
 
-    def get(self, long=False, all_stages=True, status=False, list_fmt=False):
+    def get_stage_status(self, activity):
+        return_list = []
+        for stage in self._stage_dict.keys():
+            return_list.append({
+                "stage": stage,
+                "description": self._stage_dict[stage].get("description", False),
+                "succeeded": self.stage_hist._status[stage]["succeeded"],
+                "duration": self.stage_hist._status[stage]["duration"],
+                "ran": self.run_status(stage)
+            })
+        return return_list
+
+    def run_status(self, stage):
+        ran = self.stage_hist._status[stage]["ran"]
+        succeeded = self.stage_hist._status[stage]["succeeded"]
+        run_result = "N/A"
+        if ran == True:
+            if succeeded == True:
+                run_result = "Succeeded"
+            elif succeeded == False:
+                run_result = "Failed"
+        elif ran:
+            run_result = ran
+        elif succeeded:
+            run_result = succeeded
+
+        return run_result
+
+    def get(self, long=False, all_stages=True,
+            status=False, list_fmt=False, summary=False):
         """Get either a printable list and description/status of stages, or return a list
             of stages."""
         if list_fmt:
@@ -138,14 +188,7 @@ class Stages():
                 if duration == None:
                     duration = "N/A"
 
-                run_result = "N/A"
-                if ran == True:
-                    if succeeded == True:
-                        run_result = "Succeeded"
-                    elif succeeded == False:
-                        run_result = "Failed"
-                elif ran:
-                    run_result = ran
+                run_result = self.run_status(stage)
 
                 val_row += [run_result, duration]
 
@@ -157,6 +200,13 @@ class Stages():
     def exec_stage(self, config, stage):
         """Run a stage."""
 
+        # Add "run_stages" and "args" to the stage summary.
+        if "ran_stages" in self.stage_hist.summary:
+            self.stage_hist.summary["ran_stages"] += " {}".format(stage)
+        else:
+            self.stage_hist.summary["ran_stages"] = stage
+
+        # Execute the stage.
         try:
             self.current_stage = stage
             stage_func = eval("supdate.{}".format(self._stage_dict[stage]["func"]))
@@ -185,8 +235,8 @@ class Stages():
             print("")
             install_logger.info("Aborting install after %s", elapsed_time(self.installer_start))
             print("")
-            self.stage_hist.update(stage, ran=True, succeeded=False,duration=duration)
-
+            self.stage_hist.update(stage, ran=False, succeeded="Paused",duration=duration)
+            print(self.get_summary())
             sys.exit(1)
 
         except Exception as err:
@@ -201,19 +251,26 @@ class Stages():
             install_logger.info("Aborting install after %s", elapsed_time(self.installer_start))
             print("")
 
-            self.stage_hist.update(stage, ran=True, succeeded=False, duration=duration)
+            self.stage_hist.update(stage, ran=False, succeeded="Paused", duration=duration)
+            print(self.get_summary())
             sys.exit(1)
 
     def set_skipped(self, skipped_stages=[]):
             for stage in skipped_stages:
                 self.stage_hist.update(stage, ran="Skipped", succeeded="Skipped", duration="N/A")
 
+    def set_paused(self, stage):
+        self.stage_hist.update(stage, ran=False, succeeded="Paused")
+
+    def reset(self):
+        for stage in self.get(list_fmt=True, all_stages=True):
+            self.stage_hist.update(stage)
+
     def validate(self, state_dir, begin_stage, end_stage, run_stages, skip_stages):
         """Resolve the argument logic and ensure the stages are valid."""
         # Do some error-handling with the stage-related args
         stages_list = self.get(list_fmt=True)
 
-        #self.checkInit(state_dir)
         # wait to exit until we process all the stages
         error=False
 
