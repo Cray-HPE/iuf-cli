@@ -7,7 +7,7 @@ import os
 from lib.ShastaUpdate import validate_products
 import sys
 
-from lib.vars import LOCATION_DICT
+from lib.vars import LOCATION_DICT, ACTIVITY_BASE_DIR
 from lib.Connection import CmdMgr
 import lib.Products
 
@@ -96,26 +96,27 @@ class Config:
         validated = True
 
         # sanity test the directories
-        for dir in ["media", "state", "log"]:
-            if not self._args.get(f"{dir}_dir", None):
-                base_dir = self._args.get("base_dir", os.getcwd())
-                if not os.path.isdir(base_dir):
-                    self._error(f"{base_dir} is not a valid directory")
-                    validated = False
-                    break
-                dir_default = os.path.join(base_dir, dir)
-                self._args[f"{dir}_dir"] = dir_default
+        activity = self._args.get("activity_session")
+        default_base_dir = os.path.join(ACTIVITY_BASE_DIR, activity)
+        base_dir = self._args.get("base_dir", None)
+        if base_dir is None:
+            base_dir = default_base_dir
+
+        for adir in ["media", "state", "log"]:
+            if not self._args.get(f"{adir}_dir", None):
+                dir_default = os.path.join(base_dir, adir)
+                self._args[f"{adir}_dir"] = dir_default
                 if not os.path.exists(dir_default):
                     try:
-                        os.mkdir(dir_default)
+                        os.makedirs(dir_default, exist_ok=True)
                     except Exception as e:
                         self._error(f"Unable to create {dir_default}")
                         self._error(e)
                         validated = False
 
-            dpath = self._args.get(f"{dir}_dir")
+            dpath = self._args.get(f"{adir}_dir")
             if not os.path.exists(dpath):
-                self._error(f"{dir.capitalize()} directory {dpath} does not exist.")
+                self._error(f"{adir.capitalize()} directory {dpath} does not exist.")
                 validated = False
 
         if not validated:
