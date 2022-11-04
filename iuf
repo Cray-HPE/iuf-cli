@@ -28,6 +28,8 @@ import lib.Config
 # Import lib.stages without the 'as stages' to prevent namespace collisions.
 import lib.stages
 
+import yaml
+
 # pylint: disable=consider-using-f-string
 
 install_logger = get_install_logger()
@@ -79,7 +81,6 @@ def validate_stages(config):
     #                 config.args["source_bos_sessiontemplate"],
     #                 bos_cfs_config_name))
     #             install_logger.warning(msg)
-
     # Ensure that customer_branch is specified if it's needed.
 
     ### TODO get branch info from the site.yaml file
@@ -87,13 +88,13 @@ def validate_stages(config):
     if ("site_parameters" in config.args and config.args["site_parameters"] is None) \
         and (("update_vcs_config" in local_stages)):
             msg = formatted("""
-                Please supply --customer-branch with stages update_config.""")
+                Please supply --site-parameters with stages update_vcs_config.""")
             print(msg)
             sys.exit(1)
     elif "site_parameters" in config.args and config.args["site_parameters"]:
         sp_path = config.args["site_parameters"]
         if not os.path.exists(sp_path):
-            print("The `--site-parameters` {} cannot be found".format(sp_path))
+            print("The `--site-parameters` file {} cannot be found.".format(sp_path))
             sys.exit(1)
         with open(sp_path, "r") as fhandle:
             site_params = yaml.load(fhandle, yaml.SafeLoader)
@@ -122,13 +123,26 @@ def validate_stages(config):
     return
 
 
-def process_install(config):
+def process_install(config, start_at=None):
     """Run the install"""
     all_stages = config.stages.get(list_fmt=True, all_stages=True)
     exec_stages = config.stages.get(list_fmt=True, all_stages=False)
+    start = True if start_at == None else False
+    def add_stage(stage):
+        """Add a stage to the summary."""
+        if "ran_stages" in config.stages.summary:
+            config.stages.summary["ran_stages"] += " {}".format(stage)
+        else:
+            config.stages.summary["ran_stages"] = stage
 
+    config.stages.set_summary("activity_session", config.args.get("activity_session"))
     for stage in all_stages:
+        if stage != start_at and start == False:
+            continue
+        elif stage == start_at:
+            start = True
         if stage in exec_stages:
+            add_stage(stage)
             install_logger.info("BEGINNING STAGE: {}".format(stage))
             # a logging message using exc_info must be the very first thing called after the except
             # block starts, so I can't make all these decisions there
@@ -140,6 +154,9 @@ def process_install(config):
             config.stages.exec_stage(config, stage)
 
     install_logger.info("Install completed in {}".format(elapsed_time(config.stages.installer_start)))
+    summary = config.stages.get_summary()
+    dashes = "----------------"
+    print("{}\n{}\n{}".format(dashes, summary, dashes))
 
 
 def process_list(config): #pylint: disable=unused-argument
@@ -147,10 +164,14 @@ def process_list(config): #pylint: disable=unused-argument
 
     if config.args.get("format", None) == "csv":
         all_stages = ','.join(config.stages.get(long=True, status=True, all_stages=True, list_fmt=True))
+        summary = None
     else:
         all_stages = config.stages.get(long=True, status=True, all_stages=True, list_fmt=False)
+        summary = config.stages.get_summary(load=True)
 
     print(all_stages)
+    if summary:
+        print(summary)
 
 
 def process_products(config):
@@ -163,7 +184,6 @@ def process_products(config):
                 return True
 
         return False
-
 
     header = ['Archive Prefix', 'Product Description']
     alignments = dict()
@@ -204,6 +224,69 @@ def process_debug_level(config):
     if "func" in config.args and config.args["func"] == process_install:
         install_logger.info("All logs will be stored in {}".format(log_dir))
     return
+
+def get_comment(text_or_list):
+    """Take an list or a string and return it as a string."""
+    comment = None
+    if text_or_list and type(text_or_list) is list:
+        comment = " ".join(text_or_list)
+    elif text_or_list:
+        comment = text_or_list
+
+    return comment
+
+def process_resume(config):
+    """Pick up where we left off."""
+    comment = get_comment(config.args.get("comment", None))
+    activity = config.args.get("activity_session")
+    config.stages.set_summary("comment", comment)
+    text = ""
+
+    stage_status = config.stages.get_stage_status(activity)
+    unpaused_stage = False
+    for stagedict in stage_status:
+        stage = stagedict["stage"]
+        run_status = config.stages.run_status(stage)
+        if run_status.lower() == 'paused':
+            # Unpause this stage.
+            unpaused_stage = stage
+            break
+
+    activity_dir = os.path.join(ACTIVITY_BASE_DIR, activity)
+    if unpaused_stage:
+        process_install(config, start_at=unpaused_stage)
+    else:
+        print("Couldn't find a paused stage.")
+        sys.exit(1)
+
+
+
+def process_restart(config):
+    """Remove the files associated with this activity and start over."""
+    comment = get_comment(config.args.get("comment", None))
+
+    # Remove the files in state_dir.
+    state_dir = config.args.get("state_dir")
+    for file in os.listdir(state_dir):
+        fpath = os.path.join(state_dir, file)
+        if os.path.isfile(fpath):
+            os.unlink(fpath)
+
+    # Remove the directories in media_dir.
+    media_dir = config.args.get("media_dir")
+    for file in os.listdir(media_dir):
+        fpath = os.path.join(media_dir, file)
+        if os.path.isdir(fpath):
+            shutil.rmtree(fpath)
+    config.stages.set_summary("comment", comment)
+    process_install(config)
+
+
+def process_abort(config):
+    """Kill the running processes and abort the run."""
+    # I dont think we can implement this until we know what processes are
+    # being killed, etc.
+    pass
 
 
 def update_logger_config(config):
@@ -262,8 +345,12 @@ def main():
         help="""Write out a new config file to the input file specified with defaults+
         any command line options specified and quit.""")
 
-    parser.add_argument("-b", "--base-dir", action="store", default=os.getcwd(),
-        help="""Base directory for state/media/log dirs.  Must already exist.  Default is the current working directory.""")
+    ### TODO, make default value product_vars.yaml 'recipe', fallback to pwd
+    parser.add_argument("-a", "--activity-session", action="store", default=os.path.basename(os.getcwd()),
+        help="Activity session name.  Must be a unique identifier.  Defaults to media dir")
+
+    parser.add_argument("-b", "--base-dir", action="store",
+        help="""Base directory for state/media/log dirs.  Must already exist.  Default is /etc/cray/upgrade/csm/iuf/<activity-session>""")
 
     parser.add_argument("-s", "--state-dir", action="store",
         help="A directory used to store the current state of stages.  Defaults to [base-dir]/state.")
@@ -272,10 +359,6 @@ def main():
     #### TODO change to default to pwd
     parser.add_argument("-m", "--media-dir", action="store",
         help="Location of installation media you would like to install.  Defaults to [base-dir]]/media")
-
-    ### TODO, make default value product_vars.yaml 'recipe', fallback to pwd
-    parser.add_argument("-a", "--activity-session", action="store", default=os.path.basename(os.getcwd()),
-        help="Activity session name.  Must be a unique identifier.  Defaults to media dir")
 
     parser.add_argument("-sp", "--site-parameter", action="store", default=False,
         help="Path the the site.yaml parameter config.")
@@ -300,7 +383,7 @@ def main():
     # are fully independent; for example, we have an unpack stage, and an
     # install stage.  The install stage needs to install what was unpacked.
 
-    subparsers = parser.add_subparsers(title="subcommands", metavar='{run,activity,list-stages|ls,list-products}')
+    subparsers = parser.add_subparsers(title="subcommands", metavar='{run,activity,list-stages|ls,list-products|resume|restart|abort}')
     stage_list = lib.stages.get_stage_help()
 
     install_sp = subparsers.add_parser("run", epilog="Valid stages:\n{}".format(stage_list),
@@ -320,16 +403,6 @@ def main():
 
     install_sp.add_argument("-F", "--force", action="store", default=False,
         help="Force re-execution of stage operations.")
-
-    #### TODO: replace with site parameters
-    install_sp.add_argument("-B", "--customer-branch", action="store",
-        help="""TODO: This will be replaced by the site_parameters.yaml file
-Currently you can:
-    {{product_type}}   Type of product.
-                       ex: 'cos', 'slingshot-host-software', 'sles'
-    {{version_x_y_z}}  x.y.z version of the product
-    {{version_x_y}}    x.y version of the product
-        """)
 
     install_sp.add_argument("-sp", "--site-parameters", action="store", default='site_parameters.yaml',
         help="Path to site parameters file.  Default is site_parameters.yaml")
@@ -385,6 +458,19 @@ reload ncn-w003;  --limit-nodes x3000c0s37b0n0 would also work.
     #     help="""create a new activity section""")
 
     # create a config object to store all of the configured options in the parser
+
+    resume_sp = subparsers.add_parser("resume")
+    resume_sp.set_defaults(func=process_resume)
+    resume_sp.add_argument("comment", action="store", nargs="*")
+
+    restart_sp = subparsers.add_parser("restart")
+    restart_sp.set_defaults(func=process_restart)
+    restart_sp.add_argument("comment", action="store", nargs="*")
+
+    abort_sp = subparsers.add_parser("abort")
+    abort_sp.set_defaults(func=process_abort)
+    abort_sp.add_argument("comment", action="store", nargs="*")
+
     configfile = ConfigFile()
     configfile.load_parser_defaults(parser)
 

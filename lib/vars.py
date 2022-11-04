@@ -52,7 +52,7 @@ class TestFailure(Exception):
     """A wrapper for raising a TestFailure exception."""
     pass
 
-class SyntaxError(Exception):
+class SyntaxProblem(Exception):
     """A wrapper for raising yaml or json syntax errors."""
     pass
 
@@ -140,6 +140,8 @@ STAGE_HIST_FILENAME = "stage_hist.yaml"
 NCNP_VARS = "ncnp-vars.yaml"
 
 SAT_BOOTPREP_CFG_CN = "bootprep-config-cn.yaml"
+
+ACTIVITY_BASE_DIR = "/etc/cray/upgrade/csm/iuf"
 
 LOG_DEFAULT_CONSOLE_LEVEL = logging.INFO
 LOG_DEFAULT_FILE_LEVEL = logging.DEBUG
