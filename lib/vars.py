@@ -127,6 +127,7 @@ NOABORT_STAGES = [
 ]
 
 LOCATION_DICT = "location_dict.yaml"
+ACTIVITY_DICT = "activity_dict.yaml"
 
 BOOT_POLL_SECS = 60
 BOOT_TIMOUT_SECS = 3600
