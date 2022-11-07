@@ -7,13 +7,16 @@ import os
 from lib.ShastaUpdate import validate_products
 import sys
 
-from lib.vars import LOCATION_DICT, ACTIVITY_BASE_DIR
+from lib.vars import LOCATION_DICT, ACTIVITY_DICT, ACTIVITY_BASE_DIR
 from lib.Connection import CmdMgr
 import lib.Products
+import lib.Activity
 
 class Config:
     _location_dict = None
     _location_dict_file = None
+    _activity_session = None
+    _activity_dict_file = None
     _args = None
     _connection = None
     _logger = None
@@ -35,6 +38,18 @@ class Config:
     @property
     def logdir(self):
         return os.path.join(self._args["log_dir"], self.timestamp)
+    
+    @property
+    def activity(self):
+        if self._activity_session is None:
+            session = self.args.get("activity_session", None)
+            self._activity_session = lib.Activity.Activity(name=session, filename=self.activity_dict_file, dryrun=self.dryrun)
+        
+        return self._activity_session
+    
+    @activity.setter
+    def activity(self, value):
+        self._activity_session = value
 
     @property
     def location_dict(self):
@@ -61,6 +76,15 @@ class Config:
     @connection.setter
     def connection(self, value):
         self._connection = value
+
+    @property
+    def activity_dict_file(self):
+        if self._activity_dict_file is None and self._args is not None:
+            state_dir = self._args.get("state_dir")
+            if state_dir:
+                self._activity_dict_file = os.path.join(state_dir, ACTIVITY_DICT)
+
+        return self._activity_dict_file
 
     @property
     def location_dict_file(self):

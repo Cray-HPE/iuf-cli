@@ -6,7 +6,6 @@
 
 import argparse
 import atexit
-import json
 import logging
 import os
 import shutil
@@ -24,6 +23,7 @@ from lib.InstallerUtils import print_table
 from lib.ConfigFile import ConfigFile
 from lib.ConfigFile import InvertableArgument
 import lib.Config
+import lib.Activity
 
 # Import lib.stages without the 'as stages' to prevent namespace collisions.
 import lib.stages
@@ -122,6 +122,19 @@ def validate_stages(config):
 
     return
 
+def process_activity(config):
+    state = config.args.get("state", None)
+    if state:
+        config.activity.state(
+            timestamp=config.args.get("time", None),
+            sessionid=config.args.get("sessionid", None),
+            status=config.args.get("status", "n/a"),
+            comment=config.args.get("comment", None),
+            state=state,
+            create=config.args.get("create", False)
+        )
+    
+    print(config.activity)
 
 def process_install(config, start_at=None):
     """Run the install"""
@@ -339,15 +352,18 @@ def main():
     parser.add_argument("-i", "--input-file", action="store", help="""Input
         file used to control the install.   Command line arguments will
         override what is in the file.
-        Input file should be YAML.""")
+        Input file should be YAML.
+        Can also be set via the IUF_INPUT_FILE environment variable.""")
 
     parser.add_argument("-w", "--write-input-file", action="store_true",
         help="""Write out a new config file to the input file specified with defaults+
         any command line options specified and quit.""")
 
     ### TODO, make default value product_vars.yaml 'recipe', fallback to pwd
-    parser.add_argument("-a", "--activity-session", action="store", default=os.path.basename(os.getcwd()),
-        help="Activity session name.  Must be a unique identifier.  Defaults to media dir")
+    parser.add_argument("-a", "--activity-session", action="store",
+        help="""Activity session name.  Must be a unique identifier.
+        Session names must only contain letters (A-Za-z), numbers (0-9), periods (.), and dashes (-).
+        Can also be set via the IUF_ACTIVITY_SESSION environment variable.""")
 
     parser.add_argument("-b", "--base-dir", action="store",
         help="""Base directory for state/media/log dirs.  Must already exist.  Default is /etc/cray/upgrade/csm/iuf/<activity-session>""")
@@ -471,8 +487,23 @@ reload ncn-w003;  --limit-nodes x3000c0s37b0n0 would also work.
     abort_sp.set_defaults(func=process_abort)
     abort_sp.add_argument("comment", action="store", nargs="*")
 
+    activity_sp = subparsers.add_parser("activity")
+    activity_sp.add_argument("--comment", help="Comment for the activitiy state", action="store")
+    activity_sp.add_argument("--time", help="Add or edit state at a specific timestamp, defaults to now.", action="store")
+    activity_sp.add_argument("--create", help="Create a new activity state", action="store_true", default=False)
+    activity_sp.add_argument("--status", help="Current status of the state", action="store", default="n/a", choices=lib.Activity.ACTIVITY_VALID_STATUS )
+    activity_sp.add_argument("--sessionid", help="Argo sessionid.", default=None)
+    activity_sp.add_argument("state", nargs="?", help="State name", action="store", default=None, choices=lib.Activity.ACTIVITY_VALID_STATES)
+
+    activity_sp.set_defaults(func=process_activity)
+
     configfile = ConfigFile()
     configfile.load_parser_defaults(parser)
+
+    # allow the input file to be defined by environment variable
+    env_input_file = os.getenv("IUF_INPUT_FILE", None)
+    if env_input_file:
+        parser.set_defaults(input_file=env_input_file)
 
     # parse the arguments once to get input file
     tmp_args = parser.parse_args()
@@ -480,15 +511,20 @@ reload ncn-w003;  --limit-nodes x3000c0s37b0n0 would also work.
     # load any defaults from the input file
     configfile.set_defaults(parser,vars(tmp_args))
 
+    # allow the activity session to be defined in the environment
+    env_session = os.getenv("IUF_ACTIVITY_SESSION", None)
+    if env_session:
+        parser.set_defaults(activity_session=env_session)
+
     # parse the command line for real
     args = parser.parse_args()
 
+    
     # Convert the args to a dict, and use that rather than the argparse
     # object.  This is so that we have a dictionary of all options, so that
     # we can more easily determine which values can be passed via an input
     # deck.
     config.args = vars(args)
-    config.stages = lib.stages.Stages(stage_dict=STAGE_DICT, state_dir=config.args["state_dir"])
 
     process_debug_level(config)
     update_logger_config(config)
@@ -496,11 +532,24 @@ reload ncn-w003;  --limit-nodes x3000c0s37b0n0 would also work.
 
     config.logger = install_logger
 
+    config_error = False
+    if not args.activity_session:
+        install_logger.error("--activity-session is required.")
+        config_error = True
+
+    if not lib.Activity.valid_activity_name(args.activity_session):
+        install_logger.error(f"Activity session {args.activity_session} invalid.  Names must only contain letters, numbers, periods, and dashes")
+        config_error = True
+
     if len(sys.argv) < 2:
         install_logger.error("{} requires at least 1 argument".format(sys.argv[0]))
+        config_error = True
+
+    if config_error:
         parser.print_help(sys.stderr)
         sys.exit(1)
 
+    config.stages = lib.stages.Stages(stage_dict=STAGE_DICT, state_dir=config.args["state_dir"])
     validate_stages(config)
 
     if config.args["write_input_file"]:
