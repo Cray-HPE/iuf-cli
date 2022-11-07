@@ -120,7 +120,11 @@ class Config:
         validated = True
 
         # sanity test the directories
-        activity = self._args.get("activity_session")
+        activity = self._args.get("activity_session", None)
+        if not activity:
+            self._error("No activity session specified")
+            sys.exit(1)
+
         default_base_dir = os.path.join(ACTIVITY_BASE_DIR, activity)
         base_dir = self._args.get("base_dir", None)
         if base_dir is None:
