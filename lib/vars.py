@@ -97,10 +97,6 @@ STAGE_DICT = OrderedDict({
         "func" : "stub_update_config",
         "description" : "Update CFS configuration (sat bootprep run --config)"
         },
-    "deploy_product": {
-        "func" : "stub_deploy_product",
-        "description" : "Deploy services to system"
-        },
     "prepare_images": {
         "func" : "stub_prepare_images",
         "description" : "Build and configure management node and/or managed node images (sat bootprep run --images)"
@@ -108,6 +104,10 @@ STAGE_DICT = OrderedDict({
     "management_nodes_rollout": {
         "func" : "stub_ncn_rollout",
         "description" : "Rolling reboot or liveupdate of management nodes"
+        },
+    "deploy_product": {
+        "func" : "stub_deploy_product",
+        "description" : "Deploy services to system"
         },
     "post_install_service_check": {
         "func" : "stub_post_install_service_check",
