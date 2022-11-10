@@ -4,6 +4,8 @@ from collections import OrderedDict
 import datetime
 import logging
 
+import os
+
 import textwrap
 class VMConnectionException(Exception):
     """A pass-through class."""
@@ -142,7 +144,9 @@ NCNP_VARS = "ncnp-vars.yaml"
 
 SAT_BOOTPREP_CFG_CN = "bootprep-config-cn.yaml"
 
-ACTIVITY_BASE_DIR = "/etc/cray/upgrade/csm/iuf"
+RBD_BASE_DIR = "/etc/cray/upgrade/csm"
+IUF_BASE_DIR = os.path.join(RBD_BASE_DIR, "iuf")
+ACTIVITY_BASE_DIR = os.path.join(IUF_BASE_DIR, "activities")
 
 LOG_DEFAULT_CONSOLE_LEVEL = logging.INFO
 LOG_DEFAULT_FILE_LEVEL = logging.DEBUG
