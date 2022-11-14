@@ -116,10 +116,13 @@ class Stages():
         if load:
             self.stage_hist.load_status()
         return_str = []
-        return_str.append("Session Summary")
 
         for elt in self.stage_hist.summary:
             return_str.append("{}: {}".format(elt.replace("_", " "), self.stage_hist.summary[elt]))
+
+        # Insert a header if there is any history.
+        if return_str:
+            return_str.insert(0, "Stage Summary")
 
         return "\n".join(return_str)
 

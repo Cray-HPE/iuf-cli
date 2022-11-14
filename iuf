@@ -37,7 +37,6 @@ install_logger = get_install_logger()
 def validate_stages(config):
     """Validate that all of the various stage related args passed in are valid"""
 
-
     # load all of the stage variables
     begin_stage = config.args.get('begin_stage')
     end_stage = config.args.get('end_stage')
@@ -46,61 +45,30 @@ def validate_stages(config):
     state_dir = config.args.get('state_dir')
 
     config.stages.validate(state_dir, begin_stage, end_stage, run_stages, skip_stages)
+    local_stages = config.stages.get(all_stages=False, list_fmt=True)
 
     if config.args.get("func", "") == process_install:
         install_logger.info("STAGE SUMMARY: begin_stage=%s, end_stage=%s", config.stages.beginStage, config.stages.endStage)
+        if "update_vcs_config" in local_stages:
 
-    local_stages = config.stages.get(all_stages=False, list_fmt=True)
+            sp_passed = False
+            if "site_parameters" in config.args and config.args["site_parameters"]:
+                sp_path = config.args["site_parameters"]
+                sp_passed = True
+            else:
+                sp_path = os.path.join(IUF_BASE_DIR, "site-parameters.yaml")
 
-    # Check the BOS sessiontemplate and CFS config arguments.  If the CFS
-    # config is not explicitly specified, it can be obtained from the BOS
-    # sessiontemplate.
-    # if "source_bos_sessiontemplate" in config.args and config.args["source_bos_sessiontemplate"] is None \
-    #     and "create_bootprep_config" in local_stages:
-    #     msg = formatted("""
-    #         When creating a bos session template,  a source bos sessiontemplate
-    #         (-t or --source-bos-sessiontemplate) is required""")
-    #     print(msg)
-    #     sys.exit(1)
-    # elif "source_bos_sessiontemplate" in config.args and config.args["source_bos_sessiontemplate"]:
-    #     bos_template = json.loads(config.connection.sudo("cray bos sessiontemplate describe {} --format json".format(
-    #         config.args["source_bos_sessiontemplate"])).stdout)
-    #     bos_cfs_config_name = bos_template["cfs"]["configuration"]
-
-    #     if "cfs_config" not in config.args or config.args["cfs_config"] is None:
-    #         config.args["cfs_config"] = bos_cfs_config_name
-    #     elif "cfs_config" in config.args and config.args["cfs_config"] is not None:
-    #         if config.args["cfs_config"] != bos_cfs_config_name:
-    #             msg = formatted("""
-    #                 The cfs-config argument passed in ({}) will be used in
-    #                 image building and creating the bos  sessiontemplate.
-    #                 This differs from the one found in the bos
-    #                 sessiontemplate ({}).  The one found in {} was {}""".format(
-    #                 config.args["cfs_config"],
-    #                 config.args["source_bos_sessiontemplate"],
-    #                 config.args["source_bos_sessiontemplate"],
-    #                 bos_cfs_config_name))
-    #             install_logger.warning(msg)
-    # Ensure that customer_branch is specified if it's needed.
-
-    ### TODO get branch info from the site.yaml file
-
-    if ("site_parameters" in config.args and config.args["site_parameters"] is None) \
-        and (("update_vcs_config" in local_stages)):
-            msg = formatted("""
-                Please supply --site-parameters with stages update_vcs_config.""")
-            print(msg)
-            sys.exit(1)
-    elif "site_parameters" in config.args and config.args["site_parameters"]:
-        sp_path = config.args["site_parameters"]
-        if not os.path.exists(sp_path):
-            print("The `--site-parameters` file {} cannot be found.".format(sp_path))
-            sys.exit(1)
-        with open(sp_path, "r") as fhandle:
-            site_params = yaml.load(fhandle, yaml.SafeLoader)
-            if "target_branches" in site_params and site_params["target_branches"]:
-                config.args["target_branches"] = site_params["target_branches"]
-
+            if not os.path.exists(sp_path):
+                msg = formatted("""
+                    The `--site-parameters` file  cannot be found. Please
+                    specify the location or place it at {}""".format(
+                    os.path.join(IUF_BASE_DIR, "site-parameters.yaml")))
+                print(msg)
+                sys.exit(1)
+            with open(sp_path, "r") as fhandle:
+                site_params = yaml.load(fhandle, yaml.SafeLoader)
+                if "target_branches" in site_params and site_params["target_branches"]:
+                    config.args["target_branches"] = site_params["target_branches"]
 
     # Ensure that if a `sat bootprep` config was specified (and the stage
     # is being run) it exists.
@@ -133,7 +101,7 @@ def process_activity(config):
             state=state,
             create=config.args.get("create", False)
         )
-    
+
     print(config.activity)
 
 def process_install(config, start_at=None):
@@ -149,6 +117,8 @@ def process_install(config, start_at=None):
             config.stages.summary["ran_stages"] = stage
 
     config.stages.set_summary("activity_session", config.args.get("activity_session"))
+    config.stages.set_summary("media_dir", config.args.get("media_dir"))
+    config.stages.set_summary("log_dir", config.args.get("log_dir"))
     for stage in all_stages:
         if stage != start_at and start == False:
             continue
@@ -256,22 +226,31 @@ def process_resume(config):
     text = ""
 
     stage_status = config.stages.get_stage_status(activity)
+    last_success = None
     unpaused_stage = False
-    for stagedict in stage_status:
+    next_stage = None
+    last_list_index = len(stage_status) - 1
+    for ctr, stagedict in enumerate(stage_status):
         stage = stagedict["stage"]
         run_status = config.stages.run_status(stage)
         if run_status.lower() == 'paused':
             # Unpause this stage.
             unpaused_stage = stage
             break
+        elif stagedict["succeeded"] is True:
+            last_index = ctr + 1  if ctr + 1  <= last_list_index else ctr
+            next_stage = stage_status[last_index]["stage"]
 
+    start_at = None
     activity_dir = os.path.join(ACTIVITY_BASE_DIR, activity)
     if unpaused_stage:
+        start_at = unpaused_stage
         process_install(config, start_at=unpaused_stage)
+    elif next_stage:
+        process_install(config, start_at=next_stage)
     else:
-        print("Couldn't find a paused stage.")
+        print("Couldn't find a successful or paused stage to resume at.")
         sys.exit(1)
-
 
 
 def process_restart(config):
@@ -366,15 +345,14 @@ def main():
         Can also be set via the IUF_ACTIVITY_SESSION environment variable.""")
 
     parser.add_argument("-b", "--base-dir", action="store",
-        help="""Base directory for state/media/log dirs.  Must already exist.  Default is /etc/cray/upgrade/csm/iuf/<activity-session>""")
+        help="""Base directory for state and log dirs.  Default is ${RSM_BASE_DIR}/iuf/<activity-session>""")
 
     parser.add_argument("-s", "--state-dir", action="store",
         help="A directory used to store the current state of stages.  Defaults to [base-dir]/state.")
 
     #### TODO handle both directories or list of files
-    #### TODO change to default to pwd
     parser.add_argument("-m", "--media-dir", action="store",
-        help="Location of installation media you would like to install.  Defaults to [base-dir]]/media")
+        help="Location of installation media you would like to install.  Defaults to $RBD_BASE_DIR/{activity_session}")
 
     parser.add_argument("-sp", "--site-parameter", action="store", default=False,
         help="Path the the site.yaml parameter config.")
@@ -420,21 +398,21 @@ def main():
     install_sp.add_argument("-F", "--force", action="store", default=False,
         help="Force re-execution of stage operations.")
 
-    install_sp.add_argument("-sp", "--site-parameters", action="store", default='site_parameters.yaml',
-        help="Path to site parameters file.  Default is site_parameters.yaml")
+    install_sp.add_argument("-sp", "--site-parameters", action="store",
+        help="Path to site parameters file.  Default is ${RSM_BASE_DIR}/$IUF_ACTIVITY_SESSION}/site_parameters.yaml")
 
     bpc_help = formatted("""
     List of `sat bootprep` config files for non-mgmt nodes (compute, UAN).""")
 
     install_sp.add_argument("-bc", "--bootprep-config-managed", action="store", nargs='+',
-        default = ['../vcs/bootprep/compute-and-uan-bootprep.yaml'],
+        #default = ['../vcs/bootprep/compute-and-uan-bootprep.yaml'],
         help=bpc_help)
 
     bpc_help = formatted("""
     List of `sat bootprep` config files for management NCN nodes.""")
 
     install_sp.add_argument("-bm", "--bootprep-config-management", action="store",
-        default = ['../vcs/bootprep/management-bootprep.yaml'],
+        #default = ['../vcs/bootprep/management-bootprep.yaml'],
         help=bpc_help)
 
     install_sp.add_argument("-um", "--update-method-management", action="store",
@@ -451,8 +429,6 @@ For example, --limit-nodes ncn-w003 would cause the rollout stage to only
 reload ncn-w003;  --limit-nodes x3000c0s37b0n0 would also work.
 """)
 
-    # install_sp.add_argument("-ls", "--limit-scope", action="store", default=None,
-    #     help="""Limit the scope of actions.  Options are 'management', 'managed', default is None.""")
 
     install_sp.set_defaults(func=process_install, skip_stages=list(), run_stages=list())
 
@@ -460,18 +436,8 @@ reload ncn-w003;  --limit-nodes x3000c0s37b0n0 would also work.
     list_sp.set_defaults(func=process_list)
     list_sp.add_argument("-f", "--format", action="store")
 
-    # products_sp = subparsers.add_parser("list-products")
-    # products_sp.set_defaults(func=process_products)
-
     install_sp = subparsers.add_parser("activity",
         formatter_class=argparse.RawTextHelpFormatter)
-
-    # install_sp.add_argument("activity", action="store",
-    #     default=None, nargs='?',
-    #     help="one of 'in_progress', 'paused', 'debug', 'blocked'")
-
-    # install_sp.add_argument("-C", "--create", action="store", default=False,
-    #     help="""create a new activity section""")
 
     # create a config object to store all of the configured options in the parser
 
@@ -519,7 +485,6 @@ reload ncn-w003;  --limit-nodes x3000c0s37b0n0 would also work.
     # parse the command line for real
     args = parser.parse_args()
 
-    
     # Convert the args to a dict, and use that rather than the argparse
     # object.  This is so that we have a dictionary of all options, so that
     # we can more easily determine which values can be passed via an input

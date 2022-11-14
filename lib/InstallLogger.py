@@ -1,8 +1,12 @@
 # Copyright 2022 Hewlett Packard Enterprise Development LP
 
+import datetime
 import logging
 import os
+import time
+
 from lib.vars import *
+
 
 def addLoggingLevel(levelName, levelNum, methodName=None):
     """
@@ -73,13 +77,14 @@ def install_logger_file_init(config):
     log_filename = os.path.join(log_dir, LOG_DEFAULT_FILENAME)
     log_file_handler = logging.FileHandler(log_filename)
 
-    if os.path.islink(LOG_DEFAULT_FILENAME):
-        os.remove(LOG_DEFAULT_FILENAME)
+     #if os.path.exists(LOG_DEFAULT_FILENAME):
+     #   os.rename(LOG_DEFAULT_FILENAME, "{}.{}".format(LOG_DEFAULT_FILENAME, os.getpid()))
 
-    if os.path.exists(LOG_DEFAULT_FILENAME):
-        os.rename(LOG_DEFAULT_FILENAME, "{}.{}".format(LOG_DEFAULT_FILENAME, os.getpid()))
+    symlink_target = os.path.join(log_dir_base, LOG_DEFAULT_FILENAME)
+    if os.path.islink(symlink_target):
+        os.remove(symlink_target)
 
-    os.symlink(log_filename, LOG_DEFAULT_FILENAME)
+    os.symlink(log_filename, symlink_target)
 
     if verbose:
         log_file_handler.setFormatter(logging.Formatter(LOG_DEFAULT_FILE_FORMAT_VERBOSE))
@@ -96,13 +101,15 @@ def install_logger_stream_init(log_console_level=LOG_DEFAULT_CONSOLE_LEVEL, verb
     """
     install_logger = logging.getLogger(LOG_DEFAULT_NAME)
 
+    logging.Formatter.formatTime = (lambda self, record,
+                                    datefmt = None: datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"))
     log_stream_handler = logging.StreamHandler()
     log_stream_handler.setLevel(log_console_level)
     if verbose:
         log_stream_handler.setFormatter(logging.Formatter(LOG_DEFAULT_CONSOLE_FORMAT_VERBOSE))
     else:
         log_stream_handler.setFormatter(logging.Formatter(LOG_DEFAULT_CONSOLE_FORMAT))
-    
+
     install_logger.addHandler(log_stream_handler)
 
     return install_logger

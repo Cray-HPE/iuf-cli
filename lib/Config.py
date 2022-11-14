@@ -7,7 +7,7 @@ import os
 from lib.ShastaUpdate import validate_products
 import sys
 
-from lib.vars import LOCATION_DICT, ACTIVITY_DICT, ACTIVITY_BASE_DIR
+from lib.vars import LOCATION_DICT, ACTIVITY_DICT, IUF_BASE_DIR, RBD_BASE_DIR
 from lib.Connection import CmdMgr
 import lib.Products
 import lib.Activity
@@ -38,15 +38,15 @@ class Config:
     @property
     def logdir(self):
         return os.path.join(self._args["log_dir"], self.timestamp)
-    
+
     @property
     def activity(self):
         if self._activity_session is None:
             session = self.args.get("activity_session", None)
             self._activity_session = lib.Activity.Activity(name=session, filename=self.activity_dict_file, dryrun=self.dryrun)
-        
+
         return self._activity_session
-    
+
     @activity.setter
     def activity(self, value):
         self._activity_session = value
@@ -70,7 +70,7 @@ class Config:
         if self._connection is None:
             self._connection = CmdMgr.get_cmd_interface()
             self._connection.dryrun = self.dryrun
-            
+
         return self._connection
 
     @connection.setter
@@ -125,12 +125,16 @@ class Config:
             self._error("No activity session specified")
             sys.exit(1)
 
-        default_base_dir = os.path.join(ACTIVITY_BASE_DIR, activity)
+        default_base_dir = os.path.join(IUF_BASE_DIR, activity)
         base_dir = self._args.get("base_dir", None)
         if base_dir is None:
             base_dir = default_base_dir
 
-        for adir in ["media", "state", "log"]:
+        if not self._args.get("media_dir", None):
+            self._args["media_dir"] = os.path.join(RBD_BASE_DIR, activity)
+            os.makedirs(self._args["media_dir"], exist_ok = True)
+
+        for adir in ["state", "log"]:
             if not self._args.get(f"{adir}_dir", None):
                 dir_default = os.path.join(base_dir, adir)
                 self._args[f"{adir}_dir"] = dir_default
