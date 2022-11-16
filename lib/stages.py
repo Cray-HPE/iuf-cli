@@ -205,7 +205,9 @@ class Stages():
 
         # Add "run_stages" and "args" to the stage summary.
         if "ran_stages" in self.stage_hist.summary:
-            self.stage_hist.summary["ran_stages"] += " {}".format(stage)
+            ran_stages = self.stage_hist.summary["ran_stages"].split()
+            if stage not in ran_stages:
+                self.stage_hist.summary["ran_stages"] += " {}".format(stage)
         else:
             self.stage_hist.summary["ran_stages"] = stage
 
