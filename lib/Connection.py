@@ -6,8 +6,6 @@ import asyncio
 import shlex
 import sys
 import lib.InstallLogger
-import shutil
-import os
 from lib.vars import RunException, RunTimeoutError
 
 install_logger = lib.InstallLogger.get_install_logger(__name__)
@@ -38,7 +36,7 @@ class _CmdInterface:
             result = RunOutput(cmd, shlex.split(cmd), 0, "", "Dryrun, command not executed")
         else:
             if store_output:
-                output_h = open(store_output, "w", 1)
+                output_h = open(store_output, "w", 1, encoding='UTF-8')
             else:
                 output_h = None
 
@@ -46,31 +44,31 @@ class _CmdInterface:
                 result = self.run(cmd, quiet=quiet, output=output_h, cwd=cwd, tee=tee, timeout=timeout, **kwargs)
 
             except RunException as e:
-                install_logger.debug("  >>   cmd      : {}".format(e.cmd))
+                install_logger.debug("  >>   cmd      : %s", e.cmd)
                 if store_output:
-                    install_logger.debug("  >>>> log      : {}".format(store_output))
+                    install_logger.debug("  >>>> log      : %s", store_output)
                 else:
-                    install_logger.debug("  >>>> stdout   : {}".format(e.stdout))
-                    install_logger.debug("  >>>> stderr   : {}".format(e.stderr))
-                install_logger.debug("  >>>> exit code: {}".format(e.returncode))
+                    install_logger.debug("  >>>> stdout   : %s", e.stdout)
+                    install_logger.debug("  >>>> stderr   : %s", e.stderr)
+                install_logger.debug("  >>>> exit code: %s", e.returncode)
                 raise
-            except RunTimeoutError as e:
-                install_logger.debug("  >>   cmd      : {}".format(cmd))
-                install_logger.debug("  >>   error    : Execution time exceeded {} seconds".format(timeout))
+            except RunTimeoutError:
+                install_logger.debug("  >>   cmd      : %s", cmd)
+                install_logger.debug("  >>   error    : Execution time exceeded %s seconds", timeout)
                 raise
 
         if not quiet:
             if dryrun:
-                install_logger.dryrun("  >>   cmd      : {}".format(cmd))
-                install_logger.dryrun("  >>>> cwd      : {}".format(cwd))
+                install_logger.dryrun("  >>   cmd      : %s", cmd)
+                install_logger.dryrun("  >>>> cwd      : %s", cwd)
             else:
-                install_logger.debug("  >>   cmd      : {}".format(result.cmd))
+                install_logger.debug("  >>   cmd      : %s", result.cmd)
                 if store_output:
-                    install_logger.debug("  >>>> log      : {}".format(store_output))
+                    install_logger.debug("  >>>> log      : %s", store_output)
                 else:
-                    install_logger.debug("  >>>> stdout   : {}".format(result.stdout))
-                    install_logger.debug("  >>>> stderr   : {}".format(result.stderr))
-                install_logger.debug("  >>>> exit code: {}".format(result.returncode))
+                    install_logger.debug("  >>>> stdout   : %s", result.stdout)
+                    install_logger.debug("  >>>> stderr   : %s", result.stderr)
+                install_logger.debug("  >>>> exit code: %s", result.returncode)
 
         return result
 
@@ -121,7 +119,7 @@ class _CmdInterface:
             if tee_output:
                 print(line, file=pipe)
 
-        done, pending = await asyncio.wait([
+        _, pending = await asyncio.wait([
             self._read_stream(p.stdout, lambda l: tee(l, out, sys.stdout, output)),
             self._read_stream(p.stderr, lambda l: tee(l, err, sys.stderr, output)),
         ], timeout=timeout)
@@ -144,56 +142,6 @@ class _CmdInterface:
         ro = RunOutput(cmd=cmd, args=shlex.split(cmd), returncode=returncode, stdout=out_s, stderr=err_s)
         return ro
 
-    def askfirst(self, cmd, **kwargs):
-        """Pause for user input after a sudo command."""
-
-        nasks = 0
-        keepgoing = True
-
-        # Ask for specific input to avoid an ambiguous answer.  We don't want
-        # to continue or exit unless it's exactly what the user wants.
-        while nasks < 10 and keepgoing:
-
-            print("Command to be ran: '{}'\nContinue?Y/y/yes or N/n/no".format(cmd))
-            answer = input()
-
-            if answer.lower() in  ["n", "no"]:
-                print("answer='{}' ==> exiting ...".format(answer))
-                sys.exit(0)
-                keepgoing = False
-            elif answer.lower() in ["y", "yes"]:
-                keepgoing = False
-            else:
-                nasks += 1
-
-            if nasks >= 10:
-                install_logger.info("Too many asks.  Exiting")
-                sys.exit(0)
-
-        out = None
-        try:
-            out = self.sudo(cmd, **kwargs)
-        except Exception as ex:
-            print("Caught exception: {}".format(ex))
-            if hasattr(out, "stderr"):
-                print("stderr='{}'".format(out.stderr))
-            if hasattr(out, "stdout"):
-                print("stdout='{}'".format(out.stdout))
-            print("Do you want to continue? (Y/y/Yes for yes, anything else to abort")
-            answer = input()
-            if answer.lower() not in ["y", "yes"]:
-                sys.exit(0)
-
-        return out
-
-    def put(self, source, target):
-        """
-        A Wrapper around the Connection put.
-        """
-        shutil.copyfile(source, target)
-        st = os.stat(source)
-        os.chmod(target, st.st_mode)
-
 
 class CmdMgr:
     """
@@ -204,7 +152,7 @@ class CmdMgr:
 
     @staticmethod
     def get_cmd_interface():
-        if CmdMgr.connection == None:
+        if CmdMgr.connection is None:
             CmdMgr.connection = _CmdInterface()
         return CmdMgr.connection
 
