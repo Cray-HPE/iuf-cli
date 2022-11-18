@@ -9,7 +9,6 @@ import json
 import os
 import re
 import textwrap
-import time
 import shutil
 import yaml
 import rpm
@@ -17,11 +16,9 @@ import prettytable
 import lib.Products
 
 from lib.InstallLogger import get_install_logger
-from lib.vars import *
 
 install_logger = get_install_logger(__name__)
 # pylint: disable=consider-using-f-string
-
 
 def print_table(rows, header=None, sort=None, alignments=None):
     table = prettytable.PrettyTable()
@@ -40,14 +37,6 @@ def print_table(rows, header=None, sort=None, alignments=None):
         table.add_row(row)
 
     print(table)
-
-def getenv(var):
-    """Get an environment variable"""
-
-    if var in os.environ:
-        return os.environ[var]
-    else:
-        return None
 
 
 def formatted(text):
@@ -71,22 +60,6 @@ def get_ims_public_key(config):
 
     return ims_public_key_id
 
-def check_repos(config, product, filename):
-    """Verify the repos.  This should work for cos and slingshot"""
-
-    if product == "slingshot_host":
-        version_re = re.compile(r"slingshot-host-software-((\d+\.){2}\d+-\d+)")
-        version = re.search(version_re, filename)
-        prod_name_version = "slingshot-host-software-{}".format(version.group(1))
-    else:
-        #version_re = re.compile("cos-(\d+\.){2}\d+-sle")
-        version_re = re.compile(r"(cos-(\d+\.){2}\d+)")
-        prod_name_version = re.search(version_re, filename).group(0)
-
-    curl_cmd = "curl -s -k https://packages.local/service/rest/v1/repositories | jq -r '.[] | select(.name | startswith(\"{}\")) | .name'".format(prod_name_version)
-    repos = config.connection.sudo(curl_cmd).stdout.split()
-
-    return (len(repos) > 0, prod_name_version, repos)
 
 def get_hosts(config, host_str, exact_match=True):
     """
@@ -108,7 +81,7 @@ def get_hosts(config, host_str, exact_match=True):
         except KeyError:
             pass
         if exact_match:
-            if host_str == xname or host_str == alias:
+            if host_str in [xname, alias]:
                 hosts.append((xname, alias))
         elif host_str in xname or host_str in alias:
             hosts.append((xname, alias))
@@ -180,61 +153,6 @@ def process_rpm(rpmpath):
     return provides, requires
 
 
-def wait_for_ncn_personalization(config, xnames, timeout=600, sleep_time=30):
-    """Wait for ncn personalization to complete.
-    xnames: a list of xnames to wait for
-    timeout: maximum amount of time to wait for NCN personalization to
-        complete.
-    sleep_time: Time to wait between NCN personalization checks
-        (i.e, 'cray cfs components describe ...')
-    """
-
-    keep_waiting = True
-    start = datetime.datetime.now()
-    bad_nodes = set()
-    while keep_waiting:
-        found_pending = False
-        pending_nodes = []
-        configured_nodes = []
-        for xname in xnames:
-            desc = json.loads(config.connection.sudo("cray cfs components describe {} --format json".format(xname)).stdout)
-
-            if desc["configurationStatus"].lower() == "configured":
-                install_logger.debug("node {} configured".format(xname))
-                found_pending = False
-                configured_nodes.append(xname)
-            else:
-                if desc["errorCount"] == 0:
-                    install_logger.debug("waiting on {}".format(xname))
-                    found_pending = True
-                    pending_nodes.append(xname)
-                elif desc["errorCount"] != 0:
-                    install_logger.warning("      Found error on node {} while querying the NCN personalization process".format(xname))
-                    bad_nodes.add(xname)
-
-        tdiff = datetime.datetime.now() - start
-        seconds_waited = tdiff.total_seconds()
-        if found_pending:
-            time.sleep(sleep_time)
-            install_logger.debug("(found_pending) seconds_waited={}".format(seconds_waited))
-        else:
-            keep_waiting = False
-
-        if seconds_waited >= timeout:
-            install_logger.error("Timed out waiting for components to go from a "
-                   "pending to configured status during ncn personalization")
-            keep_waiting = False
-        else:
-            install_logger.debug("(else, bottom of loop) waited={} seconds, keep_waiting={}, found_pending={}".format(seconds_waited, keep_waiting, found_pending))
-
-        install_logger.info("      Waited {} seconds, Configured {}, Pending {}, Error {}".format(
-            int(seconds_waited),
-            len(configured_nodes),
-            len(pending_nodes),
-            len(bad_nodes)))
-
-    return bad_nodes
-
 def get_product_catalog(config, all_products=False):
     """
     update product dictionary with gitea urls
@@ -242,7 +160,7 @@ def get_product_catalog(config, all_products=False):
     install_logger.debug('determining config-management url for products')
     if not config.all_product_data:
         # get full data for initial image_id
-        command = 'kubectl get cm -n services cray-product-catalog -o json'
+        command = 'kubectl --kubeconfig=/etc/kubernetes/admin.conf get cm -n services cray-product-catalog -o json'
         product_cat_json = config.connection.sudo(command, dryrun=False).stdout
         product_cat  = json.loads(product_cat_json)
         all_product_data = product_cat['data']
@@ -255,14 +173,14 @@ def get_product_catalog(config, all_products=False):
 
     for product in config.location_dict:
         product_version = product.best_version
-        install_logger.debug('using product_version {}'.format(product_version))
+        install_logger.debug('using product_version %s', product_version)
         try:
             working_type = product.product
             product_data = yaml.safe_load(all_product_data[working_type])
             matching_versions = []
             # find all keys in the product catalog that match the supplied product
             if product_version in product_data.keys():
-                install_logger.debug('{} is an exact match'.format(product_version))
+                install_logger.debug('%s is an exact match', product_version)
                 matching_versions.append(product_version)
             else:
                 install_logger.debug('looking for matching version')
@@ -273,18 +191,18 @@ def get_product_catalog(config, all_products=False):
             if len(matching_versions) == 1:
                 working_version = matching_versions[0]
                 product.product_version = working_version
-                install_logger.debug('found exact version {} for {}'.format(working_version, product))
+                install_logger.debug('found exact version %s for %s', working_version, product)
                 product_catalog = product_data[working_version]
                 try:
                     product.clone_url = product_catalog['configuration']['clone_url']
                     product.import_branch = product_catalog['configuration']['import_branch']
                     if "recipes" in product_catalog:
                         product.recipe = list(product_catalog['recipes'].keys())[0]
-                except Exception as err:
+                except Exception:
                     # even if we have an exact match in the product catalog, there may
                     # not be git information associated with that product entry
                     working_version = max(product_data.keys())
-                    install_logger.debug('no product catalog config data, trying {} for {}'.format(working_version, product))
+                    install_logger.debug('no product catalog config data, trying %s for %s', working_version, product)
                     product_catalog = product_data[working_version]
                     product.clone_url = product_catalog['configuration']['clone_url']
                     if "recipes" in product_catalog:
@@ -293,15 +211,14 @@ def get_product_catalog(config, all_products=False):
                 # if there is no exact match, attempt to get the clone_url anyway since
                 # that doesn't change between product versions
                 working_version = max(product_data.keys())
-                install_logger.debug('no exact version in {}, using {} for {}'.format(matching_versions, working_version, product))
+                install_logger.debug('no exact version in %s, using %s for %s', matching_versions, working_version, product)
                 product_catalog = product_data[working_version]
                 product.clone_url = product_catalog['configuration']['clone_url']
                 if "recipes" in product_catalog:
                     product.recipe = list(product_catalog['recipes'].keys())[0]
 
-        except Exception as err:
-            install_logger.debug('unable to get all config-management data for {}'.format(product))
-            pass
+        except Exception:
+            install_logger.debug('unable to get all config-management data for %s', product)
 
 
 def get_products( config,
@@ -375,19 +292,19 @@ def get_products( config,
     media_dir = os.path.abspath(media_dir)
 
     # let user know what we are working on
-    install_logger.info('  processing media_dir {}'.format(media_dir))
+    install_logger.info('  processing media_dir %s', media_dir)
 
     # get contents of our media directory
     directory_listing = os.listdir(media_dir)
 
-    install_logger.debug('dir contents: {}'.format(directory_listing))
+    install_logger.debug('dir contents: %s', directory_listing)
 
     # process each item in the directory
     for item in directory_listing:
 
-        install_logger.debug('processing {}'.format(item))
+        install_logger.debug('processing %s', item)
         if item in SKIP_FILES:
-            install_logger.trace('skipping installer support file {}'.format(item))
+            install_logger.trace('skipping installer support file %s', item)
             continue
 
         item_name = None
@@ -401,26 +318,26 @@ def get_products( config,
 
             for suffix in suffixes:
 
-                install_logger.trace('suffix {}'.format(suffix))
+                install_logger.trace('suffix %s', suffix)
 
                 if item.endswith(suffixes[suffix]):
 
-                    install_logger.trace('suffix match {}'.format(suffix))
+                    install_logger.trace('suffix match %s', suffix)
                     item_name = item.split(suffixes[suffix])[0]
-                    install_logger.debug('item_name is {}'.format(item_name))
+                    install_logger.debug('item_name is %s', item_name)
 
                     product = products.get(item_name)
 
                     # handle archive and non-archive entries differently
                     if suffix in ['md5', 'out']:
                         install_logger.debug('item is not an archive')
-                        install_logger.debug('adding {}, {}'.format(suffix, item))
+                        install_logger.debug('adding %s, %s', suffix, item)
 
                         # read md5 file, parse out and save the md5 sum
                         if suffix == 'md5':
-                            install_logger.debug('reading md5 file {}'.format(item))
+                            install_logger.debug('reading md5 file %s', item)
                             # TODO: exception handling, please
-                            with open(os.path.join(media_dir, item)) as md5_file:
+                            with open(os.path.join(media_dir, item), 'r', encoding='UTF-8') as md5_file:
                                 md5_contents = md5_file.readlines()
                                 # TODO: improve this logic
                                 md5 = md5_contents[0].split()[0]
@@ -429,17 +346,17 @@ def get_products( config,
                             product.out = item
                     else:
                         # record archive information
-                        install_logger.debug('adding archive_type {}'.format(suffix))
-                        install_logger.debug('adding archive {}'.format(item))
+                        install_logger.debug('adding archive_type %s', suffix)
+                        install_logger.debug('adding archive %s', item)
                         product.archive_type = suffix
                         product.archive = item
 
             # if there is no suffix, then just use the item name
             if not item_name:
 
-                install_logger.debug('setting item_name to {}'.format(item))
-                install_logger.debug('creating new product {}'.format(item_name))
-                install_logger.debug('setting archive to {}'.format(item))
+                install_logger.debug('setting item_name to %s', item)
+                install_logger.debug('creating new product %s', item_name)
+                install_logger.debug('setting archive to %s', item)
 
                 product = products.get(item)
                 product.archive = item
@@ -458,26 +375,28 @@ def get_products( config,
             if len(work_dir_contents) == 1 and os.path.isdir(os.path.join(media_dir, item_name, work_dir_contents[0])):
                 product.work_dir = os.path.join(media_dir, item_name, work_dir_contents[0])
             else:
-                install_logger.warning('    work_dir contents of {} unexpected'.format(item))
+                install_logger.warning('    work_dir contents of %s unexpected', item)
 
-            install_logger.info('    found existing work_dir for {}'.format(item))
-            install_logger.debug('processing directory {}'.format(item))
-            install_logger.debug('new product {}'.format(item_name))
-            install_logger.debug('setting work_dir to'.format(item_name))
+            install_logger.info('    found existing work_dir for %s', item)
+            install_logger.debug('processing directory %s', item)
+            install_logger.debug('new product %s', item_name)
+
+            # FIXME: Is the debug line below correct?  it doesn't look like we're setting work_dir to anything
+            install_logger.debug('setting work_dir to %s', item_name)
 
         # file is of a type that isn't relevant for us
         else:
             product = products.get(item)
             product.archive = item
             install_logger.debug('item is not a file or directory')
-            install_logger.debug('new product {}'.format(item))
-            install_logger.debug('setting archive to {}'.format(item))
+            install_logger.debug('new product %s', item)
+            install_logger.debug('setting archive to %s', item)
 
         for prefix in prefixes:
             if item.startswith(prefix) and item not in ['cne-install', 'install.log']:
                 product_type = prefixes[prefix]
                 product.product = product_type
-                install_logger.debug('prefix match found {}'.format(prefixes[prefix]))
+                install_logger.debug('prefix match found %s', prefixes[prefix])
 
         product.media_dir = media_dir
 
@@ -485,8 +404,8 @@ def get_products( config,
 
         for product in products:
 
-            install_logger.debug('checking to see if {} needs to be unpacked'.format(product.name))
-            install_logger.debug('products[product]["product"] is "{}"'.format(product.product))
+            install_logger.debug('checking to see if %s needs to be unpacked', product.name)
+            install_logger.debug('products[product]["product"] is "%s"', product.product)
 
             # only process items that are identified products
             # don't bother trying to extract something with no archive
@@ -504,23 +423,23 @@ def get_products( config,
                     archive = os.path.join(product.media_dir, product.archive)
 
                     if product.md5:
-                        install_logger.info('    validating md5 sum for {}'.format(product.archive))
+                        install_logger.info('    validating md5 sum for %s', product.archive)
                         if product.archive_check == 'passed':
-                            install_logger.info('      sum validates {}'.format(product.archive_md5))
+                            install_logger.info('      sum validates %s', product.archive_md5)
                         else:
                             # there is a problem with the archive or sum
                             install_logger.error("    distribution sum doesn't match archive sum!")
-                            install_logger.error('    distribution {}'.format(product.md5))
-                            install_logger.error('    archive_sum {}'.format(product.archive_md5))
-                            install_logger.error('    skipping extraction of {}'.format(archive))
+                            install_logger.error('    distribution %s', product.md5)
+                            install_logger.error('    archive_sum %s', product.archive_md5)
+                            install_logger.error('    skipping extraction of %s', archive)
                             continue
 
                     if config.dryrun:
-                        install_logger.dryrun('    skipping extraction of {}'.format(archive))
+                        install_logger.dryrun('    skipping extraction of %s', archive)
                         continue
 
                     # extract tarfile
-                    install_logger.info('    extracting {}'.format(archive))
+                    install_logger.info('    extracting %s', archive)
 
                     try:
                         # make dir
@@ -530,7 +449,7 @@ def get_products( config,
                         shutil.unpack_archive(archive, work_dir)
                     except:
                         # if tar fails, remove work dir
-                        install_logger.warning('    unable to process {}'.format(product.name))
+                        install_logger.warning('    unable to process %s', product.name)
                         # remove dir to avoid thinking this is a valid workdir
                         shutil.rmtree(work_dir)
                         product.work_dir = None
@@ -549,10 +468,10 @@ def get_products( config,
 
                     if work_dir_contents:
                         product.work_dir = os.path.join(work_dir_prefix, work_dir_contents[0])
-                    install_logger.debug('found previously extracted work_dir {}'.format(product.name))
+                    install_logger.debug('found previously extracted work_dir %s', product.name)
 
             else:
-                install_logger.debug('no archive for {}'.format(product.name))
+                install_logger.debug('no archive for %s', product.name)
 
     # compute the version for each product
     install_logger.debug('determining version for products')
@@ -561,15 +480,15 @@ def get_products( config,
         working_version = None
         pattern = r'(\D+)(\d+.*)'
         results = re.findall(pattern, product.name)
-        install_logger.debug('regex product {}, results {}'.format(product.name, results))
+        install_logger.debug('regex product %s, results %s', product.name, results)
         if results:
             if len(results[0]) == 2:
                 working_name = results[0][0].strip('-')
                 working_version = results[0][1]
                 for prefix in prefixes:
                     if working_name.lower() == prefix.lower():
-                        install_logger.debug('working_name {} matched prefix {}'.format(
-                            working_name, prefix))
+                        install_logger.debug('working_name %s matched prefix %s',
+                            working_name, prefix)
                         product.version = working_version
         # see if an alternate version is used for gitea
         work_dir = product.work_dir
@@ -580,10 +499,10 @@ def get_products( config,
                 for file_name in files:
                     if file_name.endswith('.yaml'):
                         yaml_file = os.path.join(manifest_dir, file_name)
-                        with open(yaml_file, 'r') as fhandle:
+                        with open(yaml_file, 'r', encoding='UTF-8') as fhandle:
                             try:
                                 yaml_data = yaml.safe_load(fhandle)
-                            except Exception as err:
+                            except Exception:
                                 yaml_data = None
                         if yaml_data:
                             try:
@@ -593,7 +512,7 @@ def get_products( config,
                                         import_job = chart['values']['cray-import-config']['import_job']
                                         import_version = import_job['CF_IMPORT_PRODUCT_VERSION']
                                         product.import_version = import_version
-                            except Exception as err:
+                            except Exception:
                                 pass
 
     install_logger.info('    OK')
@@ -603,7 +522,7 @@ def get_os():
     """
     return the current os release
     """
-    with open('/etc/os-release', 'r') as os_file:
+    with open('/etc/os-release', 'r', encoding='UTF-8') as os_file:
         os_contents = os_file.readlines()
     release = None
     for line in os_contents:

@@ -36,9 +36,6 @@ class RunTimeoutError(Exception):
         self.stderr = stderr
         self.returncode = returncode
 
-class TimeOut(Exception):
-    """A wrapper for raising a TimeOut exception."""
-    pass
 
 class COSProblem(Exception):
     """A wrapper for raising a COSProblem exception."""
@@ -70,13 +67,6 @@ class LoggingError(Exception):
     """A wrapper for raising an LoggingError error"""
     pass
 
-# Note this isn't imported from InstallerUtils to avoid circular dependencies.
-def _formatted(text):
-    """Format a text string for a standard 80-line terminal."""
-    wrapper = textwrap.TextWrapper(width=78)
-    raw = textwrap.dedent(text).strip()
-    msg = wrapper.fill(text=raw)
-    return msg
 
 STAGE_DICT = OrderedDict({
     "process_media": {
@@ -131,18 +121,10 @@ NOABORT_STAGES = [
 LOCATION_DICT = "location_dict.yaml"
 ACTIVITY_DICT = "activity_dict.yaml"
 
-BOOT_POLL_SECS = 60
-BOOT_TIMOUT_SECS = 3600
-
-BOS_INFO_FILENAME = "bos-info.json"
 CFS_CONFIG_FILENAME = "cfs-config.json"
-IMAGE_INFO = "image_info.yaml"
-BOS_SESSIONTEMPLATE_FILENAME = "bos_sessiontemplate.json"
 
 STAGE_HIST_FILENAME = "stage_hist.yaml"
 NCNP_VARS = "ncnp-vars.yaml"
-
-SAT_BOOTPREP_CFG_CN = "bootprep-config-cn.yaml"
 
 RBD_BASE_DIR = "/etc/cray/upgrade/csm"
 IUF_BASE_DIR = os.path.join(RBD_BASE_DIR, "iuf")
@@ -151,7 +133,6 @@ ACTIVITY_BASE_DIR = os.path.join(IUF_BASE_DIR, "activities")
 LOG_DEFAULT_CONSOLE_LEVEL = logging.INFO
 LOG_DEFAULT_FILE_LEVEL = logging.DEBUG
 LOG_DEFAULT_FILENAME = "install.log"
-SESSION_TIMESTAMP = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
 LOG_DEFAULT_FILE_FORMAT = '%(asctime)s %(levelname)s %(message)s'
 LOG_DEFAULT_CONSOLE_FORMAT = '%(levelname)s %(message)s'
 LOG_DEFAULT_FILE_FORMAT_VERBOSE = '%(asctime)s %(levelname)s %(module)s.%(funcName)s:%(lineno)d %(message)s'

@@ -46,8 +46,7 @@ def validate_stages(config):
 
     config.stages.validate(state_dir, begin_stage, end_stage, run_stages, skip_stages)
     local_stages = config.stages.get(all_stages=False, list_fmt=True)
-
-    if config.args.get("func", "") == process_install:
+    if config.args.get("func", "") in [process_install, process_restart, process_resume]:
         install_logger.info("STAGE SUMMARY: begin_stage=%s, end_stage=%s", config.stages.beginStage, config.stages.endStage)
         if "update_vcs_config" in local_stages:
 
@@ -109,12 +108,6 @@ def process_install(config, start_at=None):
     all_stages = config.stages.get(list_fmt=True, all_stages=True)
     exec_stages = config.stages.get(list_fmt=True, all_stages=False)
     start = True if start_at == None else False
-    def add_stage(stage):
-        """Add a stage to the summary."""
-        if "ran_stages" in config.stages.summary:
-            config.stages.summary["ran_stages"] += " {}".format(stage)
-        else:
-            config.stages.summary["ran_stages"] = stage
 
     config.stages.set_summary("activity_session", config.args.get("activity_session"))
     config.stages.set_summary("media_dir", config.args.get("media_dir"))
@@ -125,7 +118,6 @@ def process_install(config, start_at=None):
         elif stage == start_at:
             start = True
         if stage in exec_stages:
-            add_stage(stage)
             install_logger.info("BEGINNING STAGE: {}".format(stage))
             # a logging message using exc_info must be the very first thing called after the except
             # block starts, so I can't make all these decisions there
@@ -155,37 +147,6 @@ def process_list(config): #pylint: disable=unused-argument
     print(all_stages)
     if summary:
         print(summary)
-
-
-def process_products(config):
-    products = config.location_dict.prefixes(formatting="description")
-    media = config.args['media_dir']
-
-    def arc_wanted(f, prefix):
-        if f.is_file() and f.name.startswith(prefix):
-            if tarfile.is_tarfile(f.path):
-                return True
-
-        return False
-
-    header = ['Archive Prefix', 'Product Description']
-    alignments = dict()
-    alignments['Archive Prefix'] = "r"
-    alignments['Product Description'] = "l"
-
-    rows = []
-    archives = []
-    for prefix,description in products.items():
-        rows.append([prefix,description])
-        found = [ f.name for f in os.scandir(media) if arc_wanted(f,prefix) ]
-        archives.extend(found)
-
-    scriptname = os.path.basename(__file__)
-    print("The following products are supported by {}:".format(scriptname))
-    print_table(rows, header, 'Archive Prefix', alignments)
-    print ("Matching products in", media)
-    for archive in archives:
-        print ("  ",archive)
 
 
 def process_debug_level(config):
@@ -271,6 +232,7 @@ def process_restart(config):
         if os.path.isdir(fpath):
             shutil.rmtree(fpath)
     config.stages.set_summary("comment", comment)
+    config.stages.set_summary("ran_stages", "")
     process_install(config)
 
 
@@ -428,7 +390,6 @@ def main():
 For example, --limit-nodes ncn-w003 would cause the rollout stage to only
 reload ncn-w003;  --limit-nodes x3000c0s37b0n0 would also work.
 """)
-
 
     install_sp.set_defaults(func=process_install, skip_stages=list(), run_stages=list())
 
