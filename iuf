@@ -10,7 +10,7 @@ import logging
 import os
 import shutil
 import sys
-import tarfile
+import traceback
 
 import yaml
 
@@ -48,7 +48,7 @@ def validate_stages(config):
     local_stages = config.stages.get(all_stages=False, list_fmt=True)
     if config.args.get("func", "") in [process_install, process_restart, process_resume]:
         install_logger.info("STAGE SUMMARY: begin_stage=%s, end_stage=%s", config.stages.beginStage, config.stages.endStage)
-        if "update_vcs_config" in local_stages:
+        if "update-vcs-config" in local_stages:
 
             sp_passed = False
             if "site_parameters" in config.args and config.args["site_parameters"]:
@@ -72,7 +72,7 @@ def validate_stages(config):
     # Ensure that if a `sat bootprep` config was specified (and the stage
     # is being run) it exists.
     bp_config = config.args.get("bootprep_config_managed", None)
-    if bp_config and "managed_nodes_rollout" in local_stages:
+    if bp_config and "managed-nodes-rollout" in local_stages:
         for entry in bp_config:
             # print('cn',entry)
             if not os.path.exists(entry):
@@ -80,7 +80,7 @@ def validate_stages(config):
                 sys.exit(1)
 
     bp_config = config.args.get("bootprep_config_management", None)
-    if bp_config and "management_nodes_rollout" in local_stages:
+    if bp_config and "management-nodes-rollout" in local_stages:
         for entry in bp_config:
             # print('ncn',bp_config)
             if not os.path.exists(entry):
@@ -92,19 +92,27 @@ def validate_stages(config):
 def process_activity(config):
     state = config.args.get("state", None)
     if state:
-        config.activity.state(
-            timestamp=config.args.get("time", None),
-            sessionid=config.args.get("sessionid", None),
-            status=config.args.get("status", "n/a"),
-            comment=config.args.get("comment", None),
-            state=state,
-            create=config.args.get("create", False)
-        )
+        try:
+            config.activity.state(
+                timestamp=config.args.get("time", None),
+                sessionid=config.args.get("sessionid", None),
+                status=config.args.get("status", "n/a"),
+                comment=config.args.get("comment", None),
+                state=state,
+                create=config.args.get("create", False)
+            )
+        except Exception as e:
+            install_logger.error(f"{e}")
+            install_logger.debug(traceback.format_exc())
+            sys.exit(1)
 
     print(config.activity)
 
 def process_install(config, start_at=None):
     """Run the install"""
+
+    config.activity.create_activity(config)
+
     all_stages = config.stages.get(list_fmt=True, all_stages=True)
     exec_stages = config.stages.get(list_fmt=True, all_stages=False)
     start = True if start_at == None else False
@@ -126,7 +134,9 @@ def process_install(config, start_at=None):
             else:
                 log_level = LOG_LEVELS["WARNING"]
 
-            config.stages.exec_stage(config, stage)
+            session = config.activity.run_stage(config, stage)
+            install_logger.debug("STAGE SESSION: {}".format(session))
+
 
     install_logger.info("Install completed in {}".format(elapsed_time(config.stages.installer_start)))
     summary = config.stages.get_summary()
@@ -446,6 +456,12 @@ reload ncn-w003;  --limit-nodes x3000c0s37b0n0 would also work.
     # parse the command line for real
     args = parser.parse_args()
 
+    # Check this before we do anything else so we get a reasonable error message
+    if not args.activity_session:
+        print("ERROR: --activity-session is required.")
+        parser.print_help(sys.stderr)
+        sys.exit(1)
+
     # Convert the args to a dict, and use that rather than the argparse
     # object.  This is so that we have a dictionary of all options, so that
     # we can more easily determine which values can be passed via an input
@@ -456,12 +472,7 @@ reload ncn-w003;  --limit-nodes x3000c0s37b0n0 would also work.
     update_logger_config(config)
     install_logger.debug(config.args)
 
-    config.logger = install_logger
-
     config_error = False
-    if not args.activity_session:
-        install_logger.error("--activity-session is required.")
-        config_error = True
 
     if not lib.Activity.valid_activity_name(args.activity_session):
         install_logger.error(f"Activity session {args.activity_session} invalid.  Names must only contain letters, numbers, periods, and dashes")
