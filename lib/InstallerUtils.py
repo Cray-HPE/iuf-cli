@@ -11,9 +11,9 @@ import re
 import textwrap
 import shutil
 import yaml
-import rpm
 import prettytable
 import lib.Products
+import rpm
 
 from lib.InstallLogger import get_install_logger
 

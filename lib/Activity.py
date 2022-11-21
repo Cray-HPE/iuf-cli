@@ -8,8 +8,12 @@ import os
 import datetime
 from dateutil import parser
 from prettytable import PrettyTable
-import uuid
 import re
+import sys
+import itertools
+import time
+
+import lib.ApiInterface
 
 class StateError(Exception):
     """A wrapper for raising a StateError exception."""
@@ -39,6 +43,7 @@ ACTIVITY_VALID_STATES = [
 ACTIVITY_VALID_STATUS = [
     'Succeeded',
     'Failed',
+    'Running',
     'n/a'
 ]
 
@@ -50,6 +55,9 @@ class Activity():
     initialized = False
     dryrun = False
     filename = None
+    auth = None
+    api = None
+    api_initialized = False
 
     def __init__(self, filename=None, name=None, dryrun=False):
         self.states = dict()
@@ -68,6 +76,8 @@ class Activity():
 
             self.initialized = True
             self.write_activity_dict()
+
+        self.api = lib.ApiInterface.ApiInterface()
 
     def __repr__(self):
         return repr(self.__dict__)
@@ -101,8 +111,12 @@ class Activity():
         tstring = table.get_string()
         table_width = len(tstring.split("\n")[0])
 
+        activity_name = self.name
+        if not self.api.activity_exists(activity_name):
+            activity_name += " [local only]"
+
         retstring = "+" + "-" * (table_width - 2) + "+\n"
-        retstring += f"| Activity: {self.name:<{table_width - 14}} |\n"
+        retstring += f"| Activity: {activity_name:<{table_width - 14}} |\n"
         retstring += tstring
 
         return retstring
@@ -207,9 +221,91 @@ class Activity():
 
         return stime
 
-def fake_sessionid():
-    """ Temporary function to return something random for sessionids until the api is functional"""
-    return(uuid.uuid4())
+    def create_activity(self, config):
+        payload = {
+            "input_parameters": {},
+            "name": self.name
+        }
+
+        if not self.api.activity_exists(self.name):
+            try:
+                self.api.post_activity(payload)
+            except Exception as e:
+                config.logger.error(f"Unable to create activity: {e}")
+                sys.exit(1)
+
+    def monitor_session(self, config, sessionid, stime):
+        config.logger.debug(f"Monitoring session {sessionid} at {stime}")
+        completed = False
+
+        self.state(timestamp=stime, status="Running")
+
+        #spinner = itertools.cycle(['-', '/', '|', '\\'])
+        # probably want some sort of duration abort here
+        while not completed:
+            #sys.stdout.write(next(spinner))
+            #sys.stdout.flush()
+            try:
+                session = self.api.get_activity_session(self.name, sessionid)
+            except Exception as e:
+                config.logger.error(f"Unable to get session {sessionid}: {e}")
+                sys.exit(1)
+
+            status = session.json()['current_state']
+            if status and status != 'in_progress':
+                config.logger.debug(f"Session {sessionid} status: {status}")
+                completed = True
+            else:
+                time.sleep(1)
+            #sys.stdout.write('\b')
+        
+        if status == "completed":
+            self.state(timestamp=stime, status="Succeeded")
+        else:
+            self.state(timestamp=stime, status="Failed")
+        
+        config.logger.debug(f"Finished monitoring session {sessionid}")
+
+        return status
+
+    def run_stage(self, config, stage):
+        if not self.api.activity_exists(self.name):
+            raise ActivityError(f"The activity {self.name} does not exist.")
+
+        force = config.args.get("force", False)
+        payload = {
+            "input_parameters": {
+                "force": force,
+                "media_dir": config.args.get("media_dir"),
+                "stages": [stage]
+            }
+        }
+
+        bp_config_management = config.args.get("bootprep_config_management", None)
+        if bp_config_management:
+            payload["input_parameters"]["bootprep_config_management"] = bp_config_management
+
+        bp_config_managed = config.args.get("bootprep_config_managed", None)
+        if bp_config_managed:
+            payload["input_parameters"]["bootprep_config_managed"] = bp_config_managed
+
+        site_params = config.args.get("site_parameters", None)
+        if site_params:
+            payload["input_parameters"]["site_parameters"] = site_params
+
+        try:
+            api_result = self.api.post_activity_history_run(self.name, payload)
+        except Exception as e:
+            config.logger.error(f"Unable to execute stage: {e}")
+            raise
+
+        session = api_result.json()
+        sessionid = session['name']
+        stime = self.state(state="in_progress", sessionid=session["name"], comment=f"Run {stage}")
+        config.logger.info(f"STAGE EXECUTING WITH SESSION {sessionid}")
+        self.monitor_session(config, session["name"], stime)
+
+        return session["name"]
 
 def valid_activity_name(aname):
     if re.match('^[0-9A-Za-z\.-]+$', aname):

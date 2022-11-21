@@ -11,6 +11,7 @@ from lib.vars import LOCATION_DICT, ACTIVITY_DICT, IUF_BASE_DIR, RBD_BASE_DIR
 from lib.Connection import CmdMgr
 import lib.Products
 import lib.Activity
+from lib.InstallLogger import get_install_logger
 
 class Config:
     _location_dict = None
@@ -104,7 +105,8 @@ class Config:
 
     @property
     def logger(self):
-        return self._logger
+        return get_install_logger()
+        #return self._logger
 
     @logger.setter
     def logger(self, value):

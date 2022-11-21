@@ -69,47 +69,47 @@ class LoggingError(Exception):
 
 
 STAGE_DICT = OrderedDict({
-    "process_media": {
+    "process-media": {
         "func" : "get_prods",
         "description" : "Inventory and extract products in the media directory for use in subsequent stages"
         },
-    "pre_install_check":  {
+    "pre-install-check":  {
         "func" : "stub_pre_install_check",
         "description" : "Perform pre-install readyness checks"
         },
-    "deliver_product": {
+    "deliver-product": {
         "func" : "stub_deliver_product",
         "description" : "Upload product content onto the system"
         },
-    "update_vcs_config": {
+    "update-vcs-config": {
         "func" : "update_vcs_config",
         "description" : "Merge working branches and perform, automated VCS configuration"
         },
-    "update_cfs_config": {
+    "update-cfs-config": {
         "func" : "stub_update_config",
         "description" : "Update CFS configuration (sat bootprep run --config)"
         },
-    "prepare_images": {
+    "prepare-images": {
         "func" : "stub_prepare_images",
         "description" : "Build and configure management node and/or managed node images (sat bootprep run --images)"
         },
-    "management_nodes_rollout": {
+    "management-nodes-rollout": {
         "func" : "stub_ncn_rollout",
         "description" : "Rolling reboot or liveupdate of management nodes"
         },
-    "deploy_product": {
+    "deploy-product": {
         "func" : "stub_deploy_product",
         "description" : "Deploy services to system"
         },
-    "post_install_service_check": {
+    "post-install-service-check": {
         "func" : "stub_post_install_service_check",
         "description" : "Perform post-install checks of processed services"
         },
-    "managed_nodes_rollout": {
+    "managed-nodes-rollout": {
         "func" : "stub_cn_rollout",
         "description" : "Rolling reboot or liveupdate of managed nodes nodes"
         },
-    "post_install_check": {
+    "post-install-check": {
         "func" : "stub_post_install_compute_check",
         "description" : "Perform post-install checks"
         }
@@ -144,5 +144,6 @@ LOG_LEVELS = {
         "WARNING": logging.WARNING,
         "DRYRUN": logging.INFO + 1,
         "INFO": logging.INFO,
-        "DEBUG": logging.DEBUG
+        "DEBUG": logging.DEBUG,
+        "TRACE": logging.DEBUG - 1
 }
