@@ -151,8 +151,7 @@ def update_vcs_config(config):
     repos = get_mergeable_repos(config)
     git = Git(config)
 
-    target_branch = config.args["target_branches"]
-
+    site_params = config.args["site_params"]
     for product in config.location_dict:
         if product.import_branch:
             install_logger.debug("processing product %s import_branch %s", product.product, product.import_branch)
@@ -163,17 +162,12 @@ def update_vcs_config(config):
             # If the passed working branch doesn't exist,it is created. 
 
             # check out a local copy of the import_branch (release version)
-            print("product={}, target_branch={}, product.name={}".format(product.product, target_branch[product.product], product.name))
             git.checkout(repo, product.import_branch)
-            customer_branch = render_jinja(config, product.name, target_branch[product.product])
-
-                # The working branch does not exist.
-                # Checkout best_guess (which will be the closest lower version
-                # working_working branch.  customer_branch will then be created
-                # from it if customer_branch does not exist.
+            working_branch = site_params[product.product]["working_branch"]
 
             # fourth, merge the import branch to the integration branch
-            install_logger.info("  Merging branch %s into %s", product.import_branch, customer_branch)
+            install_logger.info("  Merging branch %s into %s", product.import_branch, working_branch)
+            git.checkout(repo, working_branch, create=True)
             git.merge(repo, product.import_branch)
             git.push(repo)
 

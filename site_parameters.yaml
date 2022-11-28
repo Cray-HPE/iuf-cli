@@ -1,20 +1,26 @@
 ---
 
 defaults:
-    - &default_target_branch
+    - &default_working_branch
      '{{product_type}}-{{version_x_y}}-integration'
-    - &default_network
-      'mellanox'
+    - &pristine_branch
+     'cray/{{name}}/{{version}}'
+    - &default_network_type
+     'cassini'
+    - &default_wlm
+     'pbs'
 
-# When upgrading, this will be the branch that gets merged into.
-target_branches:
-    cos: *default_target_branch
-    cpe: cpe-22.06-integration
-    analytics: integration
-    slingshot-host-software: *default_target_branch
-    sat: *default_target_branch
-    csm: csm-1.13-integration
-    sma: *default_target_branch
-    uan: *default_target_branch
+network: *default_network_type
 
-network: *default_network
+wlm:
+  wlm_used: *default_wlm
+
+shs:
+  working_branch: *default_working_branch
+  network_type: *default_network_type
+
+analytics:
+  working_branch: integration
+
+precedence_test:
+  waldo: 'site_vars'

@@ -1,0 +1,8 @@
+# Use this with pip to install the prerequisites.
+python-keycloak
+prettytable
+rpm-py-installer
+jinja2
+dateutils
+requests
+kubernetes
