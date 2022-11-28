@@ -126,6 +126,13 @@ CFS_CONFIG_FILENAME = "cfs-config.json"
 STAGE_HIST_FILENAME = "stage_hist.yaml"
 NCNP_VARS = "ncnp-vars.yaml"
 
+# `sat bootprep`-related defaults.
+RECIPE_VARS="product_vars.yaml"
+BP_CONFIG_MANAGED = "compute-and-uan-bootprep.yaml"
+BP_CONFIG_MANAGEMENT = "management-bootprep.yaml"
+
+
+# RBD/media/state/activity dir defaults
 RBD_BASE_DIR = "/etc/cray/upgrade/csm"
 IUF_BASE_DIR = os.path.join(RBD_BASE_DIR, "iuf")
 ACTIVITY_BASE_DIR = os.path.join(IUF_BASE_DIR, "activities")
