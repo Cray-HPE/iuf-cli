@@ -253,20 +253,21 @@ class Activity():
 
             status = session.json()['current_state']
             if status and status != 'in_progress':
-                config.logger.debug(f"Session {sessionid} status: {status}")
                 completed = True
             else:
                 time.sleep(1)
             #sys.stdout.write('\b')
         
         if status == "completed":
-            self.state(timestamp=stime, status="Succeeded")
+            stat = "Succeeded"
         else:
-            self.state(timestamp=stime, status="Failed")
+            stat = "Failed"
+
+        self.state(timestamp=stime, status=stat)
         
         config.logger.debug(f"Finished monitoring session {sessionid}")
 
-        return status
+        return stat
 
     def run_stage(self, config, stage):
         if not self.api.activity_exists(self.name):
@@ -302,10 +303,11 @@ class Activity():
         session = api_result.json()
         sessionid = session['name']
         stime = self.state(state="in_progress", sessionid=session["name"], comment=f"Run {stage}")
-        config.logger.info(f"STAGE EXECUTING WITH SESSION {sessionid}")
-        self.monitor_session(config, session["name"], stime)
+        config.logger.info(f"     SESSION ID: {sessionid}")
+        status = self.monitor_session(config, session["name"], stime)
+        config.logger.info(f"         RESULT: {status}")
 
-        return session["name"]
+        return status
 
 def valid_activity_name(aname):
     if re.match('^[0-9A-Za-z\.-]+$', aname):

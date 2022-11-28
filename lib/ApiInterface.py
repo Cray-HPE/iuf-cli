@@ -28,8 +28,11 @@ class ApiInterface(object):
             token = self.auth.token
             headers["Authorization"] = f"Bearer {token}"
         except:
-            # if we don't get a token just try without it.  Mostly for local testing.
-            pass
+            if "gw-service" in self.apiurl:
+                raise
+            else:
+                # if we're not using the "official" api and don't get a token just try without it.  Mostly for local testing.
+                pass
 
         method_func = method.lower()
         try:

@@ -134,8 +134,8 @@ def process_install(config, start_at=None):
             else:
                 log_level = LOG_LEVELS["WARNING"]
 
-            session = config.activity.run_stage(config, stage)
-            install_logger.debug("STAGE SESSION: {}".format(session))
+            config.activity.run_stage(config, stage)
+            install_logger.info("COMPLETED STAGE: {}".format(stage))
 
 
     install_logger.info("Install completed in {}".format(elapsed_time(config.stages.installer_start)))
