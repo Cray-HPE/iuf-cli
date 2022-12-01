@@ -10,9 +10,8 @@ from dateutil import parser
 from prettytable import PrettyTable
 import re
 import sys
-import itertools
 import time
-
+from lib.vars import MEDIA_BASE_DIR
 import lib.ApiInterface
 
 class StateError(Exception):
@@ -274,10 +273,13 @@ class Activity():
             raise ActivityError(f"The activity {self.name} does not exist.")
 
         force = config.args.get("force", False)
+        # API backend wants relative paths only.  We make sure media dir is under base dir
+        # in Config, so we can just strip the base dir off the front of the media dir
+        media_dir = config.args.get("media_dir")[len(MEDIA_BASE_DIR):]
         payload = {
             "input_parameters": {
                 "force": force,
-                "media_dir": config.args.get("media_dir"),
+                "media_dir": media_dir,
                 "stages": [stage]
             }
         }
