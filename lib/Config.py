@@ -7,7 +7,7 @@ import os
 from lib.ShastaUpdate import validate_products
 import sys
 
-from lib.vars import LOCATION_DICT, ACTIVITY_DICT, IUF_BASE_DIR, RBD_BASE_DIR
+from lib.vars import LOCATION_DICT, ACTIVITY_DICT, IUF_BASE_DIR, MEDIA_BASE_DIR
 from lib.Connection import CmdMgr
 import lib.Products
 import lib.Activity
@@ -133,8 +133,20 @@ class Config:
             base_dir = default_base_dir
 
         if not self._args.get("media_dir", None):
-            self._args["media_dir"] = os.path.join(RBD_BASE_DIR, activity)
-            os.makedirs(self._args["media_dir"], exist_ok = True)
+            self._args["media_dir"] = os.path.join(MEDIA_BASE_DIR, activity)
+
+        media_dir_ok = False
+        media_dir = self._args.get("media_dir")
+
+        for dir in [media_dir, os.path.abspath(media_dir), os.path.join(MEDIA_BASE_DIR, media_dir)]:
+            if dir.startswith(MEDIA_BASE_DIR) and os.path.exists(dir):
+                media_dir_ok = True
+                self._args["media_dir"] = dir
+                break
+
+        if not media_dir_ok:
+            self._error("Media directory must exist and be under {}".format(MEDIA_BASE_DIR))
+            validated = False
 
         for adir in ["state", "log"]:
             if not self._args.get(f"{adir}_dir", None):
