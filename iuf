@@ -127,17 +127,11 @@ def process_install(config, start_at=None):
             start = True
         if stage in exec_stages:
             install_logger.info("BEGINNING STAGE: {}".format(stage))
-            # a logging message using exc_info must be the very first thing called after the except
-            # block starts, so I can't make all these decisions there
-            if config.stages.abortable(stage):
-                log_level = LOG_LEVELS["ERROR"]
-            else:
-                log_level = LOG_LEVELS["WARNING"]
-
-            config.activity.run_stage(config, stage)
+            config.stages.exec_stage(config, stage)
             install_logger.info("COMPLETED STAGE: {}".format(stage))
 
 
+    config.activity.state(state="waiting_admin")
     install_logger.info("Install completed in {}".format(elapsed_time(config.stages.installer_start)))
     summary = config.stages.get_summary()
     dashes = "----------------"
@@ -498,6 +492,7 @@ reload ncn-w003;  --limit-nodes x3000c0s37b0n0 would also work.
         args.func(config)
     except AttributeError:
         install_logger.error("A subcommand was not specified.")
+        raise
         parser.print_help(sys.stderr)
         sys.exit(1)
 if __name__ == "__main__":
