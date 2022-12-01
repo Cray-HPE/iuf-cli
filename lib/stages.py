@@ -212,19 +212,21 @@ class Stages():
             self.stage_hist.summary["ran_stages"] = stage
 
         # Execute the stage.
+        failed = True
         try:
             self.current_stage = stage
-            stage_func = eval("supdate.{}".format(self._stage_dict[stage]["func"]))
             stage_start = datetime.datetime.now()
-            stage_func(config)
+            status = config.activity.run_stage(config, stage)
+            if status == "Succeeded":
+                failed = False
             duration = elapsed_time(stage_start)
-            install_logger.info("  stage completed in %s", duration)
-            self.stage_hist.update(stage, True, True, duration)
+            config.logger.info(f"       DURATION: {duration}")
 
         except RunException as err:
             # if this was an unhandled, failed command, print details
             duration = elapsed_time(stage_start)
-            install_logger.info("  aborting stage after %s", duration)
+            config.logger.info(f"       DURATION: {duration}")
+
             install_logger.debug("Exception while executing %s", stage, exc_info=True)
             print("")
             install_logger.critical("The following command failed while executing %s:", stage)
@@ -237,28 +239,24 @@ class Stages():
                     for line in msglines:
                         if line:
                             install_logger.error("%s: %s", item, line)
+
+        except Exception as err:
+            duration = elapsed_time(stage_start)
+            config.logger.info(f"       DURATION: {duration}")
+            install_logger.debug("Exception while executing %s", stage, exc_info=True)
+            print("")
+            install_logger.critical("A '%s' error", err)
+            install_logger.critical("occured while executing %s", stage)
+
+        if failed:
             print("")
             install_logger.info("Aborting install after %s", elapsed_time(self.installer_start))
             print("")
             self.stage_hist.update(stage, ran=False, succeeded="Paused",duration=duration)
             print(self.get_summary())
             sys.exit(1)
-
-        except Exception as err:
-            duration = elapsed_time(stage_start)
-            install_logger.info("  aborting stage after %s", duration)
-            install_logger.debug("Exception while executing %s", stage, exc_info=True)
-            print("")
-            install_logger.critical("A '%s' error", err)
-            install_logger.critical("occured while executing %s", stage)
-
-            print("")
-            install_logger.info("Aborting install after %s", elapsed_time(self.installer_start))
-            print("")
-
-            self.stage_hist.update(stage, ran=False, succeeded="Paused", duration=duration)
-            print(self.get_summary())
-            sys.exit(1)
+        else:
+            self.stage_hist.update(stage, True, True, duration=duration)
 
     def set_skipped(self, skipped_stages=[]):
             for stage in skipped_stages:
