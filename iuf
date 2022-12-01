@@ -12,14 +12,15 @@ import shutil
 import sys
 import traceback
 
-import yaml
-
 from lib.vars import *
 from lib.InstallLogger import *
 
 from lib.InstallerUtils import elapsed_time
 from lib.InstallerUtils import formatted
 from lib.InstallerUtils import print_table
+from lib.InstallerUtils import merge_dicts
+from lib.InstallerUtils import render_jinja2
+
 from lib.ConfigFile import ConfigFile
 from lib.ConfigFile import InvertableArgument
 import lib.Config
@@ -37,6 +38,8 @@ install_logger = get_install_logger()
 def validate_stages(config):
     """Validate that all of the various stage related args passed in are valid"""
 
+    errors = []
+
     # load all of the stage variables
     begin_stage = config.args.get('begin_stage')
     end_stage = config.args.get('end_stage')
@@ -46,48 +49,108 @@ def validate_stages(config):
 
     config.stages.validate(state_dir, begin_stage, end_stage, run_stages, skip_stages)
     local_stages = config.stages.get(all_stages=False, list_fmt=True)
-    if config.args.get("func", "") in [process_install, process_restart, process_resume]:
-        install_logger.info("STAGE SUMMARY: begin_stage=%s, end_stage=%s", config.stages.beginStage, config.stages.endStage)
-        if "update-vcs-config" in local_stages:
+    if config.args.get("func", "") == process_list:
+        # No need to do all the error checking if we're just doing an 'ls'.
+        return
 
-            sp_passed = False
-            if "site_parameters" in config.args and config.args["site_parameters"]:
-                sp_path = config.args["site_parameters"]
-                sp_passed = True
-            else:
-                sp_path = os.path.join(IUF_BASE_DIR, "site-parameters.yaml")
+    def read_yaml(file_loc):
+        """Read a yaml file and return the dictionary."""
 
-            if not os.path.exists(sp_path):
-                msg = formatted("""
-                    The `--site-parameters` file  cannot be found. Please
-                    specify the location or place it at {}""".format(
-                    os.path.join(IUF_BASE_DIR, "site-parameters.yaml")))
-                print(msg)
-                sys.exit(1)
-            with open(sp_path, "r") as fhandle:
-                site_params = yaml.load(fhandle, yaml.SafeLoader)
-                if "target_branches" in site_params and site_params["target_branches"]:
-                    config.args["target_branches"] = site_params["target_branches"]
+        return_dict = {}
+        if os.path.exists(file_loc):
+            with open(file_loc, "r", encoding='UTF-8') as fhandle:
+                return_dict = yaml.load(fhandle, yaml.SafeLoader)
+
+        return return_dict
 
     # Ensure that if a `sat bootprep` config was specified (and the stage
     # is being run) it exists.
     bp_config = config.args.get("bootprep_config_managed", None)
+    bp_managed = []
+    bp_management = []
+
     if bp_config and "managed-nodes-rollout" in local_stages:
         for entry in bp_config:
             # print('cn',entry)
             if not os.path.exists(entry):
-                print("--bootprep-config-managed-nodes {} was specified but could not be found".format(entry))
-                sys.exit(1)
+                errors.append("--bootprep-config-managed-nodes {} was specified but could not be found".format(entry))
+            else:
+                bp_managed.append(read_yaml(entry))
 
     bp_config = config.args.get("bootprep_config_management", None)
     if bp_config and "management-nodes-rollout" in local_stages:
         for entry in bp_config:
             # print('ncn',bp_config)
             if not os.path.exists(entry):
-                print("--bootprep-config-management-nodes {} was specified but could not be found".format(entry))
-                sys.exit(1)
+                errors.append("--bootprep-config-management-nodes {} was specified but could not be found".format(entry))
+            else:
+                bp_management.append(read_yaml(entry))
+
+    # recipe_vars <==> product_vars; versions defined for sat.
+    recipe_vars_file = config.args.get("recipe_vars", None)
+
+    # site_params_file (site_vars) provides overrides to what is in recipe_vars.
+    site_params_file = config.args.get("site_parameters", None)
+
+    bpcd = config.args.get("bootprep_config_dir", None)
+
+    recipe_vars = None
+    site_params = None
+
+    if any([var for var in [recipe_vars_file, site_params_file, bpcd]]):
+
+        if bpcd and os.path.exists(bpcd):
+            rv_loc = os.path.join(bpcd, RECIPE_VARS)
+            managed_loc = os.path.join(bpcd, "bootprep", BP_CONFIG_MANAGED)
+            management_loc = os.path.join(bpcd, "bootprep", BP_CONFIG_MANAGEMENT)
+
+            # Don't flag an error if the individual files in bpcd don't exist.
+            # They may exist in the individual file arguments.
+            recipe_vars = read_yaml(rv_loc)
+            if os.path.exists(managed_loc):
+                bp_managed.append(read_yaml(managed_loc))
+            if os.path.exists(management_loc):
+                bp_management.append(read_yaml(management_loc))
+        elif bpcd:
+            errors.append("The `-bpcd/--bootprep-config-dir {}` was specified but could not be found".format(bpcd))
+
+        # If `--recipe-vars` was specified on the commandline, allow it to
+        # override what was specified with the `--bootprep-config-dir` option.
+        if recipe_vars_file and os.path.exists(recipe_vars_file):
+            recipe_vars = read_yaml(recipe_vars_file)
+        elif recipe_vars_file:
+            errors.append("`--recipe-vars {}` was specified but the file could not be found!".format(recipe_vars_file))
+
+        if site_params_file and os.path.exists(site_params_file):
+            site_params = read_yaml(site_params_file)
+        elif site_params_file:
+            errors.append("`--site-parameters/-sp {}` was specified but the file could not be found".format(site_params_file))
+
+    if errors:
+        print("Problems were encountered:")
+        counter = 1
+        for err in errors:
+            print("\t{}: {}".format(counter, err))
+            counter += 1
+        sys.exit(1)
+
+    pre_rendered = None
+
+    if recipe_vars and site_params:
+        pre_rendered = merge_dicts([recipe_vars, site_params], overwrite=True)
+    elif recipe_vars:
+        pre_rendered = recipe_vars
+    elif site_params:
+        # I'm not sure if it's valid to pass site_params without recipe_vars
+        # or similar, but we'll handle it.
+        pre_rendered = site_params
+
+    if pre_rendered:
+        rendered = render_jinja2(pre_rendered)
+        config.args["site_params"] = rendered
 
     return
+
 
 def process_activity(config):
     state = config.args.get("state", None)
@@ -108,6 +171,7 @@ def process_activity(config):
 
     print(config.activity)
 
+
 def process_install(config, start_at=None):
     """Run the install"""
 
@@ -120,6 +184,7 @@ def process_install(config, start_at=None):
     config.stages.set_summary("activity_session", config.args.get("activity_session"))
     config.stages.set_summary("media_dir", config.args.get("media_dir"))
     config.stages.set_summary("log_dir", config.args.get("log_dir"))
+
     for stage in all_stages:
         if stage != start_at and start == False:
             continue
@@ -320,8 +385,8 @@ def main():
     parser.add_argument("-m", "--media-dir", action="store",
         help="Location of installation media you would like to install.  Defaults to $RBD_BASE_DIR/{activity_session}")
 
-    parser.add_argument("-sp", "--site-parameter", action="store", default=False,
-        help="Path the the site.yaml parameter config.")
+    parser.add_argument("-sp", "--site-parameters", action="store", default=False,
+        help="Path to site parameters file.  Default is ${RSM_BASE_DIR}/$IUF_ACTIVITY_SESSION}/site_parameters.yaml")
 
     parser.add_argument("--log-dir", action="store",
         help="Location used to store log files.  Defaults to [base-dir]/log")
@@ -364,9 +429,6 @@ def main():
     install_sp.add_argument("-F", "--force", action="store", default=False,
         help="Force re-execution of stage operations.")
 
-    install_sp.add_argument("-sp", "--site-parameters", action="store",
-        help="Path to site parameters file.  Default is ${RSM_BASE_DIR}/$IUF_ACTIVITY_SESSION}/site_parameters.yaml")
-
     bpc_help = formatted("""
     List of `sat bootprep` config files for non-mgmt nodes (compute, UAN).""")
 
@@ -380,6 +442,15 @@ def main():
     install_sp.add_argument("-bm", "--bootprep-config-management", action="store",
         #default = ['../vcs/bootprep/management-bootprep.yaml'],
         help=bpc_help)
+
+    install_sp.add_argument("-bpcd", "--bootprep-config-dir", action="store",
+        help="""directory containing bootprep configuration files.  The expected layout would be:
+        $(BOOTPREP_CONFIG_DIR)/product_vars.yaml
+        $(BOOTPREP_CONFIG_DIR)/bootprep/compute-and-uan-bootprep.yaml
+        $(BOOTPREP_CONFIG_DIR)/bootprep/management-bootprep.yaml""")
+
+    install_sp.add_argument("-rv", "--recipe-vars", action="store",
+        help="location of the recipe_vars.yaml file (aka product_vars.yaml), used by `sat bootprep`")
 
     install_sp.add_argument("-um", "--update-method-management", action="store",
         default="reboot",
