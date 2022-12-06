@@ -146,8 +146,8 @@ def validate_stages(config):
         pre_rendered = site_params
 
     if pre_rendered:
-        rendered = render_jinja2(pre_rendered)
-        config.args["site_params"] = rendered
+        # Don't render this until after calling process-media.
+        config.args["site_params"] = pre_rendered
 
     return
 

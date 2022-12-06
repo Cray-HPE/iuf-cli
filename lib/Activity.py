@@ -486,6 +486,20 @@ class Activity():
         session = api_result.json()
         sessionid = session['name']
         config.logger.info("MONITORING SESSION: {}".format(sessionid))
+        status = self.monitor_session(config, session["name"], stime)
+        stage =  payload["input_parameters"]["stages"][0]
+        if stage == "process-media":
+            ret_code = self.api.get_activity_session(session['name'], sessionid)
+            result = ret_code.json()
+            products = result.get('products', None)
+            session_vars = {}
+            if products:
+                for product in products:
+                    name = product.get('name', None)
+                    version = product.get('version', None)
+                    session_vars[name] = {'version': version }
+                config.args["session_vars"] = session_vars
+
 
         have_wf = True
         while have_wf:
