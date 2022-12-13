@@ -268,7 +268,9 @@ class Activity():
         return retflow
     
     def sort_phases(self, workflow, nodes):
-        def dfs(data, start, path=[]):
+        """ depth first search """
+        def dfs(data, start):
+            path = []
             q = [start]
             while q:
                 v = q.pop(0)
