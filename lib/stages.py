@@ -90,6 +90,8 @@ class Stages():
         self._noabort_stages = NOABORT_STAGES
         self.current_stage = None
         self.summary = {}
+        self._run_stages = []
+        self._start_at = None
 
         self.set_summary("command line", " ".join(sys.argv))
 
@@ -104,6 +106,32 @@ class Stages():
     @property
     def endStage(self):
         return self._stages[-1]
+
+    @property
+    def start_at(self):
+        return self._start_at
+    
+    @start_at.setter
+    def start_at(self, value):
+        self._start_at = value
+
+    @property
+    def stages(self):
+        if not self._run_stages:
+            start_at = self.start_at
+            all_stages = self.get(list_fmt=True, all_stages=True)
+            exec_stages = self.get(list_fmt=True, all_stages=False)
+            start = True if start_at == None else False
+
+            for stage in all_stages:
+                if stage != start_at and start == False:
+                    continue
+                elif stage == start_at:
+                    start = True
+                if stage in exec_stages:
+                    self._run_stages.append(stage)
+
+        return self._run_stages
 
     def set_summary(self, summary_key, summary_value):
         """Set a key (summary_key) in the summary dict to a particular value
@@ -199,9 +227,11 @@ class Stages():
         table.align = "l"
         return table.get_string()
 
-
-    def exec_stage(self, config, stage):
+    def exec_stage(self, config, workflow, stage):
         """Run a stage."""
+
+        config.logger.info(f"BEGINNING STAGE: {stage}")
+        config.logger.info(f"    WORKFLOW ID: {workflow}")
 
         # Add "run_stages" and "args" to the stage summary.
         if "ran_stages" in self.stage_hist.summary:
@@ -216,7 +246,8 @@ class Stages():
         try:
             self.current_stage = stage
             stage_start = datetime.datetime.now()
-            status = config.activity.run_stage(config, stage)
+            status = config.activity.monitor_workflow(config, workflow)
+            config.logger.info(f"         RESULT: {status}")
             if status == "Succeeded":
                 failed = False
             duration = elapsed_time(stage_start)
