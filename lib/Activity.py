@@ -56,6 +56,7 @@ class Activity():
     filename = None
     auth = None
     api = None
+    workflows = None
     api_initialized = False
 
     def __init__(self, filename=None, name=None, dryrun=False):
@@ -77,6 +78,7 @@ class Activity():
             self.write_activity_dict()
 
         self.api = lib.ApiInterface.ApiInterface()
+        self.workflows = []
 
     def __repr__(self):
         return repr(self.__dict__)
@@ -232,6 +234,141 @@ class Activity():
             except Exception as e:
                 config.logger.error(f"Unable to create activity: {e}")
                 sys.exit(1)
+    
+    def get_next_workflow(self, config, sessionid):
+        retflow = None
+        found = False
+
+        while not found:
+            try:
+                rsession = self.api.get_activity_session(self.name, sessionid)
+            except Exception as e:
+                config.logger.error(f"Unable to get session {sessionid}: {e}")
+                sys.exit(1)
+            
+            session = rsession.json()
+            status = session['current_state']
+            if status and status != 'in_progress':
+                found = True
+                break
+            
+            if "workflows" in session:
+                try:
+                    for workflow in session['workflows']:
+                        if workflow['id'] not in self.workflows:
+                            retflow = workflow["id"]
+                            self.workflows.append(retflow)
+                            found = True
+                except:
+                    pass
+
+            if not found:
+                time.sleep(1)
+        
+        return retflow
+    
+    def sort_phases(self, workflow, nodes):
+        """ depth first search """
+        def dfs(data, start):
+            path = []
+            q = [start]
+            while q:
+                v = q.pop(0)
+                if v not in path:
+                    path = path + [v]
+                    q = data[v] + q
+
+            return path
+
+        slist = dict()
+        for name in nodes:
+            node = nodes[name]
+            if "children" in node and node["children"]:
+                slist[name] = node["children"]
+            else:
+                slist[name] = []
+
+        dpath = dfs(slist, workflow)
+
+        return dpath
+
+    def monitor_workflow(self, config, workflow):
+        config.logger.debug(f"Monitoring workflow {workflow}")
+        finished = False
+        phases = dict()
+        newphase = {
+            "finishedAt": None,
+            "startedAt": None,
+            "status": None,
+            "id": None,
+            "log": None
+            }
+
+
+        while not finished:
+            try:
+                wflow = self.get_workflow(config, workflow)
+            except Exception as e:
+                config.logger.error(f"Unable to get workflow {workflow}: {e}")
+                sys.exit(1)
+            
+            """ TODO: Need to figure out how to tell if the workflow has failed in some bad way """
+            try:
+                completed = wflow['metadata']['labels']['workflows.argoproj.io/completed']
+                if completed and completed == 'true':
+                    status = wflow['metadata']['labels']['workflows.argoproj.io/phase']
+                    finished = True
+            except:
+                pass
+
+            nodes = []
+            try:
+                rnodes = wflow["status"]["nodes"]
+                if rnodes and type(rnodes) is dict:
+                    nodes = rnodes
+            except:
+                pass
+
+            npath = self.sort_phases(workflow, nodes)
+
+            for name in npath:
+                node = nodes[name]
+                if "displayName" in node:
+                    name = node["displayName"]
+                    if name not in phases:
+                        phases[name] = newphase.copy()
+                    display = True
+                    if name == workflow:
+                        display = False
+
+                    if "startedAt" in node:
+                        if not phases[name]["startedAt"]:
+                            if display:
+                                config.logger.info(f"        BEGIN PHASE: {name}")
+                        phases[name]["startedAt"] = node["startedAt"]
+
+                    if "phase" in node:
+                        phases[name]["status"] = node["phase"]
+
+                    if "finishedAt" in node and node["finishedAt"]:
+                        if not phases[name]["finishedAt"]:
+                            if display:
+                                status = phases[name]["status"]
+                                config.logger.info(f"     FINISHED PHASE: {name} [{status}]")
+                        phases[name]["finishedAt"] = node["finishedAt"]
+                        try:
+                            for artifact in node["outputs"]["artifacts"]:
+                                if artifact["name"] == "main-logs":
+                                    s3 = artifact["s3"]["key"]
+                                    phases[name]["log"] = s3
+                                    config.logger.debug(f"           LOG FILE FOR {name}: {s3}")
+                        except:
+                            pass
+
+            if not finished:
+                time.sleep(1)
+        
+        return status
 
     def monitor_session(self, config, sessionid, stime):
         config.logger.debug(f"Monitoring session {sessionid} at {stime}")
@@ -239,11 +376,7 @@ class Activity():
 
         self.state(timestamp=stime, status="Running")
 
-        #spinner = itertools.cycle(['-', '/', '|', '\\'])
-        # probably want some sort of duration abort here
         while not completed:
-            #sys.stdout.write(next(spinner))
-            #sys.stdout.flush()
             try:
                 session = self.api.get_activity_session(self.name, sessionid)
             except Exception as e:
@@ -255,7 +388,6 @@ class Activity():
                 completed = True
             else:
                 time.sleep(1)
-            #sys.stdout.write('\b')
         
         if status == "completed":
             stat = "Succeeded"
@@ -267,20 +399,33 @@ class Activity():
         config.logger.debug(f"Finished monitoring session {sessionid}")
 
         return stat
+    
+    def get_workflow(self, config, workflow):
+        try:
+            wf = config.connection.run("argo -n argo get {workflow} -o yaml".format(workflow=workflow))
+        except Exception as e:
+            config.logger.error(f"Unable to get workflow {workflow}: {e}")
+            sys.exit(1)
+        
+        return yaml.safe_load(wf.stdout)
 
-    def run_stage(self, config, stage):
+    def run_stages(self, config):
         if not self.api.activity_exists(self.name):
             raise ActivityError(f"The activity {self.name} does not exist.")
+        
+        config.stages.set_summary("activity_session", config.args.get("activity_session"))
+        config.stages.set_summary("media_dir", config.args.get("media_dir"))
+        config.stages.set_summary("log_dir", config.args.get("log_dir"))       
 
         force = config.args.get("force", False)
+        stages = config.stages.stages
         # API backend wants relative paths only.  We make sure media dir is under base dir
         # in Config, so we can just strip the base dir off the front of the media dir
         media_dir = config.args.get("media_dir")[len(MEDIA_BASE_DIR):]
         payload = {
             "input_parameters": {
                 "force": force,
-                "media_dir": media_dir,
-                "stages": [stage]
+                "media_dir": media_dir
             }
         }
 
@@ -295,7 +440,27 @@ class Activity():
         site_params = config.args.get("site_parameters", None)
         if site_params:
             payload["input_parameters"]["site_parameters"] = site_params
+        
+        sessions = []
+        """ Run process-media on its own first if we're doing it """
+        if stages[0] == "process-media":
+            stages.pop(0)
+            payload["input_parameters"]["stages"] = ["process-media"]
+            sid = self.run_stage(config, payload)
+            sessions.append(sid)
 
+        """ TODO: Get product list from API """
+        """ TODO: Generate site_parameters and add to payload """
+        
+        """ Run any remaining stages """
+        if stages:
+            payload["input_parameters"]["stages"] = stages
+            sid = self.run_stage(config, payload)
+            sessions.append(sid)
+
+        return sessions
+
+    def run_stage(self, config, payload):
         try:
             api_result = self.api.post_activity_history_run(self.name, payload)
         except Exception as e:
@@ -304,12 +469,20 @@ class Activity():
 
         session = api_result.json()
         sessionid = session['name']
-        stime = self.state(state="in_progress", sessionid=session["name"], comment=f"Run {stage}")
-        config.logger.info(f"     SESSION ID: {sessionid}")
-        status = self.monitor_session(config, session["name"], stime)
-        config.logger.info(f"         RESULT: {status}")
+        config.logger.info("MONITORING SESSION: {}".format(sessionid))
 
-        return status
+        have_wf = True
+        while have_wf:
+            wfid = self.get_next_workflow(config, sessionid)
+            if not wfid:
+                break
+            config.logger.debug("Next workflow {}".format(wfid))
+            wf = self.get_workflow(config, wfid)
+            stage = wf['metadata']['labels']['stage']
+            self.state(state="in_progress", sessionid=wfid, comment=f"Run {stage}")
+            config.stages.exec_stage(config, wfid, stage)
+
+        return sessionid
 
 def valid_activity_name(aname):
     if re.match('^[0-9A-Za-z\.-]+$', aname):
