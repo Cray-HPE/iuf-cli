@@ -288,13 +288,19 @@ class Activity():
             else:
                 slist[name] = []
 
-        dpath = dfs(slist, workflow)
+        """ some stages start so slowly we call argo before they've fully started"""
+        try:
+            dpath = dfs(slist, workflow)
+        except:
+            """ if dfs fails it's because the workflow is still starting up, just punt until the next 1 second check"""
+            dpath = []
 
         return dpath
 
     def monitor_workflow(self, config, workflow):
         config.logger.debug(f"Monitoring workflow {workflow}")
         finished = False
+        rstatus = 'Unknown'
         phases = dict()
         newphase = {
             "finishedAt": None,
@@ -316,7 +322,7 @@ class Activity():
             try:
                 completed = wflow['metadata']['labels']['workflows.argoproj.io/completed']
                 if completed and completed == 'true':
-                    status = wflow['metadata']['labels']['workflows.argoproj.io/phase']
+                    rstatus = wflow['metadata']['labels']['workflows.argoproj.io/phase']
                     finished = True
             except:
                 pass
@@ -332,19 +338,21 @@ class Activity():
             npath = self.sort_phases(workflow, nodes)
 
             for name in npath:
+                if name not in nodes:
+                    continue
                 node = nodes[name]
                 if "displayName" in node:
-                    name = node["displayName"]
+                    dname = node["displayName"]
                     if name not in phases:
                         phases[name] = newphase.copy()
                     display = True
-                    if name == workflow:
+                    if dname == workflow:
                         display = False
 
                     if "startedAt" in node:
                         if not phases[name]["startedAt"]:
                             if display:
-                                config.logger.info(f"        BEGIN PHASE: {name}")
+                                config.logger.info(f"        BEGIN PHASE: {dname}")
                         phases[name]["startedAt"] = node["startedAt"]
 
                     if "phase" in node:
@@ -354,21 +362,21 @@ class Activity():
                         if not phases[name]["finishedAt"]:
                             if display:
                                 status = phases[name]["status"]
-                                config.logger.info(f"     FINISHED PHASE: {name} [{status}]")
+                                config.logger.info(f"     FINISHED PHASE: {dname} [{status}]")
                         phases[name]["finishedAt"] = node["finishedAt"]
                         try:
                             for artifact in node["outputs"]["artifacts"]:
                                 if artifact["name"] == "main-logs":
                                     s3 = artifact["s3"]["key"]
                                     phases[name]["log"] = s3
-                                    config.logger.debug(f"           LOG FILE FOR {name}: {s3}")
+                                    config.logger.debug(f"           LOG FILE FOR {dname}: {s3}")
                         except:
                             pass
 
             if not finished:
                 time.sleep(1)
         
-        return status
+        return rstatus
 
     def monitor_session(self, config, sessionid, stime):
         config.logger.debug(f"Monitoring session {sessionid} at {stime}")
