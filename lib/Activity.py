@@ -66,7 +66,6 @@ class Activity():
         self.dryrun = dryrun
         self.filename = filename
         self.site_conf = None
-        self._patched = False
         if os.path.exists(filename):
             self.load_activity_dict(filename)
 
@@ -454,6 +453,10 @@ class Activity():
         if bp_config_managed:
             payload["input_parameters"]["bootprep_config_managed"] = bp_config_managed
 
+        site_params = config.args.get("site_vars", None)
+        if site_params:
+            payload["input_parameters"]["site_parameters"] = site_params
+
         sessions = []
         """ Run process-media on its own first if we're doing it """
         if stages[0] == "process-media":
@@ -471,8 +474,6 @@ class Activity():
                 version = product.get('version', None)
                 session_vars[name] = {'version': version }
             self.site_conf.manage_session_vars(session_vars)
-
-
         """ TODO: Get product list from API """
 
         # Generate site_parameters and patch the activity.
