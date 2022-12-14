@@ -115,109 +115,317 @@ def get_product_catalog(config, all_products=False):
             install_logger.debug('unable to get all config-management data for %s', product)
 
 
-def merge_dicts(list_of_dicts, overwrite=False):
+def get_products( config,
+                  extract_archives = True,
+                  products = None,
+                  prefixes = None,
+                  suffixes = None ):
     """
-    Merge a list of dicts and return a dict.
-    If the dicts look like:
-        [
-        {val0: a, val1: b},
-        {val0: b, val1: b, val2: c},
+    Extract product archives and return product information.
+
+    When called, will extract any product archives found and
+    return a dict of product dictionaries:
+
+    {
+        "cos-2.3.31-20220131164722": {   # key is the archive name without suffix or directory name
+            "archive_type": "tgz",       # type of archive (tar, tgz)
+            "product": "cos",            # derived shot product name
+            "archive": "cos-2.3.31-20220131164722.tar.gz",  # filename of product archive
+            "media_dir": "/admin/johnn/media2",  # path where all products are located.  if not
+                                                 # specified, pwd will be used
+            "work_dir": "/admin/johnn/media2/cos-2.3.31-20220131164722/cos-2.3.31-20220131164722",
+                                                 # absolute path to the contents of the archive.
+                                                 # the contents will always be nested inside a
+                                                 # directory named after the key in order to
+                                                 # support archive files that contain directory
+                                                 # names that are not unique
+            "md5": null,                 # if an md5 file is provided, we will refuse to extract
+                                         # the archive if it doesn't match
+            "out": null,                 # contains filename of 'out' file, if it exists
+            "archive_check": null        # only set when archive is extracted
+        }
+    }
+
+    Caller should place conditionals on 'product' and 'work_dir'
+    as the former indicates the entry has been identified as a
+    product, and the latter indicates a valid, extracted product
+    has been staged.
+
+    eg:
+        for product in products:
+        if product.product:
+            work_dir = product.work_dir
+            if work_dir:
+                installer = os.path.join(work_dir, 'install.sh')
+
+    """
+
+    products = lib.Products.Products()
+    media_dir = config.args["media_dir"]
+
+    if not prefixes:
+        prefixes = products.prefixes()
+
+    if not suffixes:
+        suffixes = { 'md5': '.tar.gz.MD5.TXT',
+                     'tgz': '.tar.gz',
+                     'tar': '.tar',
+                     'out': '.tar.gz.OUT.TXT' }
+
+    # since media_dir defaults to PWD, let's just ignore
+    # installer files
+    SKIP_FILES=[
+        "cne-install",
+        "install.log",
+        "utils",
+        "hpe",
+        "location_dict.yaml"
         ]
-    and overwrite is False, the end result would be
-        {val0: a, val1: b, val2: c}
 
-    If overwrite is True, the resulting dict would look like
-        {val0: b, val1: b, val2: c}
-    """
+    # convert to absolute to avoid ambiguity
+    media_dir = os.path.abspath(media_dir)
 
-    if type(list_of_dicts) != list:
-        raise UnexpectedState("merge_dicts called with '{}'.  Expected a list.".format(list_of_dicts))
+    # let user know what we are working on
+    install_logger.info('  processing media_dir %s', media_dir)
 
-    def merge_two_dicts(dict1, dict2):
-        for elt in dict2:
-            if elt in dict1:
-                if type(dict2[elt]) == dict:
-                    merge_two_dicts(dict1[elt], dict2[elt])
-                else:
-                    dict1[elt] = dict2[elt]
+    # get contents of our media directory
+    directory_listing = os.listdir(media_dir)
 
-    ret_dict = list_of_dicts[0]
-    for adict in list_of_dicts[1:]:
-        for elt in adict:
-            if overwrite:
-                if type(adict[elt]) == dict and elt in ret_dict:
-                    merge_two_dicts(ret_dict[elt], adict[elt])
-                else:
-                    ret_dict[elt] = adict[elt]
+    install_logger.debug('dir contents: %s', directory_listing)
+
+    # process each item in the directory
+    for item in directory_listing:
+
+        install_logger.debug('processing %s', item)
+        if item in SKIP_FILES:
+            install_logger.trace('skipping installer support file %s', item)
+            continue
+
+        item_name = None
+
+        # logic to handle item if it is a file
+        if os.path.isfile(os.path.join(media_dir, item)):
+
+            # we process suffix first because we want to determine a
+            # key name that does not include a suffix so all related
+            # files such as md5 files can be stored in the same record
+
+            for suffix in suffixes:
+
+                install_logger.trace('suffix %s', suffix)
+
+                if item.endswith(suffixes[suffix]):
+
+                    install_logger.trace('suffix match %s', suffix)
+                    item_name = item.split(suffixes[suffix])[0]
+                    install_logger.debug('item_name is %s', item_name)
+
+                    product = products.get(item_name)
+
+                    # handle archive and non-archive entries differently
+                    if suffix in ['md5', 'out']:
+                        install_logger.debug('item is not an archive')
+                        install_logger.debug('adding %s, %s', suffix, item)
+
+                        # read md5 file, parse out and save the md5 sum
+                        if suffix == 'md5':
+                            install_logger.debug('reading md5 file %s', item)
+                            # TODO: exception handling, please
+                            with open(os.path.join(media_dir, item), 'r', encoding='UTF-8') as md5_file:
+                                md5_contents = md5_file.readlines()
+                                # TODO: improve this logic
+                                md5 = md5_contents[0].split()[0]
+                            product.md5 = md5
+                        else:
+                            product.out = item
+                    else:
+                        # record archive information
+                        install_logger.debug('adding archive_type %s', suffix)
+                        install_logger.debug('adding archive %s', item)
+                        product.archive_type = suffix
+                        product.archive = item
+
+            # if there is no suffix, then just use the item name
+            if not item_name:
+
+                install_logger.debug('setting item_name to %s', item)
+                install_logger.debug('creating new product %s', item_name)
+                install_logger.debug('setting archive to %s', item)
+
+                product = products.get(item)
+                product.archive = item
+
+        # item is a directory
+        elif os.path.isdir(os.path.join(media_dir, item)):
+
+            item_name = item
+            product = products.get(item_name)
+
+            # find the directory created by the tar file and update the work_dir
+            work_dir_prefix = os.path.join(media_dir, item_name)
+            work_dir_contents = os.listdir(work_dir_prefix)
+
+            # we expect only one directory in the work_dir
+            if len(work_dir_contents) == 1 and os.path.isdir(os.path.join(media_dir, item_name, work_dir_contents[0])):
+                product.work_dir = os.path.join(media_dir, item_name, work_dir_contents[0])
             else:
-                for key in adict:
-                    if key not in ret_dict.keys():
-                        ret_dict[key] = adict[key]
-    return ret_dict
+                install_logger.warning('    work_dir contents of %s unexpected', item)
+
+            install_logger.info('    found existing work_dir for %s', item)
+            install_logger.debug('processing directory %s', item)
+            install_logger.debug('new product %s', item_name)
+
+            # FIXME: Is the debug line below correct?  it doesn't look like we're setting work_dir to anything
+            install_logger.debug('setting work_dir to %s', item_name)
+
+        # file is of a type that isn't relevant for us
+        else:
+            product = products.get(item)
+            product.archive = item
+            install_logger.debug('item is not a file or directory')
+            install_logger.debug('new product %s', item)
+            install_logger.debug('setting archive to %s', item)
+
+        for prefix in prefixes:
+            if item.startswith(prefix) and item not in ['cne-install', 'install.log']:
+                product_type = prefixes[prefix]
+                product.product = product_type
+                install_logger.debug('prefix match found %s', prefixes[prefix])
+
+        product.media_dir = media_dir
+
+    if extract_archives:
+
+        for product in products:
+
+            install_logger.debug('checking to see if %s needs to be unpacked', product.name)
+            install_logger.debug('products[product]["product"] is "%s"', product.product)
+
+            # only process items that are identified products
+            # don't bother trying to extract something with no archive
+            if product.product and product.archive:
+
+                install_logger.trace('inside product test')
+
+                # only process items that have no work_dir (haven't been extracted yet)
+                if not product.work_dir:
+
+                    install_logger.trace('needs workdir')
+                    work_dir = os.path.join(product.media_dir, product.name)
 
 
-def render_jinja2(pre_render_vars):
+                    archive = os.path.join(product.media_dir, product.archive)
 
-    rendered_config = {}
-    for item in pre_render_vars.items():
+                    if product.md5:
+                        install_logger.info('    validating md5 sum for %s', product.archive)
+                        if product.archive_check == 'passed':
+                            install_logger.info('      sum validates %s', product.archive_md5)
+                        else:
+                            # there is a problem with the archive or sum
+                            install_logger.error("    distribution sum doesn't match archive sum!")
+                            install_logger.error('    distribution %s', product.md5)
+                            install_logger.error('    archive_sum %s', product.archive_md5)
+                            install_logger.error('    skipping extraction of %s', archive)
+                            continue
 
-        # build a set of name/version variables to use
-        # with jinja substitution
-        name, data = item
-        version = None
+                    if config.dryrun:
+                        install_logger.dryrun('    skipping extraction of %s', archive)
+                        continue
 
-        # don't render defaults
-        if name in ['defaults']:
-            continue;
+                    # extract tarfile
+                    install_logger.info('    extracting %s', archive)
 
-        try:
-            # version can't be null, so make sure we
-            # end up with a version if it isn't present
-            # or isn't valid
-            x = y = z = 0
-            version_x_y = "{}.{}".format(x, y)
-            version_x_y_z = "{}.{}.{}".format(x, y, z)
-            version = data['version']
-            version_list = version.split(".")
-            try:
-                x = version_list[0].split("-")[0]
-                y = version_list[1].split("-")[0]
-                z = version_list[2].split("-")[0]
-            except Exception as err:
-                pass
-            version_x_y = "{}.{}".format(x, y)
-            version_x_y_z = "{}.{}.{}".format(x, y, z)
-        except Exception as err:
-            pass
+                    try:
+                        # make dir
+                        if not os.path.isdir(work_dir):
+                            os.makedirs(work_dir)
 
-        # represent product as a yaml formatted string
-        stanza = str(yaml.dump({ name: data }))
+                        shutil.unpack_archive(archive, work_dir)
+                    except:
+                        # if tar fails, remove work dir
+                        install_logger.warning('    unable to process %s', product.name)
+                        # remove dir to avoid thinking this is a valid workdir
+                        shutil.rmtree(work_dir)
+                        product.work_dir = None
+                        continue
 
-        # create the jinja template
-        t = jinja2.Template(stanza)
+                    # find the directory created by the tar file and update the work_dir
+                    work_dir_contents = os.listdir(work_dir)
 
-        # product_type is just the name of the product for everything except
-        # slingshot-host-software.  If this turns out to --not-- be the case,
-        # we might need a dict defining product_type.  Another options might
-        # be to get rid of product_type.
-        product_type = name if name != 'shs' else "slingshot-host-software"
+                    if work_dir_contents:
+                        product.work_dir = os.path.join(work_dir, work_dir_contents[0])
 
-        # render with the name/version variables
-        rendered_string = t.render(
-            name=name,
-            product_type=product_type,
-            version=version,
-            version_x_y=version_x_y,
-            version_x_y_z=version_x_y_z
-            )
+                else:
+                    # find the directory created by the tar file and update the work_dir
+                    work_dir_prefix = os.path.join(product.media_dir, product.name)
+                    work_dir_contents = os.listdir(work_dir_prefix)
 
-        # convert back to a dict
-        rendered_stanza = yaml.safe_load(rendered_string)
+                    if work_dir_contents:
+                        product.work_dir = os.path.join(work_dir_prefix, work_dir_contents[0])
+                    install_logger.debug('found previously extracted work_dir %s', product.name)
 
-        # add dict back into the rendered config
-        rendered_config.update(rendered_stanza)
+            else:
+                install_logger.debug('no archive for %s', product.name)
 
-    return rendered_config
+    # compute the version for each product
+    install_logger.debug('determining version for products')
+    for product in products:
+        working_name = None
+        working_version = None
+        pattern = r'(\D+)(\d+.*)'
+        results = re.findall(pattern, product.name)
+        install_logger.debug('regex product %s, results %s', product.name, results)
+        if results:
+            if len(results[0]) == 2:
+                working_name = results[0][0].strip('-')
+                working_version = results[0][1]
+                for prefix in prefixes:
+                    if working_name.lower() == prefix.lower():
+                        install_logger.debug('working_name %s matched prefix %s',
+                            working_name, prefix)
+                        product.version = working_version
+        # see if an alternate version is used for gitea
+        work_dir = product.work_dir
+        if work_dir:
+            manifest_dir = os.path.join(work_dir, 'manifests')
+            if os.path.isdir(manifest_dir):
+                files = os.listdir(manifest_dir)
+                for file_name in files:
+                    if file_name.endswith('.yaml'):
+                        yaml_file = os.path.join(manifest_dir, file_name)
+                        with open(yaml_file, 'r', encoding='UTF-8') as fhandle:
+                            try:
+                                yaml_data = yaml.safe_load(fhandle)
+                            except Exception:
+                                yaml_data = None
+                        if yaml_data:
+                            try:
+                                if yaml_data['spec']['charts']:
+                                    chart_data = yaml_data['spec']['charts']
+                                    for chart in chart_data:
+                                        import_job = chart['values']['cray-import-config']['import_job']
+                                        import_version = import_job['CF_IMPORT_PRODUCT_VERSION']
+                                        product.import_version = import_version
+                            except Exception:
+                                pass
+
+    install_logger.info('    OK')
+    return products
+
+
+
+def get_os():
+    """
+    return the current os release
+    """
+    with open('/etc/os-release', 'r', encoding='UTF-8') as os_file:
+        os_contents = os_file.readlines()
+    release = None
+    for line in os_contents:
+        if line.startswith('VERSION='):
+            release = line.split('"')[1]
+    return release
+
 
 def elapsed_time(start_time):
     """

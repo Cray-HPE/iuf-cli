@@ -182,7 +182,10 @@ class SiteConfig():
     def manage_session_vars(self, session_vars):
         if session_vars:
             self.session_vars = session_vars
+            self.pre_rendered = self.merge_dicts([self.pre_rendered, self.session_vars])
         self.interpolate_jinja()
+
+        self.sv_path = os.path.join(self.state_dir, "session_vars.yaml")
 
         with open(self.sv_path, "w") as fhandle:
             install_logger.info("Dumping rendered site variables to {}".format(self.sv_path))

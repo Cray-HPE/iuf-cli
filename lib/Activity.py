@@ -66,7 +66,6 @@ class Activity():
         self.dryrun = dryrun
         self.filename = filename
         self.site_conf = None
-        self._patched = False
         if os.path.exists(filename):
             self.load_activity_dict(filename)
 
@@ -479,8 +478,6 @@ class Activity():
                 version = product.get('version', None)
                 session_vars[name] = {'version': version }
             self.site_conf.manage_session_vars(session_vars)
-
-
         """ TODO: Get product list from API """
 
         # Generate site_parameters and patch the activity.
