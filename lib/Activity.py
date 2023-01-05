@@ -13,6 +13,8 @@ import sys
 import time
 from lib.vars import MEDIA_BASE_DIR
 import lib.ApiInterface
+
+from lib.PodLogs import PodLogs
 from lib.SiteConfig import SiteConfig
 
 class StateError(Exception):
@@ -24,7 +26,7 @@ class ActivityError(Exception):
     pass
 
 
-ACTIVITY_NEW_STATE = { 
+ACTIVITY_NEW_STATE = {
     'state': None,
     'sessionid': None,
     'status': None,
@@ -312,14 +314,19 @@ class Activity():
             }
 
 
+        # Launch threads for the pod logs and continue on.  Gather the
+        # threads after the while loop.
+        podlogs = PodLogs(config, workflow)
+        podlogs.follow_pod_logs(config) # threaded at top-level, no waiting.
         while not finished:
             try:
                 wflow = self.get_workflow(config, workflow)
             except Exception as e:
                 config.logger.error(f"Unable to get workflow {workflow}: {e}")
                 sys.exit(1)
-            
+
             """ TODO: Need to figure out how to tell if the workflow has failed in some bad way """
+
             try:
                 completed = wflow['metadata']['labels']['workflows.argoproj.io/completed']
                 if completed and completed == 'true':
@@ -382,6 +389,7 @@ class Activity():
             if not finished:
                 time.sleep(1)
 
+        podlogs.collect_threads()
         return rstatus
 
     def monitor_session(self, config, sessionid, stime):
@@ -478,6 +486,7 @@ class Activity():
                 version = product.get('version', None)
                 session_vars[name] = {'version': version }
             self.site_conf.manage_session_vars(session_vars)
+
         """ TODO: Get product list from API """
 
         # Generate site_parameters and patch the activity.
