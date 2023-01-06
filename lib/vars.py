@@ -1,12 +1,9 @@
 # Copyright 2022 Hewlett Packard Enterprise Development LP
 
 from collections import OrderedDict
-import datetime
 import logging
 
 import os
-
-import textwrap
 class VMConnectionException(Exception):
     """A pass-through class."""
 
@@ -70,47 +67,36 @@ class LoggingError(Exception):
 
 STAGE_DICT = OrderedDict({
     "process-media": {
-        "func" : "get_prods",
         "description" : "Inventory and extract products in the media directory for use in subsequent stages"
         },
     "pre-install-check":  {
-        "func" : "stub_pre_install_check",
         "description" : "Perform pre-install readyness checks"
         },
     "deliver-product": {
-        "func" : "stub_deliver_product",
         "description" : "Upload product content onto the system"
         },
     "update-vcs-config": {
-        "func" : "update_vcs_config",
         "description" : "Merge working branches and perform, automated VCS configuration"
         },
     "update-cfs-config": {
-        "func" : "stub_update_config",
         "description" : "Update CFS configuration (sat bootprep run --config)"
         },
     "prepare-images": {
-        "func" : "stub_prepare_images",
         "description" : "Build and configure management node and/or managed node images (sat bootprep run --images)"
         },
     "management-nodes-rollout": {
-        "func" : "stub_ncn_rollout",
         "description" : "Rolling reboot or liveupdate of management nodes"
         },
     "deploy-product": {
-        "func" : "stub_deploy_product",
         "description" : "Deploy services to system"
         },
     "post-install-service-check": {
-        "func" : "stub_post_install_service_check",
         "description" : "Perform post-install checks of processed services"
         },
     "managed-nodes-rollout": {
-        "func" : "stub_cn_rollout",
         "description" : "Rolling reboot or liveupdate of managed nodes nodes"
         },
     "post-install-check": {
-        "func" : "stub_post_install_compute_check",
         "description" : "Perform post-install checks"
         }
 })
@@ -118,7 +104,6 @@ STAGE_DICT = OrderedDict({
 NOABORT_STAGES = [
 ]
 
-LOCATION_DICT = "location_dict.yaml"
 ACTIVITY_DICT = "activity_dict.yaml"
 
 CFS_CONFIG_FILENAME = "cfs-config.json"

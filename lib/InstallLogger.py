@@ -3,7 +3,6 @@
 import datetime
 import logging
 import os
-import time
 
 from lib.vars import *
 
