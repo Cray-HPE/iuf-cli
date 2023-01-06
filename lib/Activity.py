@@ -448,6 +448,14 @@ class Activity():
         site_params = config.args.get("site_parameters", None)
         if site_params:
             payload["input_parameters"]["site_parameters"] = site_params
+
+        limit_management = config.args.get("limit_management_nodes", None)
+        if limit_management:
+            payload["input_parameters"]["limit_management_nodes"] = limit_management
+
+        limit_managed = config.args.get("limit_managed_nodes", None)
+        if limit_managed:
+            payload["input_parameters"]["limit_managed_nodes"] = limit_managed
         
         sessions = []
         """ Run process-media on its own first if we're doing it """
