@@ -15,9 +15,6 @@ import yaml
 from lib.InstallLogger import get_install_logger
 from lib.InstallerUtils import elapsed_time
 
-# Note: lib.ShastaUpdate needs to be imported `as supdate` because of the
-# Naming convention used in vars.py to get at the functions.
-import lib.ShastaUpdate as supdate
 from lib.vars import RunException, STAGE_HIST_FILENAME, STAGE_DICT, NOABORT_STAGES
 
 install_logger = get_install_logger(__name__)

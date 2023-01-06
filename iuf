@@ -17,7 +17,6 @@ from lib.InstallLogger import *
 
 from lib.InstallerUtils import elapsed_time
 from lib.InstallerUtils import formatted
-from lib.InstallerUtils import print_table
 
 from lib.ConfigFile import ConfigFile
 from lib.ConfigFile import InvertableArgument
@@ -266,9 +265,6 @@ def log_state_files(config):
         return
     log_dir_base = config.args["log_dir"]
     logdir = os.path.join(log_dir_base, config.timestamp)
-    if hasattr(config, "location_dict"):
-        if os.path.exists(config.location_dict_file):
-            shutil.copy2(config.location_dict_file, logdir)
     if hasattr(config, "stages_file"):
         if os.path.exists(config.stages_file):
             shutil.copy2(config.stages_file, logdir)
