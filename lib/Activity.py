@@ -13,6 +13,7 @@ import sys
 import time
 from lib.vars import MEDIA_BASE_DIR
 import lib.ApiInterface
+from lib.SiteConfig import SiteConfig
 
 class StateError(Exception):
     """A wrapper for raising a StateError exception."""
@@ -64,7 +65,8 @@ class Activity():
 
         self.dryrun = dryrun
         self.filename = filename
-
+        self.site_conf = None
+        self._patched = False
         if os.path.exists(filename):
             self.load_activity_dict(filename)
 
@@ -375,7 +377,7 @@ class Activity():
 
             if not finished:
                 time.sleep(1)
-        
+
         return rstatus
 
     def monitor_session(self, config, sessionid, stime):
@@ -396,34 +398,34 @@ class Activity():
                 completed = True
             else:
                 time.sleep(1)
-        
+
         if status == "completed":
             stat = "Succeeded"
         else:
             stat = "Failed"
 
         self.state(timestamp=stime, status=stat)
-        
+
         config.logger.debug(f"Finished monitoring session {sessionid}")
 
         return stat
-    
+
     def get_workflow(self, config, workflow):
         try:
             wf = config.connection.run("argo -n argo get {workflow} -o yaml".format(workflow=workflow))
         except Exception as e:
             config.logger.error(f"Unable to get workflow {workflow}: {e}")
             sys.exit(1)
-        
+
         return yaml.safe_load(wf.stdout)
 
     def run_stages(self, config):
         if not self.api.activity_exists(self.name):
             raise ActivityError(f"The activity {self.name} does not exist.")
-        
+
         config.stages.set_summary("activity_session", config.args.get("activity_session"))
         config.stages.set_summary("media_dir", config.args.get("media_dir"))
-        config.stages.set_summary("log_dir", config.args.get("log_dir"))       
+        config.stages.set_summary("log_dir", config.args.get("log_dir"))
 
         force = config.args.get("force", False)
         stages = config.stages.stages
@@ -436,6 +438,8 @@ class Activity():
                 "media_dir": media_dir
             }
         }
+        self.site_conf = SiteConfig(config)
+        self.site_conf.organize_merge()
 
         bp_config_management = config.args.get("bootprep_config_management", None)
         if bp_config_management:
@@ -445,10 +449,6 @@ class Activity():
         if bp_config_managed:
             payload["input_parameters"]["bootprep_config_managed"] = bp_config_managed
 
-        site_params = config.args.get("site_parameters", None)
-        if site_params:
-            payload["input_parameters"]["site_parameters"] = site_params
-        
         sessions = []
         """ Run process-media on its own first if we're doing it """
         if stages[0] == "process-media":
@@ -456,10 +456,25 @@ class Activity():
             payload["input_parameters"]["stages"] = ["process-media"]
             sid = self.run_stage(config, payload)
             sessions.append(sid)
+            ret_code = self.api.get_activity(self.name)
+            result = ret_code.json()
+            products = result.get('products', {})
+            session_vars = {}
+
+            for product in products:
+                name = product.get('name', None)
+                version = product.get('version', None)
+                session_vars[name] = {'version': version }
+            self.site_conf.manage_session_vars(session_vars)
+
 
         """ TODO: Get product list from API """
-        """ TODO: Generate site_parameters and add to payload """
-        
+
+        # Generate site_parameters and patch the activity.
+        patched_payload = payload
+        patched_payload["site_params"] = self.site_conf.site_params
+        self.api.patch_activity(self.name, patched_payload)
+
         """ Run any remaining stages """
         if stages:
             payload["input_parameters"]["stages"] = stages
