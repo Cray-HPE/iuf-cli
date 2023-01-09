@@ -18,6 +18,7 @@ class Config:
     _connection = None
     _logger = None
     timestamp = None
+    all_product_data = None
 
     def __init__(self):
         self.timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
