@@ -49,8 +49,10 @@ def validate_stages(config):
 
     config.stages.validate(state_dir, begin_stage, end_stage, run_stages, skip_stages)
     local_stages = config.stages.get(all_stages=False, list_fmt=True)
-    if config.args.get("func", "") == process_list:
-        # No need to do all the error checking if we're just doing an 'ls'.
+    if config.args.get("func", "") not in [process_install, process_resume,
+                                           process_restart]:
+        # No need to do all the error checking if we're just calling
+        # 'ls', 'activity', etc.
         return
 
     # Check if any of the stages requiring site-vars, etc are being called.
