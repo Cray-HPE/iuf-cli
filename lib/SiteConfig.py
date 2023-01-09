@@ -279,7 +279,7 @@ class SiteConfig():
                     wlm=rendered_defaults["wlm"]
                     )
             except KeyError as err:
-                install_logger.error("{} not found in Site Params".format(err))
+                install_logger.warning("{} not found in Site Params".format(err))
 
             # convert back to a dict
             rendered_stanza = yaml.safe_load(rendered_string)
