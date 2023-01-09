@@ -364,7 +364,12 @@ class Activity():
                         if not phases[name]["finishedAt"]:
                             if display:
                                 status = phases[name]["status"]
-                                config.logger.info(f"     FINISHED PHASE: {dname} [{status}]")
+                                if status == "Failed":
+                                    config.logger.error(f"    FINISHED PHASE: {dname} [{status}]")
+                                if status == "Omitted":
+                                    config.logger.warning(f"  FINISHED PHASE: {dname} [{status}]")
+                                else:
+                                    config.logger.info(f"     FINISHED PHASE: {dname} [{status}]")
                         phases[name]["finishedAt"] = node["finishedAt"]
                         try:
                             for artifact in node["outputs"]["artifacts"]:
@@ -502,7 +507,6 @@ class Activity():
             config.logger.debug("Next workflow {}".format(wfid))
             wf = self.get_workflow(config, wfid)
             stage = wf['metadata']['labels']['stage']
-            self.state(state="in_progress", sessionid=wfid, comment=f"Run {stage}")
             config.stages.exec_stage(config, wfid, stage)
 
         return sessionid

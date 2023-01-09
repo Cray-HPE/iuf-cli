@@ -232,6 +232,7 @@ class Stages():
 
         config.logger.info(f"BEGINNING STAGE: {stage}")
         config.logger.info(f"    WORKFLOW ID: {workflow}")
+        utime = config.activity.state(state="in_progress", status="Running", sessionid=workflow, comment=f"Run {stage}")
 
         # Add "run_stages" and "args" to the stage summary.
         if "ran_stages" in self.stage_hist.summary:
@@ -258,6 +259,11 @@ class Stages():
             duration = elapsed_time(stage_start)
             config.logger.info(f"       DURATION: {duration}")
 
+            # update the current state with the failure
+            config.activity.state(timestamp=utime, status="Failed")
+            # put the whole process into debug
+            config.activity.state(state="debug", comment=f"Exception occured while executing {err.cmd}")
+
             install_logger.debug("Exception while executing %s", stage, exc_info=True)
             print("")
             install_logger.critical("The following command failed while executing %s:", stage)
@@ -274,6 +280,11 @@ class Stages():
         except Exception as err:
             duration = elapsed_time(stage_start)
             config.logger.info(f"       DURATION: {duration}")
+            # update the current state with the failure
+            config.activity.state(timestamp=utime, status="Failed")
+            # put the whole process into debug
+            config.activity.state(state="debug", comment=err)
+
             install_logger.debug("Exception while executing %s", stage, exc_info=True)
             print("")
             install_logger.critical("A '%s' error", err)
@@ -284,9 +295,15 @@ class Stages():
             install_logger.info("Aborting install after %s", elapsed_time(self.installer_start))
             print("")
             self.stage_hist.update(stage, ran=False, succeeded="Paused",duration=duration)
+            # update the current state with the failure
+            config.activity.state(timestamp=utime, status="Failed")
+            # put the whole process into debug
+            config.activity.state(state="debug")
+
             print(self.get_summary())
             sys.exit(1)
         else:
+            config.activity.state(timestamp=utime, status="Succeeded")
             self.stage_hist.update(stage, True, True, duration=duration)
 
     def set_skipped(self, skipped_stages=[]):
