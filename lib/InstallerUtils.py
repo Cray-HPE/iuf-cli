@@ -6,11 +6,13 @@ Common utility and helper functions used by the CI.
 
 import datetime
 import jinja2
+import json
 import textwrap
 import yaml
 import prettytable
 
 from lib.InstallLogger import get_install_logger
+from lib.vars import UnexpectedState
 
 install_logger = get_install_logger(__name__)
 # pylint: disable=consider-using-f-string
