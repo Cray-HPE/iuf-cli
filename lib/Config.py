@@ -4,25 +4,21 @@ Copyright 2022 Hewlett Packard Enterprise Development LP
 
 import datetime
 import os
-from lib.ShastaUpdate import validate_products
 import sys
 
-from lib.vars import LOCATION_DICT, ACTIVITY_DICT, IUF_BASE_DIR, MEDIA_BASE_DIR
+from lib.vars import ACTIVITY_DICT, IUF_BASE_DIR, MEDIA_BASE_DIR
 from lib.Connection import CmdMgr
-import lib.Products
 import lib.Activity
 from lib.InstallLogger import get_install_logger
 
 class Config:
-    _location_dict = None
-    _location_dict_file = None
     _activity_session = None
     _activity_dict_file = None
     _args = None
     _connection = None
     _logger = None
-    all_product_data = None
     timestamp = None
+    all_product_data = None
 
     def __init__(self):
         self.timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
@@ -53,20 +49,6 @@ class Config:
         self._activity_session = value
 
     @property
-    def location_dict(self):
-        if self._location_dict is None:
-            self._location_dict = lib.Products.Products(self.location_dict_file)
-
-        return self._location_dict
-
-    @location_dict.setter
-    def location_dict(self, value):
-        self._location_dict = value
-        self._location_dict.location_dict = self.location_dict_file
-        self._location_dict.dryrun = self.dryrun
-        self._location_dict.write_location_dict()
-
-    @property
     def connection(self):
         if self._connection is None:
             self._connection = CmdMgr.get_cmd_interface()
@@ -86,15 +68,6 @@ class Config:
                 self._activity_dict_file = os.path.join(state_dir, ACTIVITY_DICT)
 
         return self._activity_dict_file
-
-    @property
-    def location_dict_file(self):
-        if self._location_dict_file is None and self._args is not None:
-            state_dir = self._args.get("state_dir")
-            if state_dir:
-                self._location_dict_file = os.path.join(state_dir, LOCATION_DICT)
-
-        return self._location_dict_file
 
     @property
     def dryrun(self):
