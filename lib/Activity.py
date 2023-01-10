@@ -11,7 +11,6 @@ from prettytable import PrettyTable
 import re
 import sys
 import time
-from lib.vars import MEDIA_BASE_DIR
 import lib.ApiInterface
 from lib.SiteConfig import SiteConfig
 
@@ -436,7 +435,7 @@ class Activity():
         stages = config.stages.stages
         # API backend wants relative paths only.  We make sure media dir is under base dir
         # in Config, so we can just strip the base dir off the front of the media dir
-        media_dir = config.args.get("media_dir")[len(MEDIA_BASE_DIR):]
+        media_dir = config.args.get("media_dir")[len(config.media_base_dir):]
         payload = {
             "input_parameters": {
                 "force": force,
