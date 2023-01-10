@@ -3,6 +3,7 @@ Copyright 2022 Hewlett Packard Enterprise Development LP
 """
 
 import datetime
+import json
 import os
 import sys
 
@@ -19,6 +20,7 @@ class Config:
     _logger = None
     timestamp = None
     all_product_data = None
+    _media_base_dir = None
 
     def __init__(self):
         self.timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
@@ -81,6 +83,27 @@ class Config:
         return get_install_logger()
         #return self._logger
 
+    @property
+    def media_base_dir(self):
+        if not self._media_base_dir:
+            try:
+                kcmd = self.connection.sudo("kubectl get deployment/cray-nls -n argo -o json").stdout
+                mjson = json.loads(kcmd)
+
+                envs = mjson["spec"]["template"]["spec"]["containers"][0]["env"]
+                for env in envs:
+                    if env["name"] == "MEDIA_DIR_BASE":
+                        self._media_base_dir = env["value"]
+                        break
+            except:
+                self.logger.debug("Unable to determine media base directory from NLS deployment. Using default.")
+                pass
+            finally:
+                if not self._media_base_dir:
+                    self._media_base_dir = MEDIA_BASE_DIR
+
+        return self._media_base_dir
+
     @logger.setter
     def logger(self, value):
         self._logger = value
@@ -106,19 +129,19 @@ class Config:
             base_dir = default_base_dir
 
         if not self._args.get("media_dir", None):
-            self._args["media_dir"] = os.path.join(MEDIA_BASE_DIR, activity)
+            self._args["media_dir"] = os.path.join(self.media_base_dir, activity)
 
         media_dir_ok = False
         media_dir = self._args.get("media_dir")
 
-        for dir in [media_dir, os.path.abspath(media_dir), os.path.join(MEDIA_BASE_DIR, media_dir)]:
-            if dir.startswith(MEDIA_BASE_DIR) and os.path.exists(dir):
+        for dir in [media_dir, os.path.abspath(media_dir), os.path.join(self.media_base_dir, media_dir)]:
+            if dir.startswith(self.media_base_dir) and os.path.exists(dir):
                 media_dir_ok = True
                 self._args["media_dir"] = dir
                 break
 
         if not media_dir_ok:
-            self._error("Media directory must exist and be under {}".format(MEDIA_BASE_DIR))
+            self._error("Media directory must exist and be under {}".format(self.media_base_dir))
             validated = False
 
         for adir in ["state", "log"]:
