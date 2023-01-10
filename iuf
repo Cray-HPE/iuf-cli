@@ -307,9 +307,6 @@ def main():
     parser.add_argument("-m", "--media-dir", action="store",
         help="Location of installation media you would like to install.  Defaults to $RBD_BASE_DIR/{activity_session}")
 
-    parser.add_argument("-sv", "--site-vars", action="store", default=False,
-        help="Path to site parameters file.  Default is ${RSM_BASE_DIR}/$IUF_ACTIVITY_SESSION}/site_vars.yaml")
-
     parser.add_argument("--log-dir", action="store",
         help="Location used to store log files.  Defaults to [base-dir]/log")
 
@@ -373,6 +370,10 @@ def main():
 
     install_sp.add_argument("-rv", "--recipe-vars", action="store",
         help="location of the recipe_vars.yaml file (aka product_vars.yaml), used by `sat bootprep`")
+
+    install_sp.add_argument("-sv", "--site-vars", action="store", default=False,
+        help="Path to site parameters file.  Default is ${RSM_BASE_DIR}/$IUF_ACTIVITY_SESSION}/site_vars.yaml")
+
 
     install_sp.add_argument("-um", "--update-method-management", action="store",
         default="reboot",
