@@ -482,7 +482,7 @@ class Activity():
 
         # Generate site_parameters and patch the activity.
         patched_payload = payload
-        patched_payload["site_params"] = self.site_conf.site_params
+        patched_payload["site_parameters"] = self.site_conf.site_params
         self.api.patch_activity(self.name, patched_payload)
 
         """ Run any remaining stages """
