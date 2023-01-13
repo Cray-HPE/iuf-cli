@@ -182,7 +182,7 @@ class SiteConfig():
     def manage_session_vars(self, session_vars):
         if session_vars:
             self.session_vars = session_vars
-            #self.pre_rendered = self.merge_dicts([self.pre_rendered, self.session_vars])
+            self.pre_rendered = self.merge_dicts([self.pre_rendered, self.session_vars])
         self.interpolate_jinja()
 
         with open(self.sv_path, "w") as fhandle:
