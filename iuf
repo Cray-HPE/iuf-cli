@@ -54,6 +54,15 @@ def validate_stages(config):
         # 'ls', 'activity', etc.
         return
 
+    concurrency = config.args.get("concurrency", None)
+    if concurrency is not None:
+        try:
+            concurrency = int(concurrency)
+            if concurrency != None and concurrency < 1:
+                errors.append("`--concurrency` requires at least one thread.")
+        except ValueError:
+            errors.append("`--concurrency` requires a positive integer argument.")
+
     # Check if any of the stages requiring site-vars, etc are being called.
     # Note that they aren't strictly required in process-media, but all
     # the variables are resolved in that stage.  Further error-checking
@@ -203,7 +212,7 @@ def process_resume(config):
     else:
         print("Couldn't find a successful or paused stage to resume at.")
         sys.exit(1)
-    
+
     config.stages.start_at = start_at
     process_install(config)
 
@@ -300,12 +309,21 @@ def main():
     parser.add_argument("-b", "--base-dir", action="store",
         help="""Base directory for state and log dirs.  Default is ${RSM_BASE_DIR}/iuf/<activity-session>""")
 
+    concurrency_help = """Run the argo processes concurrently.  Defaults to a threaded model.  To
+    use at most N threads, specify `concurrency=N`."""
+    parser.add_argument("-c", "--concurrency", action="store", default=None,
+        help=concurrency_help)
+
     parser.add_argument("-s", "--state-dir", action="store",
         help="A directory used to store the current state of stages.  Defaults to [base-dir]/state.")
 
     #### TODO handle both directories or list of files
     parser.add_argument("-m", "--media-dir", action="store",
         help="Location of installation media you would like to install.  Defaults to $RBD_BASE_DIR/{activity_session}")
+
+    parser.add_argument("-mh", "--media-host", action="store",
+                        help="Host to extract the media onto.  Defaults to ncn-m001",
+                        default="ncn-m001")
 
     parser.add_argument("--log-dir", action="store",
         help="Location used to store log files.  Defaults to [base-dir]/log")

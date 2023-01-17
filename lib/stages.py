@@ -89,6 +89,9 @@ class Stages():
         self.summary = {}
         self._run_stages = []
         self._start_at = None
+        self.stage_enum = {}
+        for index, key in enumerate(STAGE_DICT):
+            self.stage_enum[key] = index
 
         self.set_summary("command line", " ".join(sys.argv))
 

@@ -443,10 +443,15 @@ class Activity():
         # API backend wants relative paths only.  We make sure media dir is under base dir
         # in Config, so we can just strip the base dir off the front of the media dir
         media_dir = config.args.get("media_dir")[len(config.media_base_dir):]
+
+        media_host = config.args.get("media_host", "ncn-m001")
+        concurrency = config.args.get("concurrency", None)
         payload = {
             "input_parameters": {
+                "concurrency": concurrency,
                 "force": force,
-                "media_dir": media_dir
+                "media_dir": media_dir,
+                "media_host": media_host,
             }
         }
         self.site_conf = SiteConfig(config)
@@ -461,7 +466,8 @@ class Activity():
             payload["input_parameters"]["bootprep_config_managed"] = bp_config_managed
 
         sessions = []
-        """ Run process-media on its own first if we're doing it """
+
+        # Run process-media on its own first if we're doing it.
         if stages[0] == "process-media":
             stages.pop(0)
             payload["input_parameters"]["stages"] = ["process-media"]
@@ -476,16 +482,14 @@ class Activity():
                 name = product.get('name', None)
                 version = product.get('version', None)
                 session_vars[name] = {'version': version }
-            self.site_conf.manage_session_vars(session_vars)
-
-        """ TODO: Get product list from API """
+            self.site_conf.manage_session_vars(session_vars, write=True)
 
         # Generate site_parameters and patch the activity.
         patched_payload = payload
         patched_payload["site_parameters"] = self.site_conf.site_params
         self.api.patch_activity(self.name, patched_payload)
 
-        """ Run any remaining stages """
+        # Run any remaining stages.
         if stages:
             payload["input_parameters"]["stages"] = stages
             sid = self.run_stage(config, payload)
@@ -513,6 +517,7 @@ class Activity():
             wf = self.get_workflow(config, wfid)
             stage = wf['metadata']['labels']['stage']
             config.stages.exec_stage(config, wfid, stage)
+            self.site_conf.update_dict_stack(stage)
 
         return sessionid
 

@@ -3,14 +3,16 @@
 import copy
 from distutils.version import LooseVersion
 import os
+import re
 import sys
 import yaml
 
+import lib.git as git
 import jinja2
 
-from lib.vars import RECIPE_VARS, BP_CONFIG_MANAGED, BP_CONFIG_MANAGEMENT, UnexpectedState
+from lib.vars import RECIPE_VARS, BP_CONFIG_MANAGED, BP_CONFIG_MANAGEMENT, MEDIA_VERSIONS, UnexpectedState
 
-from lib.InstallerUtils import get_product_catalog
+from lib.InstallerUtils import get_product_catalog, formatted
 
 from lib.InstallLogger import get_install_logger
 
@@ -28,6 +30,9 @@ def read_yaml(file_loc):
 
     return return_dict
 
+def highestVersion(versions_list):
+    sorted_vs = sorted(versions_list, key=LooseVersion)
+    return sorted_vs[-1]
 
 class SiteConfig():
     def __init__(self, config):
@@ -49,17 +54,19 @@ class SiteConfig():
         self.mask_recipe_prods = []
         self.state_dir = config.args.get("state_dir")
         self.sv_path = os.path.join(self.state_dir, "session_vars.yaml")
+        self.media_versions_path = os.path.join(self.state_dir, MEDIA_VERSIONS)
+        self.bpcd = config.args.get("bootprep_config_dir", None)
+        self.git = git.Git(config)
+        self.stage_enum = config.stages.stage_enum
 
         errors = []
         # Get the product catalog as the base layer.
         full_product_catalog = get_product_catalog(config, all_products=True)
         for prod in full_product_catalog:
-            unsorted_versions = [elt for elt in list(full_product_catalog[prod].keys()) if elt]
-            sorted_versions = sorted(unsorted_versions, key=LooseVersion)
+            versions = [elt for elt in list(full_product_catalog[prod].keys()) if elt]
 
-            self.product_catalog[prod] = {"version": sorted_versions[-1]}
+            self.product_catalog[prod] = {"version": highestVersion(versions)}
 
-        self.bpcd = config.args.get("bootprep_config_dir", None)
         recipe_vars_file = config.args.get("recipe_vars", None)
 
         site_vars_file = config.args.get("site_vars", None)
@@ -149,6 +156,13 @@ class SiteConfig():
 
         return ret_dict
 
+    def mask_prods(self):
+        if self.recipe_vars:
+            for prod in self.mask_recipe_prods:
+                # Remove the products specified in `--mask-recipe-prods` from
+                # recipe_vars.
+                self.recipe_vars.pop(prod, None)
+
 
     def organize_merge(self):
         """Merge the dictionaries in the following order:
@@ -168,26 +182,88 @@ class SiteConfig():
         self.pre_rendered = copy.deepcopy(self.product_catalog)
 
         # 2.  recipe_vars / product_vars.
+        if not (self.recipe_vars or self.bpcd):
+            # Clone the repo.
+
+            repo = "hpc-csm-software-recipe"
+            versions_dict = {}
+            clone_loc = self.git.clone(repo)
+            version_re = re.compile("(\d+\.\d+.*$)")
+            branches = self.git.ls_remote(repo, just_branches=True)
+            for branch in branches:
+                parts = branch.split('/')
+                if len(parts) < 1:
+                    continue
+                vers_match = version_re.search(parts[-1])
+                if vers_match:
+                    version = vers_match.group(1)
+                    versions_dict[version] = branch
+            if versions_dict:
+                highest_version = highestVersion(versions_dict.keys())
+                co_branch = versions_dict[highest_version]
+            else:
+                # We shouldn't hit this with the hpc-csm-software-recipe repo.
+                # If that changes, we could get a lot more elaborate and check
+                # for integration and master branches.
+                co_branch = branches[0]
+                install_logger.warning(f"Couldn't find a versioned branch for {repo}.  Assuming branch {co_branch}.")
+            self.git.checkout("hpc-csm-software-recipe", co_branch)
+
+            recipe_file = os.path.join(clone_loc, RECIPE_VARS)
+            if os.path.exists(recipe_file):
+                msg = f"""Neither --recipe-vars nor --bootprep-config-dir
+                were specified, so {RECIPE_VARS}  will pulled from the
+                branch {co_branch} of the {repo} git repo."""
+                install_logger.info(formatted(msg))
+                self.recipe_vars = read_yaml(recipe_file)
+            else:
+                msg = f"""Could not find vcs/{RECIPE_VARS} on branch
+                {co_branch} within the {repo} repo. If one is desired, it
+                can be specified with the `--bootprep-config-dir` or
+                `--recipe-vars` arguments."""
+                install_logger.warning(msg)
+
         if self.recipe_vars:
-            for prod in self.mask_recipe_prods:
-                # Remove the products specified in `--mask-recipe-prods` from
-                # recipe_vars.
-                self.recipe_vars.pop(prod, None)
+            self.mask_prods()
             self.pre_rendered = self.merge_dicts([self.pre_rendered, self.recipe_vars])
 
         # 3. Site vars -- configuration specified by the site.
         if self.site_vars:
             self.pre_rendered = self.merge_dicts([self.pre_rendered, self.site_vars])
 
-    def manage_session_vars(self, session_vars):
+    def manage_session_vars(self, session_vars, write=False):
         if session_vars:
             self.session_vars = session_vars
-            self.pre_rendered = self.merge_dicts([self.pre_rendered, self.session_vars])
+        elif os.path.exists(self.media_versions_path):
+            self.session_vars = read_yaml(self.media_versions_path)
+
+        self.pre_rendered = self.merge_dicts([self.pre_rendered, self.session_vars])
         self.interpolate_jinja()
+
+        # This is necessary when running process-media in one run, and then
+        # running subsequent stages -- we won't know which versions of products
+        # were installed.
+        if write and self.session_vars:
+            with open(self.media_versions_path, "w") as fhandle:
+                yaml.dump(self.session_vars, fhandle)
 
         with open(self.sv_path, "w") as fhandle:
             install_logger.info("Dumping rendered site variables to {}".format(self.sv_path))
             yaml.dump(self.rendered, fhandle)
+
+    def update_dict_stack(self, stage):
+        deliver_stage = self.stage_enum["deliver-product"]
+        if stage in self.stage_enum:
+            stage_index = self.stage_enum[stage]
+        else:
+            stage_index = next(reversed(self.stage_enum))
+            msg = f"""Unknown stage '{stage}' -- assuming we should update
+            the dictionary stack; but the larger problem is probably the
+            unknown {stage} stage."""
+            install_logger.warning(msg)
+        if stage_index >= deliver_stage:
+            self.organize_merge()
+            self.manage_session_vars(self.session_vars)
 
     @property
     def site_params(self):
@@ -250,11 +326,12 @@ class SiteConfig():
 
             # represent product as a yaml formatted string
             product_defaults = str(yaml.dump(pre_rendered_defaults))
-
             product_type = name if name != 'shs' else "slingshot-host-software"
+ 
             # create the jinja template
             t = jinja2.Template(product_defaults)
-                # render with name and version info
+
+            # render with name and version info
             rendered_string = t.render(
                 name=name,
                 product_type=product_type,
@@ -264,10 +341,15 @@ class SiteConfig():
                 )
 
             rendered_defaults = yaml.safe_load(rendered_string)
+
+            for var in ['working_branch', 'network_type', 'wlm']:
+                if var not in rendered_defaults:
+                    rendered_defaults[var] = ""
+
             stanza = str(yaml.dump({ name: data }))
             t = jinja2.Template(stanza)
 
-            # render with the name/version variables
+            # Render with the name/version variables.
             try:
                 rendered_string = t.render(
                     name=name,
