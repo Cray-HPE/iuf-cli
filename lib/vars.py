@@ -113,6 +113,7 @@ NCNP_VARS = "ncnp-vars.yaml"
 
 # `sat bootprep`-related defaults.
 RECIPE_VARS="product_vars.yaml"
+MEDIA_VERSIONS = "media_versions.yaml"
 BP_CONFIG_MANAGED = "compute-and-uan-bootprep.yaml"
 BP_CONFIG_MANAGEMENT = "management-bootprep.yaml"
 
