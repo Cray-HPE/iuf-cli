@@ -401,11 +401,10 @@ def main():
         default="reboot",
         help="Method to update the managed nodes.  (rolling) 'reboot' or (rolling) 'in_place' (update running nodes).  Defaults to 'reboot'")
 
-    install_sp.add_argument("-ln", "--limit-nodes", action="store", nargs='+',
-        help="""Override list used in rolling stage to assist with repairing broken nodes.
-For example, --limit-nodes ncn-w003 would cause the rollout stage to only
-reload ncn-w003;  --limit-nodes x3000c0s37b0n0 would also work.
-""")
+    install_sp.add_argument("--limit-managed-nodes", action="store", nargs='+',
+        help="""Override list used in rolling stage to assist with repairing broken managed nodes.""")
+    install_sp.add_argument("--limit-management-nodes", action="store", nargs='+',
+        help="""Override list used in rolling stage to assist with repairing broken management nodes.""")
     install_sp.add_argument("-mrp", "--mask-recipe-prods", action="store", nargs='+',
         help="""If product_vars was specified, mask the versions found
         within product_vars for the products specified, So versions for the specified products

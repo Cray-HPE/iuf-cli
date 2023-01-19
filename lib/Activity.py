@@ -465,6 +465,14 @@ class Activity():
         if bp_config_managed:
             payload["input_parameters"]["bootprep_config_managed"] = bp_config_managed
 
+        limit_management = config.args.get("limit_management_nodes", None)
+        if limit_management:
+            payload["input_parameters"]["limit_management_nodes"] = limit_management
+
+        limit_managed = config.args.get("limit_managed_nodes", None)
+        if limit_managed:
+            payload["input_parameters"]["limit_managed_nodes"] = limit_managed
+        
         sessions = []
 
         # Run process-media on its own first if we're doing it.
