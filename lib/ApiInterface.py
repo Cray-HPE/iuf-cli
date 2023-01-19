@@ -1,7 +1,6 @@
 import requests
 import lib.Auth
 import os
-import json
 
 class ApiInterface(object):
     def __init__(self, apiurl="https://api-gw-service-nmn.local/apis", resource="/iuf/v1"):

@@ -1,26 +1,28 @@
 ---
 
-defaults:
-    - &default_working_branch
-     '{{product_type}}-{{version_x_y}}-integration'
-    - &pristine_branch
-     'cray/{{name}}/{{version}}'
-    - &default_network_type
-     'cassini'
-    - &default_wlm
-     'pbs'
+# variables available for substitution
+# {{name}} - product name from the product manifest
+# {{version}} - version from the product manifest
+# {{version_x_y}} - x.y portion of the product version
+# {{version_x_y_z}} - x.y.z portion of the product version
+# {{working_branch}} - default working branch
+# {{network_type}} - default network_type
+# {{wlm}} - default wlm
 
-network: *default_network_type
-
-wlm:
-  wlm_used: *default_wlm
+default:
+  working_branch: 'mysite-{{version_x_y_z}}'
+  network_type: "cassini"
+  wlm: 'pbs'
 
 shs:
-  working_branch: *default_working_branch
-  network_type: *default_network_type
+  working_branch: 'special-{{version_x_y}}'
+
+cos:
+  working_branch: "mycos-{{version_x_y_z}}"
 
 analytics:
-  working_branch: integration
+  working_branch: 'master'
 
+# test purposes
 precedence_test:
   waldo: 'site_vars'

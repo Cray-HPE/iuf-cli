@@ -17,14 +17,13 @@ from lib.InstallLogger import *
 
 from lib.InstallerUtils import elapsed_time
 from lib.InstallerUtils import formatted
-from lib.InstallerUtils import print_table
-from lib.InstallerUtils import merge_dicts
-from lib.InstallerUtils import render_jinja2
 
 from lib.ConfigFile import ConfigFile
 from lib.ConfigFile import InvertableArgument
 import lib.Config
 import lib.Activity
+
+from lib.SiteConfig import read_yaml
 
 # Import lib.stages without the 'as stages' to prevent namespace collisions.
 import lib.stages
@@ -49,19 +48,32 @@ def validate_stages(config):
 
     config.stages.validate(state_dir, begin_stage, end_stage, run_stages, skip_stages)
     local_stages = config.stages.get(all_stages=False, list_fmt=True)
-    if config.args.get("func", "") == process_list:
-        # No need to do all the error checking if we're just doing an 'ls'.
+    if config.args.get("func", "") not in [process_install, process_resume,
+                                           process_restart]:
+        # No need to do all the error checking if we're just calling
+        # 'ls', 'activity', etc.
         return
 
-    def read_yaml(file_loc):
-        """Read a yaml file and return the dictionary."""
+    concurrency = config.args.get("concurrency", None)
+    if concurrency is not None:
+        try:
+            concurrency = int(concurrency)
+            if concurrency != None and concurrency < 1:
+                errors.append("`--concurrency` requires at least one thread.")
+        except ValueError:
+            errors.append("`--concurrency` requires a positive integer argument.")
 
-        return_dict = {}
-        if os.path.exists(file_loc):
-            with open(file_loc, "r", encoding='UTF-8') as fhandle:
-                return_dict = yaml.load(fhandle, yaml.SafeLoader)
-
-        return return_dict
+    # Check if any of the stages requiring site-vars, etc are being called.
+    # Note that they aren't strictly required in process-media, but all
+    # the variables are resolved in that stage.  Further error-checking
+    # related to this is done in SiteConfig.
+    if any(stage in local_stages for stage in ["process-media",
+        "update-vcs-config", "update-cfs-config", "management-nodes-rollout"]):
+        if not (config.args.get("site_vars", None) or config.args.get("bootprep_config_dir", None) \
+            or config.args.get("recipe_vars", None)):
+            errors.append("bootprep or vcs stages were called, but none of "
+                          "--site-vars/-sv, --bootprep-config-dir/-bpcd, nor --recipe-vars/-rv "
+                          "were specified. At least one of them needs to be specified")
 
     # Ensure that if a `sat bootprep` config was specified (and the stage
     # is being run) it exists.
@@ -71,7 +83,6 @@ def validate_stages(config):
 
     if bp_config and "managed-nodes-rollout" in local_stages:
         for entry in bp_config:
-            # print('cn',entry)
             if not os.path.exists(entry):
                 errors.append("--bootprep-config-managed-nodes {} was specified but could not be found".format(entry))
             else:
@@ -86,71 +97,13 @@ def validate_stages(config):
             else:
                 bp_management.append(read_yaml(entry))
 
-    # recipe_vars <==> product_vars; versions defined for sat.
-    recipe_vars_file = config.args.get("recipe_vars", None)
-
-    # site_params_file (site_vars) provides overrides to what is in recipe_vars.
-    site_params_file = config.args.get("site_parameters", None)
-
-    bpcd = config.args.get("bootprep_config_dir", None)
-
-    recipe_vars = None
-    site_params = None
-
-    if any([var for var in [recipe_vars_file, site_params_file, bpcd]]):
-
-        if bpcd and os.path.exists(bpcd):
-            rv_loc = os.path.join(bpcd, RECIPE_VARS)
-            managed_loc = os.path.join(bpcd, "bootprep", BP_CONFIG_MANAGED)
-            management_loc = os.path.join(bpcd, "bootprep", BP_CONFIG_MANAGEMENT)
-
-            # Don't flag an error if the individual files in bpcd don't exist.
-            # They may exist in the individual file arguments.
-            recipe_vars = read_yaml(rv_loc)
-            if os.path.exists(managed_loc):
-                bp_managed.append(read_yaml(managed_loc))
-            if os.path.exists(management_loc):
-                bp_management.append(read_yaml(management_loc))
-        elif bpcd:
-            errors.append("The `-bpcd/--bootprep-config-dir {}` was specified but could not be found".format(bpcd))
-
-        # If `--recipe-vars` was specified on the commandline, allow it to
-        # override what was specified with the `--bootprep-config-dir` option.
-        if recipe_vars_file and os.path.exists(recipe_vars_file):
-            recipe_vars = read_yaml(recipe_vars_file)
-        elif recipe_vars_file:
-            errors.append("`--recipe-vars {}` was specified but the file could not be found!".format(recipe_vars_file))
-
-        if site_params_file and os.path.exists(site_params_file):
-            site_params = read_yaml(site_params_file)
-        elif site_params_file:
-            errors.append("`--site-parameters/-sp {}` was specified but the file could not be found".format(site_params_file))
-
     if errors:
-        print("Problems were encountered:")
+        install_logger.error("Problems were encountered:")
         counter = 1
         for err in errors:
-            print("\t{}: {}".format(counter, err))
+            install_logger.error("\t{}: {}".format(counter, err))
             counter += 1
         sys.exit(1)
-
-    pre_rendered = None
-
-    if recipe_vars and site_params:
-        pre_rendered = merge_dicts([recipe_vars, site_params], overwrite=True)
-    elif recipe_vars:
-        pre_rendered = recipe_vars
-    elif site_params:
-        # I'm not sure if it's valid to pass site_params without recipe_vars
-        # or similar, but we'll handle it.
-        pre_rendered = site_params
-
-    if pre_rendered:
-        rendered = render_jinja2(pre_rendered)
-        config.args["site_params"] = rendered
-
-    return
-
 
 def process_activity(config):
     state = config.args.get("state", None)
@@ -259,7 +212,7 @@ def process_resume(config):
     else:
         print("Couldn't find a successful or paused stage to resume at.")
         sys.exit(1)
-    
+
     config.stages.start_at = start_at
     process_install(config)
 
@@ -321,9 +274,6 @@ def log_state_files(config):
         return
     log_dir_base = config.args["log_dir"]
     logdir = os.path.join(log_dir_base, config.timestamp)
-    if hasattr(config, "location_dict"):
-        if os.path.exists(config.location_dict_file):
-            shutil.copy2(config.location_dict_file, logdir)
     if hasattr(config, "stages_file"):
         if os.path.exists(config.stages_file):
             shutil.copy2(config.stages_file, logdir)
@@ -359,6 +309,11 @@ def main():
     parser.add_argument("-b", "--base-dir", action="store",
         help="""Base directory for state and log dirs.  Default is ${RSM_BASE_DIR}/iuf/<activity-session>""")
 
+    concurrency_help = """Run the argo processes concurrently.  Defaults to a threaded model.  To
+    use at most N threads, specify `concurrency=N`."""
+    parser.add_argument("-c", "--concurrency", action="store", default=None,
+        help=concurrency_help)
+
     parser.add_argument("-s", "--state-dir", action="store",
         help="A directory used to store the current state of stages.  Defaults to [base-dir]/state.")
 
@@ -366,8 +321,9 @@ def main():
     parser.add_argument("-m", "--media-dir", action="store",
         help="Location of installation media you would like to install.  Defaults to $RBD_BASE_DIR/{activity_session}")
 
-    parser.add_argument("-sp", "--site-parameters", action="store", default=False,
-        help="Path to site parameters file.  Default is ${RSM_BASE_DIR}/$IUF_ACTIVITY_SESSION}/site_parameters.yaml")
+    parser.add_argument("-mh", "--media-host", action="store",
+                        help="Host to extract the media onto.  Defaults to ncn-m001",
+                        default="ncn-m001")
 
     parser.add_argument("--log-dir", action="store",
         help="Location used to store log files.  Defaults to [base-dir]/log")
@@ -420,7 +376,7 @@ def main():
     bpc_help = formatted("""
     List of `sat bootprep` config files for management NCN nodes.""")
 
-    install_sp.add_argument("-bm", "--bootprep-config-management", action="store",
+    install_sp.add_argument("-bm", "--bootprep-config-management", action="store", nargs='+',
         #default = ['../vcs/bootprep/management-bootprep.yaml'],
         help=bpc_help)
 
@@ -433,6 +389,10 @@ def main():
     install_sp.add_argument("-rv", "--recipe-vars", action="store",
         help="location of the recipe_vars.yaml file (aka product_vars.yaml), used by `sat bootprep`")
 
+    install_sp.add_argument("-sv", "--site-vars", action="store", default=False,
+        help="Path to site parameters file.  Default is ${RSM_BASE_DIR}/$IUF_ACTIVITY_SESSION}/site_vars.yaml")
+
+
     install_sp.add_argument("-um", "--update-method-management", action="store",
         default="reboot",
         help="Method to update the management nodes.  (rolling) 'reboot' or (rolling) 'in_place' (update running nodes).  Defaults to 'reboot'")
@@ -443,18 +403,19 @@ def main():
 
     install_sp.add_argument("--limit-managed-nodes", action="store", nargs='+',
         help="""Override list used in rolling stage to assist with repairing broken managed nodes.""")
-
     install_sp.add_argument("--limit-management-nodes", action="store", nargs='+',
         help="""Override list used in rolling stage to assist with repairing broken management nodes.""")
+    install_sp.add_argument("-mrp", "--mask-recipe-prods", action="store", nargs='+',
+        help="""If product_vars was specified, mask the versions found
+        within product_vars for the products specified, So versions for the specified products
+        would be pulled from the product catalog.  Note that the versions found in the `--site-vars`
+        (or the version being installed) would override it anyway.""")
 
     install_sp.set_defaults(func=process_install, skip_stages=list(), run_stages=list())
 
     list_sp = subparsers.add_parser("list-stages", aliases=["ls"])
     list_sp.set_defaults(func=process_list)
     list_sp.add_argument("-f", "--format", action="store")
-
-    install_sp = subparsers.add_parser("activity",
-        formatter_class=argparse.RawTextHelpFormatter)
 
     # create a config object to store all of the configured options in the parser
 
@@ -545,7 +506,6 @@ def main():
     except AttributeError:
         install_logger.error("A subcommand was not specified.")
         raise
-        parser.print_help(sys.stderr)
-        sys.exit(1)
+
 if __name__ == "__main__":
     main()

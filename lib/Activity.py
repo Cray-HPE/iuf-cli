@@ -11,8 +11,10 @@ from prettytable import PrettyTable
 import re
 import sys
 import time
-from lib.vars import MEDIA_BASE_DIR
 import lib.ApiInterface
+
+from lib.PodLogs import PodLogs
+from lib.SiteConfig import SiteConfig
 
 class StateError(Exception):
     """A wrapper for raising a StateError exception."""
@@ -23,7 +25,7 @@ class ActivityError(Exception):
     pass
 
 
-ACTIVITY_NEW_STATE = { 
+ACTIVITY_NEW_STATE = {
     'state': None,
     'sessionid': None,
     'status': None,
@@ -64,7 +66,7 @@ class Activity():
 
         self.dryrun = dryrun
         self.filename = filename
-
+        self.site_conf = None
         if os.path.exists(filename):
             self.load_activity_dict(filename)
 
@@ -311,14 +313,19 @@ class Activity():
             }
 
 
+        # Launch threads for the pod logs and continue on.  Gather the
+        # threads after the while loop.
+        podlogs = PodLogs(config, workflow)
+        podlogs.follow_pod_logs(config) # threaded at top-level, no waiting.
         while not finished:
             try:
                 wflow = self.get_workflow(config, workflow)
             except Exception as e:
                 config.logger.error(f"Unable to get workflow {workflow}: {e}")
                 sys.exit(1)
-            
+
             """ TODO: Need to figure out how to tell if the workflow has failed in some bad way """
+
             try:
                 completed = wflow['metadata']['labels']['workflows.argoproj.io/completed']
                 if completed and completed == 'true':
@@ -362,7 +369,12 @@ class Activity():
                         if not phases[name]["finishedAt"]:
                             if display:
                                 status = phases[name]["status"]
-                                config.logger.info(f"     FINISHED PHASE: {dname} [{status}]")
+                                if status == "Failed":
+                                    config.logger.error(f"    FINISHED PHASE: {dname} [{status}]")
+                                if status == "Omitted":
+                                    config.logger.warning(f"  FINISHED PHASE: {dname} [{status}]")
+                                else:
+                                    config.logger.info(f"     FINISHED PHASE: {dname} [{status}]")
                         phases[name]["finishedAt"] = node["finishedAt"]
                         try:
                             for artifact in node["outputs"]["artifacts"]:
@@ -375,7 +387,8 @@ class Activity():
 
             if not finished:
                 time.sleep(1)
-        
+
+        podlogs.collect_threads()
         return rstatus
 
     def monitor_session(self, config, sessionid, stime):
@@ -396,46 +409,53 @@ class Activity():
                 completed = True
             else:
                 time.sleep(1)
-        
+
         if status == "completed":
             stat = "Succeeded"
         else:
             stat = "Failed"
 
         self.state(timestamp=stime, status=stat)
-        
+
         config.logger.debug(f"Finished monitoring session {sessionid}")
 
         return stat
-    
+
     def get_workflow(self, config, workflow):
         try:
             wf = config.connection.run("argo -n argo get {workflow} -o yaml".format(workflow=workflow))
         except Exception as e:
             config.logger.error(f"Unable to get workflow {workflow}: {e}")
             sys.exit(1)
-        
+
         return yaml.safe_load(wf.stdout)
 
     def run_stages(self, config):
         if not self.api.activity_exists(self.name):
             raise ActivityError(f"The activity {self.name} does not exist.")
-        
+
         config.stages.set_summary("activity_session", config.args.get("activity_session"))
         config.stages.set_summary("media_dir", config.args.get("media_dir"))
-        config.stages.set_summary("log_dir", config.args.get("log_dir"))       
+        config.stages.set_summary("log_dir", config.args.get("log_dir"))
 
         force = config.args.get("force", False)
         stages = config.stages.stages
         # API backend wants relative paths only.  We make sure media dir is under base dir
         # in Config, so we can just strip the base dir off the front of the media dir
-        media_dir = config.args.get("media_dir")[len(MEDIA_BASE_DIR):]
+        media_dir = config.args.get("media_dir")[len(config.media_base_dir):]
+
+        media_host = config.args.get("media_host", "ncn-m001")
+        concurrency = config.args.get("concurrency", None)
         payload = {
             "input_parameters": {
+                "concurrency": concurrency,
                 "force": force,
-                "media_dir": media_dir
+                "media_dir": media_dir,
+                "media_host": media_host,
             }
         }
+        self.site_conf = SiteConfig(config)
+        self.site_conf.organize_merge()
 
         bp_config_management = config.args.get("bootprep_config_management", None)
         if bp_config_management:
@@ -444,10 +464,6 @@ class Activity():
         bp_config_managed = config.args.get("bootprep_config_managed", None)
         if bp_config_managed:
             payload["input_parameters"]["bootprep_config_managed"] = bp_config_managed
-
-        site_params = config.args.get("site_parameters", None)
-        if site_params:
-            payload["input_parameters"]["site_parameters"] = site_params
 
         limit_management = config.args.get("limit_management_nodes", None)
         if limit_management:
@@ -458,17 +474,30 @@ class Activity():
             payload["input_parameters"]["limit_managed_nodes"] = limit_managed
         
         sessions = []
-        """ Run process-media on its own first if we're doing it """
+
+        # Run process-media on its own first if we're doing it.
         if stages[0] == "process-media":
             stages.pop(0)
             payload["input_parameters"]["stages"] = ["process-media"]
             sid = self.run_stage(config, payload)
             sessions.append(sid)
+            ret_code = self.api.get_activity(self.name)
+            result = ret_code.json()
+            products = result.get('products', {})
+            session_vars = {}
 
-        """ TODO: Get product list from API """
-        """ TODO: Generate site_parameters and add to payload """
-        
-        """ Run any remaining stages """
+            for product in products:
+                name = product.get('name', None)
+                version = product.get('version', None)
+                session_vars[name] = {'version': version }
+            self.site_conf.manage_session_vars(session_vars, write=True)
+
+        # Generate site_parameters and patch the activity.
+        patched_payload = payload
+        patched_payload["site_parameters"] = self.site_conf.site_params
+        self.api.patch_activity(self.name, patched_payload)
+
+        # Run any remaining stages.
         if stages:
             payload["input_parameters"]["stages"] = stages
             sid = self.run_stage(config, payload)
@@ -495,8 +524,8 @@ class Activity():
             config.logger.debug("Next workflow {}".format(wfid))
             wf = self.get_workflow(config, wfid)
             stage = wf['metadata']['labels']['stage']
-            self.state(state="in_progress", sessionid=wfid, comment=f"Run {stage}")
             config.stages.exec_stage(config, wfid, stage)
+            self.site_conf.update_dict_stack(stage)
 
         return sessionid
 

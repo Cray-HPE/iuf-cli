@@ -3,26 +3,24 @@ Copyright 2022 Hewlett Packard Enterprise Development LP
 """
 
 import datetime
+import json
 import os
-from lib.ShastaUpdate import validate_products
 import sys
 
-from lib.vars import LOCATION_DICT, ACTIVITY_DICT, IUF_BASE_DIR, MEDIA_BASE_DIR
+from lib.vars import ACTIVITY_DICT, IUF_BASE_DIR, MEDIA_BASE_DIR
 from lib.Connection import CmdMgr
-import lib.Products
 import lib.Activity
 from lib.InstallLogger import get_install_logger
 
 class Config:
-    _location_dict = None
-    _location_dict_file = None
     _activity_session = None
     _activity_dict_file = None
     _args = None
     _connection = None
     _logger = None
-    all_product_data = None
     timestamp = None
+    all_product_data = None
+    _media_base_dir = None
 
     def __init__(self):
         self.timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
@@ -53,20 +51,6 @@ class Config:
         self._activity_session = value
 
     @property
-    def location_dict(self):
-        if self._location_dict is None:
-            self._location_dict = lib.Products.Products(self.location_dict_file)
-
-        return self._location_dict
-
-    @location_dict.setter
-    def location_dict(self, value):
-        self._location_dict = value
-        self._location_dict.location_dict = self.location_dict_file
-        self._location_dict.dryrun = self.dryrun
-        self._location_dict.write_location_dict()
-
-    @property
     def connection(self):
         if self._connection is None:
             self._connection = CmdMgr.get_cmd_interface()
@@ -88,15 +72,6 @@ class Config:
         return self._activity_dict_file
 
     @property
-    def location_dict_file(self):
-        if self._location_dict_file is None and self._args is not None:
-            state_dir = self._args.get("state_dir")
-            if state_dir:
-                self._location_dict_file = os.path.join(state_dir, LOCATION_DICT)
-
-        return self._location_dict_file
-
-    @property
     def dryrun(self):
         if self._args:
             return self._args.get("dryrun", False)
@@ -107,6 +82,27 @@ class Config:
     def logger(self):
         return get_install_logger()
         #return self._logger
+
+    @property
+    def media_base_dir(self):
+        if not self._media_base_dir:
+            try:
+                kcmd = self.connection.sudo("kubectl get deployment/cray-nls -n argo -o json").stdout
+                mjson = json.loads(kcmd)
+
+                envs = mjson["spec"]["template"]["spec"]["containers"][0]["env"]
+                for env in envs:
+                    if env["name"] == "MEDIA_DIR_BASE":
+                        self._media_base_dir = env["value"]
+                        break
+            except:
+                self.logger.debug("Unable to determine media base directory from NLS deployment. Using default.")
+                pass
+            finally:
+                if not self._media_base_dir:
+                    self._media_base_dir = MEDIA_BASE_DIR
+
+        return self._media_base_dir
 
     @logger.setter
     def logger(self, value):
@@ -133,19 +129,19 @@ class Config:
             base_dir = default_base_dir
 
         if not self._args.get("media_dir", None):
-            self._args["media_dir"] = os.path.join(MEDIA_BASE_DIR, activity)
+            self._args["media_dir"] = os.path.join(self.media_base_dir, activity)
 
         media_dir_ok = False
         media_dir = self._args.get("media_dir")
 
-        for dir in [media_dir, os.path.abspath(media_dir), os.path.join(MEDIA_BASE_DIR, media_dir)]:
-            if dir.startswith(MEDIA_BASE_DIR) and os.path.exists(dir):
+        for dir in [media_dir, os.path.abspath(media_dir), os.path.join(self.media_base_dir, media_dir)]:
+            if dir.startswith(self.media_base_dir) and os.path.exists(dir):
                 media_dir_ok = True
                 self._args["media_dir"] = dir
                 break
 
         if not media_dir_ok:
-            self._error("Media directory must exist and be under {}".format(MEDIA_BASE_DIR))
+            self._error("Media directory must exist and be under {}".format(self.media_base_dir))
             validated = False
 
         for adir in ["state", "log"]:

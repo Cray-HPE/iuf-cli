@@ -28,7 +28,6 @@ class _CmdInterface:
         """
         Execute a command.
         """
-
         if dryrun is None:
             dryrun = self.dryrun
 
