@@ -7,14 +7,20 @@ import sys # DEBUG -- not actually needed.
 import threading
 import time
 
-
-from kubernetes import client, config, watch
+from kubernetes import client, watch
+from kubernetes import config as kubeconfig
 
 from lib.InstallLogger import get_install_logger
 install_logger = get_install_logger(__name__)
 
 MAX_RECORDS = 10000
-WAIT_FOR_PODS = 300 # 5 minutes
+
+# After the processes are finished, wait for 5 minutes for any lingering pods.
+WAIT_FOR_PODS = 5 * 60 # 5 minutes
+
+# Poll the logs for 20 minutes.  It can take a while for the pods to be
+# scheduled.
+POLL_LOGS = 20 * 60 # 20 minutes
 
 def generate_query(pod, container="", namespace=""):
     print(f"(generate_query)pod={pod}")
@@ -48,7 +54,7 @@ class PodLogs():
         self._logs = []
         self.wfid = wfid
 
-        config.load_kube_config()
+        kubeconfig.load_kube_config()
         self.core = client.CoreV1Api()
         service = self.core.read_namespaced_service(name="elasticsearch", namespace="sma")
         cluster_ip = service.spec.cluster_ip
@@ -95,7 +101,6 @@ class PodLogs():
 
     def follow_pod_log(self, config, pod):
         """Follow the log for a particular pod."""
-        NTRIES = 20
 
         def parse_str(instr):
             """Parse a block of text which is at least one line from the
@@ -158,7 +163,8 @@ class PodLogs():
         fhandle = open(log_name, 'w', encoding='UTF-8')
         for container in ['init', 'wait', 'main']:
             print(f"[{container}]", file=fhandle, flush=True)
-            try_counter = 0
+            start_poll = datetime.datetime.now()
+
             while True:
                 try:
                     watcher = watch.Watch()
@@ -166,7 +172,6 @@ class PodLogs():
                         name=pod, namespace='argo', container=container,
                         follow=True, timestamps=True, pretty=True):
                         for level, stdoutline, logline in parse_str(event):
-                            lower_level = level.lower()
                             print(f"{logline}", file=fhandle, flush=True)
                             if level == 'INFO':
                                 install_logger.info(f"            {stdoutline}")
@@ -174,11 +179,13 @@ class PodLogs():
                                 install_logger.debug(stdoutline)
                     watcher.stop()
                     break
-                except (client.rest.ApiException, client.exceptions.ApiException) as ex:
+                except (client.rest.ApiException, client.exceptions.ApiException):
                     # Catch this exception NTRIES times, then give up
                     # waiting. This exception gets hit when the container isn't ready yet.
-                    try_counter += 1
-                    if try_counter >= NTRIES:
+                    total_polled_time = datetime.datetime.now() - start_poll
+                    polled_seconds = int(total_polled_time.seconds)
+                    if polled_seconds >= POLL_LOGS:
+                        install_logger.warning(f"Giving up following the log for pod {pod}!")
                         break
                     time.sleep(.5)
         fhandle.close()
@@ -225,6 +232,6 @@ class PodLogs():
             if seconds_waited > WAIT_FOR_PODS:
                 install_logger.warning("Giving up waiting on pods!")
                 break
-            sys.stdout.flush()
+
         for thread in self._running:
             thread.join()
