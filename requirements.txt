@@ -1,8 +1,6 @@
-# Use this with pip to install the prerequisites.
-python-keycloak
-prettytable
-rpm-py-installer
-jinja2
-dateutils
-requests
-kubernetes
+pyinstaller
+Jinja2==3.0.3
+kubernetes==25.3.0
+prettytable==2.5.0
+PyYAML==6.0
+python-keycloak==0.27.1
