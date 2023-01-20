@@ -2,7 +2,7 @@
  *
  *  MIT License
  *
- *  (C) Copyright 2021-2023 Hewlett Packard Enterprise Development LP
+ *  (C) Copyright 2021-2022 Hewlett Packard Enterprise Development LP
  *
  *  Permission is hereby granted, free of charge, to any person obtaining a
  *  copy of this software and associated documentation files (the "Software"),
@@ -25,15 +25,9 @@
  */
 @Library('csm-shared-library') _
 
-def sleImage = 'artifactory.algol60.net/csm-docker/stable/csm-docker-sle'
-def major
-def minor
-def patch
+def pythonImage = 'artifactory.algol60.net/csm-docker/stable/csm-docker-sle-python'
+def pythonVersion = '3.10'
 def isStable = env.TAG_NAME != null ? true : false
-if ( isStable ) {
-    (major, minor, patch) = env.TAG_NAME.tokenize('.')
-    major = major.replaceAll("^v","")
-}
 pipeline {
     agent {
         label "metal-gcp-builder"
@@ -41,17 +35,14 @@ pipeline {
 
     options {
         buildDiscarder(logRotator(numToKeepStr: "10"))
-        disableConcurrentBuilds()
         timeout(time: 20, unit: 'MINUTES')
+        disableConcurrentBuilds()
         timestamps()
     }
 
     environment {
         NAME = getRepoName()
         VERSION = sh(returnStdout: true, script: "git describe --tags | tr -s '-' '~' | tr -d '^v'").trim()
-        TAG_POINTS_AT_HEAD = sh(returnStdout: true, script: "git tag --points-at HEAD | tr -d '^v'").trim()
-        ADDITIONAL_VERSIONS = "${env.VERSION == env.TAG_POINTS_AT_HEAD ? 'latest' : ''}"
-        SLACK_CHANNEL_ALERTS = "csm-release-alerts"
     }
 
     stages {
@@ -63,7 +54,7 @@ pipeline {
                 agent {
                     node {
                         label "metal-gcp-builder"
-                        customWorkspace "${env.WORKSPACE}/${sleVersion}"
+                        customWorkspace "${env.WORKSPACE}/${sleVersion}/${pythonVersion}"
                     }
                 }
 
@@ -77,63 +68,54 @@ pipeline {
                 stages {
 
                     stage('Prepare: RPMs') {
+
                         agent {
                             docker {
-                                label 'docker'
+                                label "metal-gcp-builder"
                                 reuseNode true
-                                image "${sleImage}:${sleVersion}"
+                                image "${pythonImage}:${pythonVersion}-SLES${sleVersion}"
                             }
                         }
                         steps {
-                            withCredentials([gitUsernamePassword(credentialsId: 'jenkins-algol60-cray-hpe-github-integration')]) {
-                                runLibraryScript("addRpmMetaData.sh", "${env.NAME}.spec")
-                                sh "git update-index --assume-unchanged ${env.NAME}.spec"
-                                sh "echo ${env.BRANCH_NAME}"
-                                sh "env"
-                                sh "make prepare"
-                            }
+                            // Inject distro-specific metadata (e.g. which distro and service pack).
+                            runLibraryScript("addRpmMetaData.sh", "${env.NAME}.spec")
+                            sh "make prepare"
+                            sh "git update-index --assume-unchanged ${env.NAME}.spec"
                         }
                     }
 
                     stage('Build: RPMs') {
+
+                        environment {
+                            PYTHON_VERSION = "${pythonVersion}"
+                        }
                         agent {
                             docker {
-                                label 'docker'
+                                label "metal-gcp-builder"
                                 reuseNode true
-                                image "${sleImage}:${sleVersion}"
+                                image "${pythonImage}:${pythonVersion}-SLES${sleVersion}"
                             }
                         }
                         steps {
-                            withCredentials([gitUsernamePassword(credentialsId: 'jenkins-algol60-cray-hpe-github-integration')]) {
-                                sh "make rpm"
-                            }
+                            sh "make rpm"
                         }
                     }
 
                     stage('Publish: RPMs') {
                         steps {
                             script {
-                                if( isStable ){
-                                    RELEASE_FOLDER = "/${major}.${minor}"
-                                } else {
-                                    RELEASE_FOLDER = ""
-                                }
-                                ADDITIONAL_VERSIONS = ("${env.ADDITIONAL_VERSIONS}" == "null") ? [] : ["${env.ADDITIONAL_VERSIONS}"]
                                 sles_version_parts = "${sleVersion}".tokenize('.')
                                 sles_major = "${sles_version_parts[0]}"
                                 sles_minor = "${sles_version_parts[1]}"
                                 publishCsmRpms(
-                                        additionalVersions: ADDITIONAL_VERSIONS,
-                                        arch: "noarch",
-                                        component: env.NAME + RELEASE_FOLDER,
-                                        isStable: isStable,
+                                        arch: "x86_64", isStable: isStable,
+                                        component: env.NAME,
                                         os: "sle-${sles_major}sp${sles_minor}",
-                                        pattern: "dist/rpmbuild/RPMS/noarch/*.rpm",
+                                        pattern: "dist/rpmbuild/RPMS/x86_64/*.rpm",
                                 )
                                 publishCsmRpms(
-                                        additionalVersions: ADDITIONAL_VERSIONS,
                                         arch: "src",
-                                        component: env.NAME + RELEASE_FOLDER,
+                                        component: env.NAME,
                                         isStable: isStable,
                                         os: "sle-${sles_major}sp${sles_minor}",
                                         pattern: "dist/rpmbuild/SRPMS/*.rpm",
@@ -145,16 +127,4 @@ pipeline {
             }
         }
     }
-    post {
-        failure {
-            script {
-                slackSend(channel: env.SLACK_CHANNEL_ALERTS, color: "danger", message: "<${env.BUILD_URL}|IUF-CLI ${env.VERSION}> - :x: Build did not complete successfully")
-            }
-        }
-        aborted {
-            script {
-                slackSend(channel: env.SLACK_CHANNEL_ALERTS, color: "warning", message: "<${env.BUILD_URL}|IUF-CLI ${env.VERSION}> - :warning: Job was aborted")
-            }
-        }
-    }
-  }
+}
