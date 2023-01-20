@@ -415,7 +415,13 @@ class Stages():
         begin_idx = stages_list.index(begin_stage)
         end_idx = stages_list.index(end_stage)
 
-        self._stages = [stages_list[i] for i in range(begin_idx, end_idx + 1) if stages_list[i] not in skip_stages]
+        if run_stages:
+            self._stages = []
+            for stage in stages_list:
+                if stage in run_stages and stage not in skip_stages:
+                    self._stages.append(stage)
+        else:
+            self._stages = [stages_list[i] for i in range(begin_idx, end_idx + 1) if stages_list[i] not in skip_stages]
         install_logger.debug("stages=%s",self._stages)
         install_logger.debug("(begin,end)_idx = (%s,%s)", begin_idx, end_idx)
 

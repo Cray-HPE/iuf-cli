@@ -492,24 +492,32 @@ class Activity():
         limit_managed = config.args.get("limit_managed_nodes", None)
         if limit_managed:
             payload["input_parameters"]["limit_managed_nodes"] = limit_managed
-        
+
         sessions = []
 
         # Run process-media on its own first if we're doing it.
+        session_vars = {}
         if stages[0] == "process-media":
             stages.pop(0)
             payload["input_parameters"]["stages"] = ["process-media"]
             sid = self.run_stage(config, payload)
             sessions.append(sid)
-            ret_code = self.api.get_activity(self.name)
-            result = ret_code.json()
-            products = result.get('products', {})
-            session_vars = {}
 
-            for product in products:
-                name = product.get('name', None)
-                version = product.get('version', None)
-                session_vars[name] = {'version': version }
+        ret_code = self.api.get_activity(self.name)
+        result = ret_code.json()
+        products = result.get('products', {})
+        session_vars = {}
+
+        if not products:
+            raise ActivityError(f"No products were found for {self.name}.  Was process-media ran?")
+
+        for product in products:
+            name = product.get('name', None)
+            version = product.get('version', None)
+            session_vars[name] = {'version': version }
+
+        if session_vars:
+            # session_vars should always exist if products exist.
             self.site_conf.manage_session_vars(session_vars, write=True)
 
         # Generate site_parameters and patch the activity.
