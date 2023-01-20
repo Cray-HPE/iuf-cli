@@ -25,7 +25,7 @@
  */
 @Library('csm-shared-library') _
 
-def sleImage = 'artifactory.algol60.net/csm-docker/stable/csm-docker-sle-python'
+def sleImage = 'artifactory.algol60.net/csm-docker/stable/csm-docker-sle'
 def major
 def minor
 def patch
@@ -148,12 +148,12 @@ pipeline {
     post {
         failure {
             script {
-                slackSend(channel: env.SLACK_CHANNEL_ALERTS, color: "danger", message: "<${env.BUILD_URL}|DOCS-CSM ${env.VERSION}> - :x: Build did not complete successfully")
+                slackSend(channel: env.SLACK_CHANNEL_ALERTS, color: "danger", message: "<${env.BUILD_URL}|IUF-CLI ${env.VERSION}> - :x: Build did not complete successfully")
             }
         }
         aborted {
             script {
-                slackSend(channel: env.SLACK_CHANNEL_ALERTS, color: "warning", message: "<${env.BUILD_URL}|DOCS-CSM ${env.VERSION}> - :warning: Job was aborted")
+                slackSend(channel: env.SLACK_CHANNEL_ALERTS, color: "warning", message: "<${env.BUILD_URL}|IUF-CLI ${env.VERSION}> - :warning: Job was aborted")
             }
         }
     }
