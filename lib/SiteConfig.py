@@ -23,7 +23,6 @@
 # OTHER DEALINGS IN THE SOFTWARE.
 #
 import copy
-from distutils.version import LooseVersion
 import os
 import re
 import sys
@@ -31,6 +30,7 @@ import yaml
 
 import lib.git as git
 import jinja2
+from semver import VersionInfo
 
 from lib.vars import RECIPE_VARS, BP_CONFIG_MANAGED, BP_CONFIG_MANAGEMENT, MEDIA_VERSIONS, UnexpectedState
 
@@ -53,7 +53,7 @@ def read_yaml(file_loc):
     return return_dict
 
 def highestVersion(versions_list):
-    sorted_vs = sorted(versions_list, key=LooseVersion)
+    sorted_vs = sorted(versions_list, key=VersionInfo.parse)
     return sorted_vs[-1]
 
 class SiteConfig():
