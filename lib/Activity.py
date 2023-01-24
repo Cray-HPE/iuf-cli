@@ -390,7 +390,7 @@ class Activity():
                         if not phases[name]["finishedAt"]:
                             if display:
                                 status = phases[name]["status"]
-                                if status == "Failed":
+                                if status == "Failed" or status == "Error":
                                     config.logger.error(f"    FINISHED PHASE: {dname} [{status}]")
                                 if status == "Omitted":
                                     config.logger.warning(f"  FINISHED PHASE: {dname} [{status}]")
@@ -447,7 +447,7 @@ class Activity():
 
     def get_workflow(self, config, workflow):
         try:
-            wf = config.connection.run("argo -n argo get {workflow} -o yaml".format(workflow=workflow))
+            wf = config.connection.run("kubectl -n argo get Workflow/{workflow} -o yaml".format(workflow=workflow))
         except Exception as e:
             config.logger.error(f"Unable to get workflow {workflow}: {e}")
             sys.exit(1)

@@ -101,7 +101,7 @@ def validate_stages(config):
     # is being run) it exists.
     bp_config = config.args.get("bootprep_config_managed", None)
     if bp_config and "managed-nodes-rollout" in local_stages:
-        if not os.path.exists(entry):
+        if not os.path.exists(bp_config):
             errors.append("--bootprep-config-managed-nodes {} was specified but could not be found".format(entry))
 
     bp_config = config.args.get("bootprep_config_management", None)
