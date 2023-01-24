@@ -1,0 +1,420 @@
+#!/usr/bin/env python3
+
+# Copyright 2022 Hewlett Packard Enterprise Development LP
+
+"""The Compute Node Environment (CNE) Installer"""
+
+import argparse
+
+import json
+import os
+import sys
+import logging
+import tarfile
+import atexit
+import shutil
+
+from lib.vars import *
+from lib.InstallLogger import *
+
+from lib.InstallerUtils import elapsed_time
+from lib.InstallerUtils import formatted
+from lib.InstallerUtils import print_table
+from lib.ConfigFile import ConfigFile
+from lib.ConfigFile import InvertableArgument
+import lib.Config
+
+# Import lib.stages without the 'as stages' to prevent namespace collisions.
+import lib.stages
+
+# pylint: disable=consider-using-f-string
+
+install_logger = get_install_logger()
+
+def validate_stages(config):
+    """Validate that all of the various stage related args passed in are valid"""
+
+
+    # load all of the stage variables
+    begin_stage = config.args.get('begin_stage')
+    end_stage = config.args.get('end_stage')
+    run_stages = config.args.get('run_stages')
+    skip_stages = config.args.get('skip_stages')
+    state_dir = config.args.get('state_dir')
+
+    config.stages.validate(state_dir, begin_stage, end_stage, run_stages, skip_stages)
+
+    if config.args.get("func", "") == process_install:
+        install_logger.info("STAGE SUMMARY: begin_stage=%s, end_stage=%s", config.stages.beginStage, config.stages.endStage)
+
+    local_stages = config.stages.get(all_stages=False, list_fmt=True)
+
+    # Check the BOS sessiontemplate and CFS config arguments.  If the CFS
+    # config is not explicitly specified, it can be obtained from the BOS
+    # sessiontemplate.
+    if "source_bos_sessiontemplate" in config.args and config.args["source_bos_sessiontemplate"] is None \
+        and "create_bootprep_config" in local_stages:
+        msg = formatted("""
+            When creating a bos session template,  a source bos sessiontemplate
+            (-t or --source-bos-sessiontemplate) is required""")
+        print(msg)
+        sys.exit(1)
+    elif "source_bos_sessiontemplate" in config.args and config.args["source_bos_sessiontemplate"]:
+        bos_template = json.loads(config.connection.sudo("cray bos sessiontemplate describe {} --format json".format(
+            config.args["source_bos_sessiontemplate"])).stdout)
+        bos_cfs_config_name = bos_template["cfs"]["configuration"]
+
+        if "cfs_config" not in config.args or config.args["cfs_config"] is None:
+            config.args["cfs_config"] = bos_cfs_config_name
+        elif "cfs_config" in config.args and config.args["cfs_config"] is not None:
+            if config.args["cfs_config"] != bos_cfs_config_name:
+                msg = formatted("""
+                    The cfs-config argument passed in ({}) will be used in
+                    image building and creating the bos  sessiontemplate.
+                    This differs from the one found in the bos
+                    sessiontemplate ({}).  The one found in {} was {}""".format(
+                    config.args["cfs_config"],
+                    config.args["source_bos_sessiontemplate"],
+                    config.args["source_bos_sessiontemplate"],
+                    bos_cfs_config_name))
+                install_logger.warning(msg)
+
+    # Ensure that working_branch is specified if it's needed.
+    if ("working_branch" in config.args and config.args["working_branch"] is None) \
+        and (("update_working_branches" in local_stages) \
+        or ("update_ncn_config" in local_stages)):
+            msg = formatted("""
+                Please supply --working-branch with stages update_working_branches or update_ncn_config.""")
+            print(msg)
+            sys.exit(1)
+
+    # Ensure that if a `sat bootprep` config was specified (and the stage
+    # is being run) it exists.
+    bp_config = config.args.get("bootprep_config_cn", None)
+    if bp_config and "sat_bootprep_cn" in local_stages:
+        if not os.path.exists(bp_config):
+            print("--bootprep-config-cn/-bpc {} was specified but could not be found".format(bp_config))
+            sys.exit(1)
+
+    bp_config = config.args.get("bootprep_config_ncn", None)
+    if bp_config and "sat_bootprep_ncn" in local_stages:
+        if not os.path.exists(bp_config):
+            print("--bootprep-config-ncn/-bpn {} was specified but could not be found".format(bp_config))
+            sys.exit(1)
+
+    return
+
+
+def process_install(config):
+    """Run the install"""
+    all_stages = config.stages.get(list_fmt=True, all_stages=True)
+    exec_stages = config.stages.get(list_fmt=True, all_stages=False)
+
+    for stage in all_stages:
+        if stage in exec_stages:
+            install_logger.info("Beginning stage: {}".format(stage))
+            # a logging message using exc_info must be the very first thing called after the except
+            # block starts, so I can't make all these decisions there
+            if config.stages.abortable(stage):
+                log_level = LOG_LEVELS["ERROR"]
+            else:
+                log_level = LOG_LEVELS["WARNING"]
+
+            config.stages.exec_stage(config, stage)
+
+    install_logger.info("Install completed in {}".format(elapsed_time(config.stages.installer_start)))
+
+
+def process_list(config): #pylint: disable=unused-argument
+    """Process the arguments to the list subparser"""
+
+    if config.args.get("format", None) == "csv":
+        all_stages = ','.join(config.stages.get(long=True, status=True, all_stages=True, list_fmt=True))
+    else:
+        all_stages = config.stages.get(long=True, status=True, all_stages=True, list_fmt=False)
+
+    print(all_stages)
+
+def process_products(config):
+    products = config.location_dict.prefixes(formatting="description")
+    media = config.args['media_dir']
+
+    def arc_wanted(f, prefix):
+        if f.is_file() and f.name.startswith(prefix):
+            if tarfile.is_tarfile(f.path):
+                return True
+
+        return False
+
+
+    header = ['Archive Prefix', 'Product Description']
+    alignments = dict()
+    alignments['Archive Prefix'] = "r"
+    alignments['Product Description'] = "l"
+
+    rows = []
+    archives = []
+    for prefix,description in products.items():
+        rows.append([prefix,description])
+        found = [ f.name for f in os.scandir(media) if arc_wanted(f,prefix) ]
+        archives.extend(found)
+
+    scriptname = os.path.basename(__file__)
+    print("The following products are supported by {}:".format(scriptname))
+    print_table(rows, header, 'Archive Prefix', alignments)
+    print ("Matching products in", media)
+    for archive in archives:
+        print ("  ",archive)
+
+
+def process_debug_level(config):
+
+    install_logger_file_init(config)
+    if config.args.get("level", None):
+        if config.args["level"] in LOG_LEVELS.keys():
+            level = LOG_LEVELS[config.args["level"]]
+            install_logger_stream_init(level, config.args.get("verbose", False))
+        else:
+            # when this runs we don't have a logger yet, just print and exit
+            print("ERROR: Unrecognized log level: {}".format(config.args["level"]))
+            sys.exit(1)
+    else:
+        install_logger_stream_init(verbose=config.args.get("verbose", False))
+
+    log_dir_base = config.args["log_dir"]
+    log_dir = os.path.join(log_dir_base, config.timestamp)
+    if "func" in config.args and config.args["func"] == process_install:
+        install_logger.info("All logs will be stored in {}".format(log_dir))
+    return
+
+
+def update_logger_config(config):
+    """
+    Sets the static CmdInterface interface to "dryrun" mode
+    """
+    if config.dryrun:
+        addLoggingLevel('DRYRUN', logging.INFO + 1)
+        install_logger.dryrun("Dryrun enabled")
+
+    addLoggingLevel('TRACE', logging.DEBUG - 1)
+
+def check_environment_variables():
+    """
+    Go over a list of variables that we don't want set and remove them
+    """
+
+    CLEAN_ENV = [
+        "CRAY_FORMAT",
+    ]
+
+    for var in CLEAN_ENV:
+        if var in os.environ:
+            del os.environ[var]
+
+def log_state_files(config):
+    if not hasattr(config, "args"):
+        return
+    log_dir_base = config.args["log_dir"]
+    logdir = os.path.join(log_dir_base, config.timestamp)
+    if hasattr(config, "location_dict"):
+        if os.path.exists(config.location_dict_file):
+            shutil.copy2(config.location_dict_file, logdir)
+    if hasattr(config, "stages_file"):
+        if os.path.exists(config.stages_file):
+            shutil.copy2(config.stages_file, logdir)
+
+
+def main():
+    """Main entry point."""
+    check_environment_variables()
+    config = lib.Config.Config()
+
+    parser = argparse.ArgumentParser(description=
+        """
+       The Compute Node Environment (CNE) installer.
+        """
+    )
+
+    parser.add_argument("-i", "--input-file", action="store", help="""Input
+        file used to control the install.   Command line arguments will
+        override what is in the file.
+        Input file should be YAML.""")
+
+    parser.add_argument("-w", "--write-input-file", action="store_true",
+        help="""Write out a new config file to the input file specified with defaults+
+        any command line options specified and quit.""")
+
+    parser.add_argument("-b", "--base-dir", action="store", default=os.getcwd(),
+        help="""Base directory for state/media/log dirs.  Must already exist.  Default is the current working directory.""")
+
+    parser.add_argument("-s", "--state-dir", action="store",
+        help="A directory used to store the current state of stages.  Defaults to [base-dir]/state.")
+
+    parser.add_argument("-m", "--media-dir", action="store",
+        help="Location of installation media you would like to install.  Defaults to [base-dir]]/media")
+
+    parser.add_argument("--log-dir", action="store",
+        help="Location used to store log files.  Defaults to [base-dir]/log")
+
+    # hide DRYRUN for now until it's production ready
+    parser.add_argument("--dryrun", action=InvertableArgument, default=False, help=argparse.SUPPRESS)
+
+    levelhelp = list(LOG_LEVELS.keys())
+    levelhelp.remove('DRYRUN')
+    parser.add_argument("-l", "--level", action="store", default='INFO',
+        help="Set the debug level to the console", choices=levelhelp)
+
+    parser.add_argument("-v", "--verbose", action="store_true",
+        help="Generates more verbose messages")
+
+    # TODO: The stage-dir usage could use more verbiage. We might want to add
+    # this to the install docs.  Describing it in detail in the help section
+    # might be inappropriate.  Essentially, we need it because not all the stages
+    # are fully independent; for example, we have an unpack stage, and an
+    # install stage.  The install stage needs to install what was unpacked.
+
+    subparsers = parser.add_subparsers(title="subcommands", metavar='{install,list-stages|ls,list-products}')
+    stage_list = lib.stages.get_stage_help()
+
+    install_sp = subparsers.add_parser("install", epilog="Valid stages:\n{}".format(stage_list),
+        formatter_class=argparse.RawTextHelpFormatter)
+
+    install_sp.add_argument("-b", "--begin-stage", action="store",
+        help="The first stage to execute")
+
+    install_sp.add_argument("-c", "--cfs-config", action="store",
+        help="The CFS configuration to be used during image building.")
+
+    install_sp.add_argument("-e", "--end-stage", action="store",
+        help="The last stage to execute")
+
+    install_sp.add_argument("-r", "--run-stages", nargs="+", action="store",
+        help="Run only the specified stages")
+
+    install_sp.add_argument("-s", "--skip-stages", nargs="+", action="store",
+        help="Skip the execution of the specified stages")
+
+    install_sp.add_argument("-B", "--working-branch", action="store",
+        help="""String representing the working branch in each product config
+management repo that the product release branch will be merged to.
+
+The following substitutions may be used:
+
+    {{product_key}}    Product name + version formatted per distribution media
+                       ex: slingshot-host-software-1.7.1-32-cos-2.2
+    {{product_type}}   Type of product.
+                       ex: 'cos', 'slingshot-host-software', 'sles'
+    {{version_full}}   Full product version as it appears in the product catalog.
+                       ex: 1.7.1-32-1.0.19
+    {{version_x_y_z}}  x.y.z version of the product
+    {{version_x_y}}    x.y version of the product
+
+For example, if the following value was used for COS 2.2.93 and SHS 1.7.1:
+
+    --working-branch '{{product_type}}-{{version_x_y_z}}-integration'
+
+Then the following would be the branches used:
+
+    For COS: 'cos-2.2.93-integration'
+    For SHS: 'slingshot-host-software-1.7.1-integration'
+
+As a result, the update_working_branches stage would perform the following merges:
+
+    cray/cos/2.2.93 --> cos-2.2.93-integration
+    cray/slingshot-host-software/1.7.1 --> slingshot-host-software-1.7.1-integration
+        """)
+
+    bpc_help = formatted("""
+    Use an alternate `sat bootprep` config file for the compute nodes than is generated during the
+    `create_bootprep_config` stage.  This is used by sat_bootprep_cn""")
+
+    install_sp.add_argument("-bpc", "--bootprep-config-cn", action="store",
+        help=bpc_help)
+
+    bpn_help = formatted("""
+    Use an alternate `sat bootprep` config file for the NCN nodes than is generated during the
+    sat_bootprep_NCN stage.""")
+    install_sp.add_argument("-bpn", "--bootprep-config-ncn", action="store",
+                            help=bpn_help)
+    install_sp.add_argument("-t", "--source-bos-sessiontemplate", action="store",
+        help="BOS template to start from when booting COS")
+
+    install_sp.add_argument("-crn", "--cos-recipe-name", action="store",
+        help="The name of the recipe to build the COS compute image")
+
+    install_sp.add_argument("-ncnp", "--ncn-personalization", action="store",
+        default="ncn-personalization",
+        help="The name of the ncn personalization config to update.  Defaults to 'ncn-personalization'")
+
+    install_sp.add_argument("-D", "--dvs-update-method", action="store",
+        choices=["auto", "legacy", "ncn-upgrade"],
+        default="auto",
+        help="""Defaults to 'auto'.  Method used to update COS on the NCN nodes.  This is primarily to
+update from one version of DVS to another.  The 'legacy' mode is the proceedure used in
+COS <= 2.2.  The 'ncn-upgrade' mode utilizes the 'ncn-upgrade.yml' playbook introduced
+in COS 2.3.  The 'auto' mode will utilize the ncn-upgrade mode if all the needed conditions
+are present (the ncn-upgrade.yml playbook must be in the COS working branch AND the
+ncn-personalization config must contain the slingshot-host-software layer) and the
+'legacy' mode if not.""")
+
+    install_sp.add_argument("-wn", "--worker-nodes", action="store", nargs='+',
+        help="""Override worker list used in DVS reload stage to assist with repairing broken nodes.
+For example, --worker-nodes ncn-w003 would cause the ncn_personalization stage to only
+reload ncn-w003;  --worker-nodes x3000c0s37b0n0 would also work.
+""")
+
+    install_sp.set_defaults(func=process_install, skip_stages=list(), run_stages=list())
+
+    list_sp = subparsers.add_parser("list-stages", aliases=["ls"])
+    list_sp.set_defaults(func=process_list)
+    list_sp.add_argument("-f", "--format", action="store")
+
+    products_sp = subparsers.add_parser("list-products")
+    products_sp.set_defaults(func=process_products)
+
+    # create a config object to store all of the configured options in the parser
+    configfile = ConfigFile()
+    configfile.load_parser_defaults(parser)
+
+    # parse the arguments once to get input file
+    tmp_args = parser.parse_args()
+
+    # load any defaults from the input file
+    configfile.set_defaults(parser,vars(tmp_args))
+
+    # parse the command line for real
+    args = parser.parse_args()
+
+    # Convert the args to a dict, and use that rather than the argparse
+    # object.  This is so that we have a dictionary of all options, so that
+    # we can more easily determine which values can be passed via an input
+    # deck.
+    config.args = vars(args)
+    config.stages = lib.stages.Stages(stage_dict=STAGE_DICT, state_dir=config.args["state_dir"])
+
+    process_debug_level(config)
+    update_logger_config(config)
+    install_logger.debug(config.args)
+
+    config.logger = install_logger
+
+    if len(sys.argv) < 2:
+        install_logger.error("{} requires at least 1 argument".format(sys.argv[0]))
+        parser.print_help(sys.stderr)
+        sys.exit(1)
+
+    validate_stages(config)
+
+    if config.args["write_input_file"]:
+        configfile.write(config.args)
+
+    atexit.register(log_state_files, config)
+
+    try:
+        args.func(config)
+    except AttributeError:
+        install_logger.error("A subcommand was not specified.")
+        parser.print_help(sys.stderr)
+        sys.exit(1)
+if __name__ == "__main__":
+    main()
