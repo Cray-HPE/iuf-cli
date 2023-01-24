@@ -70,8 +70,8 @@ class SiteConfig():
         self.session_vars = {}
         self.pre_rendered = {}
         self.rendered = {}
-        self.bp_managed = []
-        self.bp_management = []
+        self.bp_managed = ""
+        self.bp_management = ""
         self.product_catalog = {}
         self.mask_recipe_prods = []
         self.state_dir = config.args.get("state_dir")
@@ -108,9 +108,9 @@ class SiteConfig():
                 if not self.recipe_vars:
                     self.recipe_vars = read_yaml(rv_loc)
                 if os.path.exists(managed_loc):
-                    self.bp_managed.append(read_yaml(managed_loc))
+                    self.bp_managed = read_yaml(managed_loc)
                 if os.path.exists(management_loc):
-                    self.bp_management.append(read_yaml(management_loc))
+                    self.bp_management = read_yaml(management_loc)
             elif self.bpcd:
                 errors.append("The `-bpcd/--bootprep-config-dir {}` was specified but could not be found".format(self.bpcd))
 

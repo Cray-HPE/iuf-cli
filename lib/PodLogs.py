@@ -70,7 +70,7 @@ def generate_query(pod, container="", namespace=""):
 class PodLogs():
     def __init__(self, config_param, wfid):
         log_dir = config_param.args.get("log_dir")
-        self._log_dir = os.path.join(log_dir, config_param.timestamp, "pod_logs")
+        self._log_dir = os.path.join(log_dir, config_param.timestamp, "argo_logs")
         os.makedirs(self._log_dir, exist_ok=True)
         self._running = []
         self._logs = []

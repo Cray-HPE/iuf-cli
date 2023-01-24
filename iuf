@@ -100,24 +100,14 @@ def validate_stages(config):
     # Ensure that if a `sat bootprep` config was specified (and the stage
     # is being run) it exists.
     bp_config = config.args.get("bootprep_config_managed", None)
-    bp_managed = []
-    bp_management = []
-
     if bp_config and "managed-nodes-rollout" in local_stages:
-        for entry in bp_config:
-            if not os.path.exists(entry):
-                errors.append("--bootprep-config-managed-nodes {} was specified but could not be found".format(entry))
-            else:
-                bp_managed.append(read_yaml(entry))
+        if not os.path.exists(bp_config):
+            errors.append("--bootprep-config-managed-nodes {} was specified but could not be found".format(entry))
 
     bp_config = config.args.get("bootprep_config_management", None)
     if bp_config and "management-nodes-rollout" in local_stages:
-        for entry in bp_config:
-            # print('ncn',bp_config)
-            if not os.path.exists(entry):
-                errors.append("--bootprep-config-management-nodes {} was specified but could not be found".format(entry))
-            else:
-                bp_management.append(read_yaml(entry))
+        if not os.path.exists(bp_config):
+            errors.append(f"--bootprep-config-management-nodes {bp_config} was specified but could not be found")
 
     if errors:
         install_logger.error("Problems were encountered:")
@@ -391,14 +381,14 @@ def main():
     bpc_help = formatted("""
     List of `sat bootprep` config files for non-mgmt nodes (compute, UAN).""")
 
-    install_sp.add_argument("-bc", "--bootprep-config-managed", action="store", nargs='+',
+    install_sp.add_argument("-bc", "--bootprep-config-managed", action="store",
         #default = ['../vcs/bootprep/compute-and-uan-bootprep.yaml'],
         help=bpc_help)
 
     bpc_help = formatted("""
     List of `sat bootprep` config files for management NCN nodes.""")
 
-    install_sp.add_argument("-bm", "--bootprep-config-management", action="store", nargs='+',
+    install_sp.add_argument("-bm", "--bootprep-config-management", action="store",
         #default = ['../vcs/bootprep/management-bootprep.yaml'],
         help=bpc_help)
 

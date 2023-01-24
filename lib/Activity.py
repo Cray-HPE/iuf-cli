@@ -337,6 +337,7 @@ class Activity():
         # threads after the while loop.
         podlogs = PodLogs(config, workflow)
         podlogs.follow_pod_logs(config) # threaded at top-level, no waiting.
+        printed_s3 = {}
         while not finished:
             try:
                 wflow = self.get_workflow(config, workflow)
@@ -401,7 +402,10 @@ class Activity():
                                 if artifact["name"] == "main-logs":
                                     s3 = artifact["s3"]["key"]
                                     phases[name]["log"] = s3
-                                    config.logger.debug(f"           LOG FILE FOR {dname}: {s3}")
+                                    dname_s3 = f"{dname}: {s3}"
+                                    if dname_s3 not in printed_s3:
+                                        config.logger.debug(f"           LOG FILE FOR {dname_s3}")
+                                        printed_s3[dname_s3] = True
                         except:
                             pass
 
