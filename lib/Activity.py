@@ -337,6 +337,7 @@ class Activity():
         # threads after the while loop.
         podlogs = PodLogs(config, workflow)
         podlogs.follow_pod_logs(config) # threaded at top-level, no waiting.
+        printed_s3 = {}
         while not finished:
             try:
                 wflow = self.get_workflow(config, workflow)
@@ -389,7 +390,7 @@ class Activity():
                         if not phases[name]["finishedAt"]:
                             if display:
                                 status = phases[name]["status"]
-                                if status == "Failed" or status == "Error":
+                                if status == "Failed":
                                     config.logger.error(f"    FINISHED PHASE: {dname} [{status}]")
                                 if status == "Omitted":
                                     config.logger.warning(f"  FINISHED PHASE: {dname} [{status}]")
@@ -401,7 +402,10 @@ class Activity():
                                 if artifact["name"] == "main-logs":
                                     s3 = artifact["s3"]["key"]
                                     phases[name]["log"] = s3
-                                    config.logger.debug(f"           LOG FILE FOR {dname}: {s3}")
+                                    dname_s3 = f"{dname}: {s3}"
+                                    if dname_s3 not in printed_s3:
+                                        config.logger.debug(f"           LOG FILE FOR {dname_s3}")
+                                        printed_s3[dname_s3] = True
                         except:
                             pass
 
@@ -443,7 +447,7 @@ class Activity():
 
     def get_workflow(self, config, workflow):
         try:
-            wf = config.connection.run("kubectl -n argo get Workflow/{workflow} -o yaml".format(workflow=workflow))
+            wf = config.connection.run("argo -n argo get {workflow} -o yaml".format(workflow=workflow))
         except Exception as e:
             config.logger.error(f"Unable to get workflow {workflow}: {e}")
             sys.exit(1)
