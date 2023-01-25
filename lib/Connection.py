@@ -120,6 +120,7 @@ class _CmdInterface:
         splitc = shlex.split(cmd)
 
         p = await asyncio.create_subprocess_exec(*splitc,
+                                              limit=256*1024,
                                               stdin=None,
                                               stdout=asyncio.subprocess.PIPE,
                                               stderr=asyncio.subprocess.PIPE,
