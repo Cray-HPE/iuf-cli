@@ -331,7 +331,7 @@ def main():
 
     #### TODO handle both directories or list of files
     parser.add_argument("-m", "--media-dir", action="store",
-        help="Location of installation media to be used. Defaults to ${RBD_BASE_DIR}/{activity_session}, where ${RBD_BASE_DIR} is /etc/cray/upgrade/csm". `iuf` can not access media outside of ${RBD_BASE_DIR}.)
+        help="""Location of installation media to be used. Defaults to ${RBD_BASE_DIR}/{activity_session}, where ${RBD_BASE_DIR} is /etc/cray/upgrade/csm". `iuf` can not access media outside of ${RBD_BASE_DIR}.""")
 
     # Host to extract the media onto. Defaults to ncn-m001.
     parser.add_argument("-mh", "--media-host", action="store",
@@ -403,8 +403,8 @@ def main():
         help="""Path to a recipe variables YAML file. HPE provides the `product_vars.yaml` recipe variables file with each release.""")
 
     install_sp.add_argument("-sv", "--site-vars", action="store", default=False,
-        help="Path to a site variables YAML file. This file allows the user to override values defined in
-        the recipe variables YAML file. Defaults to ${RBD_BASE_DIR}/${IUF_ACTIVITY_SESSION}/site_vars.yaml.")
+        help="""Path to a site variables YAML file. This file allows the user to override values defined in
+        the recipe variables YAML file. Defaults to ${RBD_BASE_DIR}/${IUF_ACTIVITY_SESSION}/site_vars.yaml.""")
 
 # to be replaced with new arguments via SCICD-556
 #   install_sp.add_argument("-um", "--update-method-management", action="store",
