@@ -136,19 +136,20 @@ class PodLogs():
             level = ""
             level_re = re.compile(r"level=(\w+)", re.IGNORECASE)
             msg_re = re.compile(r'msg="(.+?)"') # non-greedy re
-            info_re = re.compile("(.*Z) INFO (.*)")
+            generic_re = re.compile("(.*Z) ([A-Z]+) (.*)")
             time_re = re.compile(r'(^\d{4}\-\d{2}\-\d{2}.*Z) ')
 
             for line in lines:
-                info_match = info_re.search(line)
-                if info_match:
+                generic_match = generic_re.search(line)
+                if generic_match:
                     # The most obvious INFO line.  Example:
                     # 2023-01-09T16:16:45.243438802Z INFO s3 is operational.
-                    info_msg = info_match.group(2)
-                    info_timestamp = info_match.group(1)
-                    log_msg = f"{info_timestamp} INFO {info_msg}"
-                    stdout_msg = f"{info_msg}"
-                    outlines.append(("INFO", stdout_msg, log_msg))
+                    message = generic_match.group(3)
+                    severity = generic_match.group(2)
+                    timestamp = generic_match.group(1)
+                    log_msg = f"{timestamp} {severity} {message}"
+                    stdout_msg = f"{message}"
+                    outlines.append((severity, stdout_msg, log_msg))
                     #outlines.append(f"{info_match.group(1)}\n")
                     continue
 
@@ -195,8 +196,14 @@ class PodLogs():
                         follow=True, timestamps=True, pretty=True):
                         for level, stdoutline, logline in parse_str(event):
                             print(f"{logline}", file=fhandle, flush=True)
-                            if level == 'INFO':
+                            # at some point we need to revisit this, INFO should map to DEBUG but
+                            # not everyone has updated their logging for that distinction
+                            if level == 'NOTICE' or level == 'INFO':
                                 install_logger.info(f"            {stdoutline}")
+                            elif level == 'WARNING':
+                                install_logger.warning(f"            {stdoutline}")
+                            elif level == 'ERROR':
+                                install_logger.error(f"            {stdoutline}")
                             else:
                                 install_logger.debug(stdoutline)
                     watcher.stop()
