@@ -24,7 +24,7 @@
 # OTHER DEALINGS IN THE SOFTWARE.
 #
 
-"""The Compute Node Environment (CNE) Installer"""
+"""The CSM Install and Upgrade Framework (IUF) CLI"""
 
 import argparse
 import atexit
@@ -222,7 +222,7 @@ def process_resume(config):
     elif next_stage:
         start_at = next_stage
     else:
-        print("Couldn't find a successful or paused stage to resume at.")
+        print("Couldn't find a successful or paused stage to resume.")
         sys.exit(1)
 
     config.stages.start_at = start_at
@@ -253,7 +253,7 @@ def process_restart(config):
 
 def process_abort(config):
     """Kill the running processes and abort the run."""
-    # I dont think we can implement this until we know what processes are
+    # I don't think we can implement this until we know what processes are
     # being killed, etc.
     pass
 
@@ -298,47 +298,47 @@ def main():
 
     parser = argparse.ArgumentParser(description=
         """
-       The CSM Install and Upgrade Framework (IUF) Installer.
+       The CSM Install and Upgrade Framework (IUF) CLI.
         """
     )
 
-    parser.add_argument("-i", "--input-file", action="store", help="""Input
-        file used to control the install.   Command line arguments will
-        override what is in the file.
-        Input file should be YAML.
+    parser.add_argument("-i", "--input-file", action="store", help="""YAML input
+        file used to provide arguments to iuf. Command line arguments will
+        override entries in the input file.
         Can also be set via the IUF_INPUT_FILE environment variable.""")
 
     parser.add_argument("-w", "--write-input-file", action="store_true",
-        help="""Write out a new config file to the input file specified with defaults+
-        any command line options specified and quit.""")
+        help="""Create a new input file populated with default values overridden by any other command
+        line options also specified. The file is named via the `-i` argument. The command exits once
+        the file has been created.""")
 
     ### TODO, make default value product_vars.yaml 'recipe', fallback to pwd
     parser.add_argument("-a", "--activity-session", action="store",
         help="""Activity session name.  Must be a unique identifier.
-        Session names must only contain letters (A-Za-z), numbers (0-9), periods (.), and dashes (-).
+        Activity names must only contain letters (A-Za-z), numbers (0-9), periods (.), and dashes (-).
         Can also be set via the IUF_ACTIVITY_SESSION environment variable.""")
 
-    parser.add_argument("-b", "--base-dir", action="store",
-        help="""Base directory for state and log dirs.  Default is ${RSM_BASE_DIR}/iuf/<activity-session>""")
-
-    concurrency_help = """Run the argo processes concurrently.  Defaults to a threaded model.  To
-    use at most N threads, specify `concurrency=N`."""
+    concurrency_help = """Run Argo processes concurrently. Defaults to a fully threaded model. To
+    use at most N threads, specify `concurrency N`."""
     parser.add_argument("-c", "--concurrency", action="store", default=None,
         help=concurrency_help)
 
+    parser.add_argument("-b", "--base-dir", action="store",
+        help="""Base directory for state and log file directories. Defaults to ${RSM_BASE_DIR}/iuf/<activity-session>.""")
+
     parser.add_argument("-s", "--state-dir", action="store",
-        help="A directory used to store the current state of stages.  Defaults to [base-dir]/state.")
+        help="A directory used to store the current state of stages. Defaults to [base-dir]/state.")
 
     #### TODO handle both directories or list of files
     parser.add_argument("-m", "--media-dir", action="store",
-        help="Location of installation media you would like to install.  Defaults to $RBD_BASE_DIR/{activity_session}")
+        help="Location of installation media to be installed. Defaults to ${RBD_BASE_DIR}/{activity_session}.")
 
-    parser.add_argument("-mh", "--media-host", action="store",
-                        help="Host to extract the media onto.  Defaults to ncn-m001",
-                        default="ncn-m001")
+#   parser.add_argument("-mh", "--media-host", action="store",
+#                       help="Host to extract the media onto. Defaults to ncn-m001.",
+#                       default="ncn-m001")
 
     parser.add_argument("--log-dir", action="store",
-        help="Location used to store log files.  Defaults to [base-dir]/log")
+        help="Location used to store log files. Defaults to [base-dir]/log.")
 
     # hide DRYRUN for now until it's production ready
     parser.add_argument("--dryrun", action=InvertableArgument, default=False, help=argparse.SUPPRESS)
@@ -346,10 +346,10 @@ def main():
     levelhelp = list(LOG_LEVELS.keys())
     levelhelp.remove('DRYRUN')
     parser.add_argument("-l", "--level", action="store", default='INFO',
-        help="Set the debug level to the console", choices=levelhelp)
+        help="set the debug level to the console", choices=levelhelp)
 
     parser.add_argument("-v", "--verbose", action="store_true",
-        help="Generates more verbose messages")
+        help="generate more verbose messages")
 
     # TODO: The stage-dir usage could use more verbiage. We might want to add
     # this to the install docs.  Describing it in detail in the help section
@@ -357,100 +357,101 @@ def main():
     # are fully independent; for example, we have an unpack stage, and an
     # install stage.  The install stage needs to install what was unpacked.
 
-    subparsers = parser.add_subparsers(title="subcommands", metavar='{run,activity,list-stages|ls,list-products|resume|restart|abort}')
+    subparsers = parser.add_subparsers(title="subcommands", metavar='{run,activity,list-stages|ls,resume,restart,abort}')
     stage_list = lib.stages.get_stage_help()
 
-    install_sp = subparsers.add_parser("run", epilog="Valid stages:\n{}".format(stage_list),
+    install_sp = subparsers.add_parser("run", description='Run IUF stages to execute install, upgrade and/or deploy operations for a given activity.',
+        epilog="Valid stages:\n{}".format(stage_list),
         formatter_class=argparse.RawTextHelpFormatter)
 
     install_sp.add_argument("-b", "--begin-stage", action="store",
-        help="The first stage to execute")
+        help="The first stage to execute.")
 
     install_sp.add_argument("-e", "--end-stage", action="store",
-        help="The last stage to execute")
+        help="The last stage to execute.")
 
     install_sp.add_argument("-r", "--run-stages", nargs="+", action="store",
-        help="Run only the specified stages")
+        help="Run the specified stages only.")
 
     install_sp.add_argument("-s", "--skip-stages", nargs="+", action="store",
-        help="Skip the execution of the specified stages")
+        help="Skip the execution of the specified stages.")
 
     install_sp.add_argument("-F", "--force", action="store", default=False,
         help="Force re-execution of stage operations.")
 
     bpc_help = formatted("""
-    List of `sat bootprep` config files for non-mgmt nodes (compute, UAN).""")
+    List of `sat bootprep` config files for managed (compute and application) nodes.""")
 
     install_sp.add_argument("-bc", "--bootprep-config-managed", action="store",
         #default = ['../vcs/bootprep/compute-and-uan-bootprep.yaml'],
         help=bpc_help)
 
     bpc_help = formatted("""
-    List of `sat bootprep` config files for management NCN nodes.""")
+    List of `sat bootprep` config files for management NCNs.""")
 
     install_sp.add_argument("-bm", "--bootprep-config-management", action="store",
         #default = ['../vcs/bootprep/management-bootprep.yaml'],
         help=bpc_help)
 
     install_sp.add_argument("-bpcd", "--bootprep-config-dir", action="store",
-        help="""directory containing bootprep configuration files.  The expected layout would be:
+        help="""Directory containing `sat bootprep` configuration files. The expected content is:
         $(BOOTPREP_CONFIG_DIR)/product_vars.yaml
         $(BOOTPREP_CONFIG_DIR)/bootprep/compute-and-uan-bootprep.yaml
         $(BOOTPREP_CONFIG_DIR)/bootprep/management-bootprep.yaml""")
 
     install_sp.add_argument("-rv", "--recipe-vars", action="store",
-        help="location of the recipe_vars.yaml file (aka product_vars.yaml), used by `sat bootprep`")
+        help="Path to a recipe variables YAML file. HPE provides the `product_vars.yaml` recipe variables file with each release.")
 
     install_sp.add_argument("-sv", "--site-vars", action="store", default=False,
-        help="Path to site parameters file.  Default is ${RSM_BASE_DIR}/$IUF_ACTIVITY_SESSION}/site_vars.yaml")
+        help="Path to a site variables YAML file. Defaults to ${RSM_BASE_DIR}/${IUF_ACTIVITY_SESSION}/site_vars.yaml.")
 
+# to be replaced with new arguments via SCICD-556
+#   install_sp.add_argument("-um", "--update-method-management", action="store",
+#       default="reboot",
+#       help="Method to update the management nodes.  (rolling) 'reboot' or (rolling) 'in_place' (update running nodes).  Defaults to 'reboot'")
+#
+#   install_sp.add_argument("-uc", "--update-method-managed", action="store",
+#       default="reboot",
+#       help="Method to update the managed nodes.  (rolling) 'reboot' or (rolling) 'in_place' (update running nodes).  Defaults to 'reboot'")
+#
+#   install_sp.add_argument("--limit-managed-nodes", action="store", nargs='+',
+#       help="""Override list used in rolling stage to assist with repairing broken managed nodes.""")
+#
+#   install_sp.add_argument("--limit-management-nodes", action="store", nargs='+',
+#       help="""Override list used in rolling stage to assist with repairing broken management nodes.""")
 
-    install_sp.add_argument("-um", "--update-method-management", action="store",
-        default="reboot",
-        help="Method to update the management nodes.  (rolling) 'reboot' or (rolling) 'in_place' (update running nodes).  Defaults to 'reboot'")
-
-    install_sp.add_argument("-uc", "--update-method-managed", action="store",
-        default="reboot",
-        help="Method to update the managed nodes.  (rolling) 'reboot' or (rolling) 'in_place' (update running nodes).  Defaults to 'reboot'")
-
-    install_sp.add_argument("--limit-managed-nodes", action="store", nargs='+',
-        help="""Override list used in rolling stage to assist with repairing broken managed nodes.""")
-
-    install_sp.add_argument("--limit-management-nodes", action="store", nargs='+',
-        help="""Override list used in rolling stage to assist with repairing broken management nodes.""")
     install_sp.add_argument("-mrp", "--mask-recipe-prods", action="store", nargs='+',
-        help="""If product_vars was specified, mask the versions found
-        within product_vars for the products specified, So versions for the specified products
-        would be pulled from the product catalog.  Note that the versions found in the `--site-vars`
-        (or the version being installed) would override it anyway.""")
+        help="""If `--recipe-vars` is specified, mask the versions found within the recipe variables YAML
+        file for the specified products. Versions for the specified products are obtained from the product
+        catalog instead. Note that the versions found via `--site-vars` (or the versions being installed)
+        will override it as well.""")
 
     install_sp.set_defaults(func=process_install, skip_stages=list(), run_stages=list())
 
-    list_sp = subparsers.add_parser("list-stages", aliases=["ls"])
+    list_sp = subparsers.add_parser("list-stages", description='List IUF stage information and status for a given activity.', aliases=["ls"])
     list_sp.set_defaults(func=process_list)
-    list_sp.add_argument("-f", "--format", action="store")
 
     # create a config object to store all of the configured options in the parser
 
-    resume_sp = subparsers.add_parser("resume")
+    resume_sp = subparsers.add_parser("resume", description='Resume a previously paused or failed IUF session for a given activity.')
     resume_sp.set_defaults(func=process_resume)
     resume_sp.add_argument("comment", action="store", nargs="*")
 
-    restart_sp = subparsers.add_parser("restart")
+    restart_sp = subparsers.add_parser("restart", description='Restart a previously paused or failed IUF session for a given activity.')
     restart_sp.set_defaults(func=process_restart)
     restart_sp.add_argument("comment", action="store", nargs="*")
 
-    abort_sp = subparsers.add_parser("abort")
+    abort_sp = subparsers.add_parser("abort", description='Abort a previously paused or failed IUF session for a given activity.')
     abort_sp.set_defaults(func=process_abort)
     abort_sp.add_argument("comment", action="store", nargs="*")
 
-    activity_sp = subparsers.add_parser("activity")
-    activity_sp.add_argument("--comment", help="Comment for the activitiy state", action="store")
-    activity_sp.add_argument("--time", help="Add or edit state at a specific timestamp, defaults to now.", action="store")
-    activity_sp.add_argument("--create", help="Create a new activity state", action="store_true", default=False)
-    activity_sp.add_argument("--status", help="Current status of the state", action="store", default="n/a", choices=lib.Activity.ACTIVITY_VALID_STATUS )
-    activity_sp.add_argument("--sessionid", help="Argo sessionid.", default=None)
-    activity_sp.add_argument("state", nargs="?", help="State name", action="store", default=None, choices=lib.Activity.ACTIVITY_VALID_STATES)
+    activity_sp = subparsers.add_parser("activity", description='Create, display, or annotate activity information.')
+    activity_sp.add_argument("--time", help="A time value used when creating or modifying an activity entry. Must be specified and match an existing time value to modify that entry. Defaults to now.", action="store")
+    activity_sp.add_argument("--create", help="Create a new activity entry.", action="store_true", default=False)
+    activity_sp.add_argument("--comment", help="A comment to be associated with an activity entry.", action="store")
+    activity_sp.add_argument("--status", help="A status value to be associated with an activity entry.", action="store", default="n/a", choices=lib.Activity.ACTIVITY_VALID_STATUS)
+    activity_sp.add_argument("--sessionid", help="An Argo workflow session identifier to be associated with an activity entry.", default=None)
+    activity_sp.add_argument("state", nargs="?", help="activity state value", action="store", default=None, choices=lib.Activity.ACTIVITY_VALID_STATES)
 
     activity_sp.set_defaults(func=process_activity)
 
@@ -495,7 +496,7 @@ def main():
     config_error = False
 
     if not lib.Activity.valid_activity_name(args.activity_session):
-        install_logger.error(f"Activity session {args.activity_session} invalid.  Names must only contain letters, numbers, periods, and dashes")
+        install_logger.error(f"Activity session {args.activity_session} invalid. Names must only contain letters, numbers, periods, and dashes")
         config_error = True
 
     if len(sys.argv) < 2:
