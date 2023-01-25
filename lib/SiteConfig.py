@@ -53,8 +53,16 @@ def read_yaml(file_loc):
     return return_dict
 
 def highestVersion(versions_list):
-    sorted_vs = sorted(versions_list, key=VersionInfo.parse)
-    return sorted_vs[-1]
+    parsed_versions = []
+    for version in versions_list:
+        try:
+            parsed_versions.append(VersionInfo.parse(version))
+        except ValueError:
+            install_logger.warning("Found invalid version: %s", version)
+    sorted_vs = sorted(parsed_versions)
+    if not sorted_vs:
+        return ''
+    return str(sorted_vs[-1])
 
 class SiteConfig():
     def __init__(self, config):
