@@ -161,7 +161,7 @@ class Config:
                 break
 
         if not media_dir_ok:
-            self._error("Media directory must exist and be under {}".format(self.media_base_dir))
+            self._error("Media directory must exist and reside in {}".format(self.media_base_dir))
             validated = False
 
         for adir in ["state", "log"]:

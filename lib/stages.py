@@ -216,12 +216,12 @@ class Stages():
             else:
                 return self._stages
 
-        name_row = ["stage"]
+        name_row = ["Stage"]
         table = PrettyTable()
         if long:
-            name_row += ["description"]
+            name_row += ["Description"]
         if status:
-            name_row += ["status", "duration"]
+            name_row += ["Status", "Duration"]
         table.field_names = name_row
         for stage in self._stage_dict.keys():
             val_row = [stage]
@@ -282,7 +282,7 @@ class Stages():
             # update the current state with the failure
             config.activity.state(timestamp=utime, status="Failed")
             # put the whole process into debug
-            config.activity.state(state="debug", comment=f"Exception occured while executing {err.cmd}")
+            config.activity.state(state="debug", comment=f"Exception occurred while executing {err.cmd}")
 
             install_logger.debug("Exception while executing %s", stage, exc_info=True)
             print("")
@@ -308,7 +308,7 @@ class Stages():
             install_logger.debug("Exception while executing %s", stage, exc_info=True)
             print("")
             install_logger.critical("A '%s' error", err)
-            install_logger.critical("occured while executing %s", stage)
+            install_logger.critical("occurred while executing %s", stage)
 
         if failed:
             print("")

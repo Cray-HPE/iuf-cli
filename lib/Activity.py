@@ -110,7 +110,7 @@ class Activity():
     def __str__(self):
         """Print the activity in a nice table."""
         table = PrettyTable()
-        table.field_names = ["start", "activity state", "IUF sessionid", "Status", "Duration", "Comment"]
+        table.field_names = ["Start", "Category", "Argo Workflow", "Status", "Duration", "Comment"]
         states = self.states
         ordered_states = sorted(states.keys())
         length = range(len(ordered_states))

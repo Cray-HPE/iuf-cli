@@ -91,31 +91,31 @@ STAGE_DICT = OrderedDict({
         "description" : "Inventory and extract products in the media directory for use in subsequent stages"
         },
     "pre-install-check":  {
-        "description" : "Perform pre-install readyness checks"
+        "description" : "Perform pre-install readiness checks"
         },
     "deliver-product": {
         "description" : "Upload product content onto the system"
         },
     "update-vcs-config": {
-        "description" : "Merge working branches and perform, automated VCS configuration"
+        "description" : "Merge working branches and perform automated VCS configuration"
         },
     "update-cfs-config": {
-        "description" : "Update CFS configuration (sat bootprep run --config)"
+        "description" : "Update CFS configuration utilizing sat bootprep"
         },
     "prepare-images": {
-        "description" : "Build and configure management node and/or managed node images (sat bootprep run --images)"
+        "description" : "Build and configure management node and/or managed node images utilizing sat bootprep"
         },
     "management-nodes-rollout": {
-        "description" : "Rolling reboot or liveupdate of management nodes"
+        "description" : "Rolling rebuild of management nodes"
         },
     "deploy-product": {
         "description" : "Deploy services to system"
         },
     "post-install-service-check": {
-        "description" : "Perform post-install checks of processed services"
+        "description" : "Perform post-install checks of deployed product services"
         },
     "managed-nodes-rollout": {
-        "description" : "Rolling reboot or liveupdate of managed nodes nodes"
+        "description" : "Rolling reboot of managed nodes"
         },
     "post-install-check": {
         "description" : "Perform post-install checks"
