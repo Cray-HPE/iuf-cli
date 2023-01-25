@@ -75,7 +75,6 @@ class ConfigFile:
                     file_defaults = {k:v for k,v in file_defaults.items() if v is not None}
             except:
                 print("ERROR: Unable to parse input file: {}".format(config))
-                raise
                 sys.exit(1)
         else:
             # if write file is specified, it's ok for the file to not exist

@@ -102,7 +102,7 @@ def validate_stages(config):
     bp_config = config.args.get("bootprep_config_managed", None)
     if bp_config and "managed-nodes-rollout" in local_stages:
         if not os.path.exists(bp_config):
-            errors.append("--bootprep-config-managed-nodes {} was specified but could not be found".format(entry))
+            errors.append("--bootprep-config-managed-nodes {} was specified but could not be found".format(bp_config))
 
     bp_config = config.args.get("bootprep_config_management", None)
     if bp_config and "management-nodes-rollout" in local_stages:
@@ -521,6 +521,9 @@ def main():
         args.func(config)
     except AttributeError:
         install_logger.error("A subcommand was not specified.")
+        sys.exit(1)
+    except Exception as e:
+        install_logger.error("An unexpected error occurred: {}".format(e))
         raise
 
 if __name__ == "__main__":
