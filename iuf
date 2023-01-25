@@ -210,7 +210,7 @@ def get_comment(text_or_list):
 def process_resume(config):
     """Pick up where we left off."""
     comment = get_comment(config.args.get("comment", None))
-    activity = config.args.get("activity_session")
+    activity = config.args.get("activity")
     config.stages.set_summary("comment", comment)
 
     stage_status = config.stages.get_stage_status(activity)
@@ -325,10 +325,10 @@ def main():
         the file has been created.""")
 
     ### TODO, make default value product_vars.yaml 'recipe', fallback to pwd
-    parser.add_argument("-a", "--activity-session", action="store",
-        help="""Activity session name.  Must be a unique identifier.
+    parser.add_argument("-a", "--activity", action="store",
+        help="""Activity name.  Must be a unique identifier.
         Activity names must only contain letters (A-Za-z), numbers (0-9), periods (.), and dashes (-).
-        Can also be set via the IUF_ACTIVITY_SESSION environment variable.""")
+        Can also be set via the IUF_ACTIVITY environment variable.""")
 
     concurrency_help = """Run Argo processes concurrently. Defaults to a fully concurrent model. To
     use at most N threads, specify `concurrency N`."""
@@ -336,14 +336,17 @@ def main():
         help=concurrency_help)
 
     parser.add_argument("-b", "--base-dir", action="store",
-        help="""Base directory for state and log file directories. Defaults to ${RBD_BASE_DIR}/iuf/<activity-session>, where ${RBD_BASE_DIR} is /etc/cray/upgrade/csm.""")
+        help="""Base directory for state and log file directories. Defaults to ${RBD_BASE_DIR}/iuf/[activity], where ${RBD_BASE_DIR} is /etc/cray/upgrade/csm.""")
 
     parser.add_argument("-s", "--state-dir", action="store",
         help="A directory used to store the current state of stages, used by `iuf` but primarily not of interest to users. Defaults to [base-dir]/state.")
 
     #### TODO handle both directories or list of files
     parser.add_argument("-m", "--media-dir", action="store",
-        help="""Location of installation media to be used. Defaults to ${RBD_BASE_DIR}/{activity_session}, where ${RBD_BASE_DIR} is /etc/cray/upgrade/csm". `iuf` can not access media outside of ${RBD_BASE_DIR}.""")
+        help="""Location of installation media to be used. Defaults to ${RBD_BASE_DIR}/[activity],
+        where ${RBD_BASE_DIR} is /etc/cray/upgrade/csm. `iuf` cannot access installation media
+        outside of ${RBD_BASE_DIR}, however input files provided by other `iuf` arguments can exist
+        outside of ${RBD_BASE_DIR}.""")
 
     # Host to extract the media onto. Defaults to ncn-m001.
     parser.add_argument("-mh", "--media-host", action="store",
@@ -358,7 +361,8 @@ def main():
     levelhelp = list(LOG_LEVELS.keys())
     levelhelp.remove('DRYRUN')
     parser.add_argument("-l", "--level", action="store", default='INFO',
-        help="set the debug level to the console", choices=levelhelp)
+        help="""Set the log message level that determines what is displayed on `iuf` standard output.
+        Messages of this level or higher are displayed.""", choices=levelhelp)
 
     parser.add_argument("-v", "--verbose", action="store_true",
         help="generate more verbose messages")
@@ -391,19 +395,18 @@ def main():
     install_sp.add_argument("-F", "--force", action="store", default=False,
         help="Force re-execution of stage operations.")
 
-
     install_sp.add_argument("-bc", "--bootprep-config-managed", action="store",
         #default = ['../vcs/bootprep/compute-and-uan-bootprep.yaml'],
         help="""List of `sat bootprep` config files for managed (compute and
-        application) nodes.  Note the path is relative to the media directory (`--media-dir`).""")
+        application) nodes. Note the path is relative to the media directory (`iuf --media-dir`).""")
 
     install_sp.add_argument("-bm", "--bootprep-config-management", action="store",
         #default = ['../vcs/bootprep/management-bootprep.yaml'],
         help="""List of `sat bootprep` config files for management NCNs.
-        Note the path is relative to the media directory (`--media-dir`)""")
+        Note the path is relative to the media directory (`iuf --media-dir`).""")
 
     install_sp.add_argument("-bpcd", "--bootprep-config-dir", action="store",
-        help="""Directory containing `sat bootprep` configuration files. The expected content is:
+        help="""Directory containing HPE `product_vars.yaml` and `sat bootprep` configuration files. The expected content is:
         $(BOOTPREP_CONFIG_DIR)/product_vars.yaml
         $(BOOTPREP_CONFIG_DIR)/bootprep/compute-and-uan-bootprep.yaml
         $(BOOTPREP_CONFIG_DIR)/bootprep/management-bootprep.yaml""")
@@ -413,13 +416,13 @@ def main():
 
     install_sp.add_argument("-sv", "--site-vars", action="store", default=False,
         help="""Path to a site variables YAML file. This file allows the user to override values defined in
-        the recipe variables YAML file. Defaults to ${RBD_BASE_DIR}/${IUF_ACTIVITY_SESSION}/site_vars.yaml.""")
+        the recipe variables YAML file. Defaults to ${RBD_BASE_DIR}/${IUF_ACTIVITY}/site_vars.yaml.""")
 
     install_sp.add_argument("-mrs", "--managed-rollout-strategy", action="store",
         choices=["reboot", "stage"],
         default="stage",
-        help="""Method to update the managed nodes.  Accepted values are 'reboot' (reboot nodes _now_) or
-        'stage' (set up nodes to boot into new image after next WLM job).  Defaults to 'stage'""")
+        help="""Method to update the managed nodes. Accepted values are 'reboot' (reboot nodes _now_) or
+        'stage' (set up nodes to boot into new image after next WLM job). Defaults to 'stage'.""")
 
     install_sp.add_argument("-cmrp", "--concurrent-management-rollout-percentage",
         action="store", default=20,
@@ -485,17 +488,17 @@ def main():
     # load any defaults from the input file
     configfile.set_defaults(parser,vars(tmp_args))
 
-    # allow the activity session to be defined in the environment
-    env_session = os.getenv("IUF_ACTIVITY_SESSION", None)
+    # allow the activity to be defined in the environment
+    env_session = os.getenv("IUF_ACTIVITY", None)
     if env_session:
-        parser.set_defaults(activity_session=env_session)
+        parser.set_defaults(activity=env_session)
 
     # parse the command line for real
     args = parser.parse_args()
 
     # Check this before we do anything else so we get a reasonable error message
-    if not args.activity_session:
-        print("ERROR: --activity-session is required.")
+    if not args.activity:
+        print("ERROR: --activity is required.")
         parser.print_help(sys.stderr)
         sys.exit(1)
 
@@ -511,8 +514,8 @@ def main():
 
     config_error = False
 
-    if not lib.Activity.valid_activity_name(args.activity_session):
-        install_logger.error(f"Activity session {args.activity_session} invalid. Names must only contain letters, numbers, periods, and dashes")
+    if not lib.Activity.valid_activity_name(args.activity):
+        install_logger.error(f"Activity {args.activity} invalid. Names must only contain letters, numbers, periods, and dashes")
         config_error = True
 
     if len(sys.argv) < 2:

@@ -93,7 +93,7 @@ class Activity():
             self.load_activity_dict(filename)
 
             if self.name != name:
-                raise ActivityError(f"{filename} contains the activity session {self.name}, but {name} was specified.")
+                raise ActivityError(f"{filename} contains the activity {self.name}, but {name} was specified.")
         else:
             self.name = name
             self.start = self.get_time()
@@ -468,7 +468,7 @@ class Activity():
         if not self.api.activity_exists(self.name):
             raise ActivityError(f"The activity {self.name} does not exist.")
 
-        config.stages.set_summary("activity_session", config.args.get("activity_session"))
+        config.stages.set_summary("activity", config.args.get("activity"))
         config.stages.set_summary("media_dir", config.args.get("media_dir"))
         config.stages.set_summary("log_dir", config.args.get("log_dir"))
 
