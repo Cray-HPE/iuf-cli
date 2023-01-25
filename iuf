@@ -400,7 +400,7 @@ def main():
         $(BOOTPREP_CONFIG_DIR)/bootprep/management-bootprep.yaml""")
 
     install_sp.add_argument("-rv", "--recipe-vars", action="store",
-        help="Path to a recipe variables YAML file. HPE provides the `product_vars.yaml` recipe variables file with each release.")
+        help="""Path to a recipe variables YAML file. HPE provides the `product_vars.yaml` recipe variables file with each release.""")
 
     install_sp.add_argument("-sv", "--site-vars", action="store", default=False,
         help="Path to a site variables YAML file. This file allows the user to override values defined in
