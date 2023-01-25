@@ -67,6 +67,7 @@ def validate_stages(config):
     run_stages = config.args.get('run_stages')
     skip_stages = config.args.get('skip_stages')
     state_dir = config.args.get('state_dir')
+    media_dir = config.args.get('media_dir')
 
     config.stages.validate(state_dir, begin_stage, end_stage, run_stages, skip_stages)
     local_stages = config.stages.get(all_stages=False, list_fmt=True)
@@ -97,17 +98,28 @@ def validate_stages(config):
                           "--site-vars/-sv, --bootprep-config-dir/-bpcd, nor --recipe-vars/-rv "
                           "were specified. At least one of them needs to be specified")
 
-    # Ensure that if a `sat bootprep` config was specified (and the stage
-    # is being run) it exists.
-    bp_config = config.args.get("bootprep_config_managed", None)
-    if bp_config and "managed-nodes-rollout" in local_stages:
-        if not os.path.exists(bp_config):
-            errors.append("--bootprep-config-managed-nodes {} was specified but could not be found".format(bp_config))
+    def check_bootprep_arg(arg_name, stage):
+        """Ensure that if a `sat bootprep` config was specified (and the
+        stage is being run) it exists.
+        """
+        arg_value = config.args.get(arg_name, None)
+        if not arg_value:
+            return
 
-    bp_config = config.args.get("bootprep_config_management", None)
-    if bp_config and "management-nodes-rollout" in local_stages:
-        if not os.path.exists(bp_config):
-            errors.append(f"--bootprep-config-management-nodes {bp_config} was specified but could not be found")
+        param_name = "--{}".format(arg_name.replace("_", "-"))
+        bp_config_loc = os.path.join(media_dir, arg_value)
+        if arg_value and stage in local_stages:
+            if not os.path.exists(bp_config_loc):
+                error_msg = f"""{arg_name} {arg_value} was specified but
+                could not be found. Note the path should be relative to the
+                media directory ({media_dir}).  So the full path to the file
+                would be {bp_config_loc}"""
+                errors.append(formatted(error_msg))
+
+    # Ensure the validity of the `--bootprep-config-managed` and the
+    # `--bootprep-config-managment` arguments.
+    check_bootprep_arg("bootprep_config_managed", "managed-nodes-rollout")
+    check_bootprep_arg("bootprep_config_management", "management-nodes-rollout")
 
     if errors:
         install_logger.error("Problems were encountered:")
@@ -379,19 +391,16 @@ def main():
     install_sp.add_argument("-F", "--force", action="store", default=False,
         help="Force re-execution of stage operations.")
 
-    bpc_help = formatted("""
-    List of `sat bootprep` config files for managed (compute and application) nodes.""")
 
     install_sp.add_argument("-bc", "--bootprep-config-managed", action="store",
         #default = ['../vcs/bootprep/compute-and-uan-bootprep.yaml'],
-        help=bpc_help)
-
-    bpc_help = formatted("""
-    List of `sat bootprep` config files for management NCNs.""")
+        help="""List of `sat bootprep` config files for managed (compute and
+        application) nodes.  Note the path is relative to the media directory (`--media-dir`).""")
 
     install_sp.add_argument("-bm", "--bootprep-config-management", action="store",
         #default = ['../vcs/bootprep/management-bootprep.yaml'],
-        help=bpc_help)
+        help="""List of `sat bootprep` config files for management NCNs.
+        Note the path is relative to the media directory (`--media-dir`)""")
 
     install_sp.add_argument("-bpcd", "--bootprep-config-dir", action="store",
         help="""Directory containing `sat bootprep` configuration files. The expected content is:
@@ -406,20 +415,25 @@ def main():
         help="""Path to a site variables YAML file. This file allows the user to override values defined in
         the recipe variables YAML file. Defaults to ${RBD_BASE_DIR}/${IUF_ACTIVITY_SESSION}/site_vars.yaml.""")
 
-# to be replaced with new arguments via SCICD-556
-#   install_sp.add_argument("-um", "--update-method-management", action="store",
-#       default="reboot",
-#       help="Method to update the management nodes.  (rolling) 'reboot' or (rolling) 'in_place' (update running nodes).  Defaults to 'reboot'")
-#
-#   install_sp.add_argument("-uc", "--update-method-managed", action="store",
-#       default="reboot",
-#       help="Method to update the managed nodes.  (rolling) 'reboot' or (rolling) 'in_place' (update running nodes).  Defaults to 'reboot'")
-#
-#   install_sp.add_argument("--limit-managed-nodes", action="store", nargs='+',
-#       help="""Override list used in rolling stage to assist with repairing broken managed nodes.""")
-#
-#   install_sp.add_argument("--limit-management-nodes", action="store", nargs='+',
-#       help="""Override list used in rolling stage to assist with repairing broken management nodes.""")
+    install_sp.add_argument("-mrs", "--managed-rollout-strategy", action="store",
+        choices=["reboot", "stage"],
+        default="stage",
+        help="""Method to update the managed nodes.  Accepted values are 'reboot' (reboot nodes _now_) or
+        'stage' (set up nodes to boot into new image after next WLM job).  Defaults to 'stage'""")
+
+    install_sp.add_argument("-cmrp", "--concurrent-management-rollout-percentage",
+        action="store", default=20,
+        help="""Limit the number of management nodes that roll out
+        concurrently based on the percentage specified. Must be an integer
+        between 1-100. Defaults to 20 (percent).""")
+
+
+    install_sp.add_argument("--limit-managed-rollout", action="store", nargs='+',
+       help="""Override list used to target specific nodes only when rolling out managed nodes.""")
+
+    install_sp.add_argument("--limit-management-rollout", action="store", nargs='+',
+        default=["Mangement_Worker"],
+        help="""Override list used to target specific nodes only when rolling out management nodes.""")
 
     install_sp.add_argument("-mrp", "--mask-recipe-prods", action="store", nargs='+',
         help="""If `--recipe-vars` is specified, mask the versions found within the recipe variables YAML
