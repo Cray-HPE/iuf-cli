@@ -480,6 +480,9 @@ class Activity():
 
         media_host = config.args.get("media_host", "ncn-m001")
         concurrency = config.args.get("concurrency", None)
+        if concurrency != None:
+            concurrency = int(concurrency)
+
         payload = {
             "input_parameters": {
                 "concurrency": concurrency,
@@ -499,13 +502,21 @@ class Activity():
         if bp_config_managed:
             payload["input_parameters"]["bootprep_config_managed"] = bp_config_managed
 
-        limit_management = config.args.get("limit_management_nodes", None)
+        limit_management = config.args.get("limit_management_rollout", None)
         if limit_management:
             payload["input_parameters"]["limit_management_nodes"] = limit_management
 
-        limit_managed = config.args.get("limit_managed_nodes", None)
+        limit_managed = config.args.get("limit_managed_rollout", None)
         if limit_managed:
             payload["input_parameters"]["limit_managed_nodes"] = limit_managed
+
+        managed_rollout_strat = config.args.get("managed_rollout_strategy", None)
+        if managed_rollout_strat:
+            payload["input_parameters"]["managed_rollout_strategy"] = managed_rollout_strat
+
+        rollout_percentage = config.args.get("concurrent_management_rollout_percentage")
+        if rollout_percentage:
+           payload["input_parameters"]["concurrent_management_rollout_percentage"] = rollout_percentage
 
         sessions = []
 
