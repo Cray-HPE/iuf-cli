@@ -58,7 +58,7 @@ def highestVersion(versions_list):
         try:
             parsed_versions.append(VersionInfo.parse(version))
         except ValueError:
-            install_logger.warning("Found invalid version: %s", version)
+            install_logger.debug("Found invalid version: %s", version)
     sorted_vs = sorted(parsed_versions)
     if not sorted_vs:
         return ''
