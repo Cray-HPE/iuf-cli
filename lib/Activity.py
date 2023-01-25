@@ -32,6 +32,8 @@ import re
 import sys
 import time
 import lib.ApiInterface
+import base64
+import gzip
 
 from lib.PodLogs import PodLogs
 from lib.SiteConfig import SiteConfig
@@ -357,7 +359,15 @@ class Activity():
 
             nodes = []
             try:
-                rnodes = wflow["status"]["nodes"]
+                # if the workflow gets too big it gets compressed
+                if "compressedNodes" in wflow["status"]:
+                    compressedNodes = wflow["status"]["compressedNodes"]
+                    gzipNodes = base64.b64decode(compressedNodes)
+                    uncompressedNodes = gzip.decompress(gzipNodes)
+                    rnodes = yaml.safe_load(uncompressedNodes)
+                else:
+                    rnodes = wflow["status"]["nodes"]
+
                 if rnodes and type(rnodes) is dict:
                     nodes = rnodes
             except:
