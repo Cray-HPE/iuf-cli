@@ -61,7 +61,7 @@ class Config:
     @property
     def activity(self):
         if self._activity_session is None:
-            session = self.args.get("activity_session", None)
+            session = self.args.get("activity", None)
             self._activity_session = lib.Activity.Activity(name=session, filename=self.activity_dict_file, dryrun=self.dryrun)
 
         return self._activity_session
@@ -138,9 +138,9 @@ class Config:
         validated = True
 
         # sanity test the directories
-        activity = self._args.get("activity_session", None)
+        activity = self._args.get("activity", None)
         if not activity:
-            self._error("No activity session specified")
+            self._error("No activity specified")
             sys.exit(1)
 
         default_base_dir = os.path.join(IUF_BASE_DIR, activity)
