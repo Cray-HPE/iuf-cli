@@ -422,7 +422,7 @@ def main():
         choices=["reboot", "stage"],
         default="stage",
         help="""Method to update the managed nodes. Accepted values are 'reboot' (reboot nodes _now_) or
-        'stage' (set up nodes to boot into new image after next WLM job). Defaults to 'stage'.""")
+        'stage' (set up nodes to reboot into new image after next WLM job). Defaults to 'stage'.""")
 
     install_sp.add_argument("-cmrp", "--concurrent-management-rollout-percentage",
         action="store", default=20,
