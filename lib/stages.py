@@ -250,8 +250,8 @@ class Stages():
     def exec_stage(self, config, workflow, stage):
         """Run a stage."""
 
-        config.logger.info(f"BEGINNING STAGE: {stage}")
-        config.logger.info(f"    WORKFLOW ID: {workflow}")
+        config.logger.info(f"      IUF STAGE: {stage}")
+        config.logger.info(f"  ARGO WORKFLOW: {workflow}")
         utime = config.activity.state(state="in_progress", status="Running", sessionid=workflow, comment=f"Run {stage}")
 
         # Add "run_stages" and "args" to the stage summary.

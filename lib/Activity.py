@@ -262,6 +262,7 @@ class Activity():
     def get_next_workflow(self, config, sessionid):
         retflow = None
         found = False
+        count = 0
 
         while not found:
             try:
@@ -287,6 +288,13 @@ class Activity():
                     pass
 
             if not found:
+                count += 1
+                if (count % 600) == 0:
+                    # it's been 10 minutes, give up if the admin hasn't
+                    config.logger.error(f"Giving up after 10 minutes.  Check to ensure the ARGO backend is functional then try again.")
+                    sys.exit(1)
+                if (count % 15) == 0:
+                    config.logger.warning(f"Still waiting for workflow startup after {count} seconds.")
                 time.sleep(1)
         
         return retflow
@@ -390,7 +398,7 @@ class Activity():
                     if "startedAt" in node:
                         if not phases[name]["startedAt"]:
                             if display:
-                                config.logger.info(f"        BEGIN PHASE: {dname}")
+                                config.logger.info(f"             BEGIN: {dname}")
                         phases[name]["startedAt"] = node["startedAt"]
 
                     if "phase" in node:
@@ -401,11 +409,11 @@ class Activity():
                             if display:
                                 status = phases[name]["status"]
                                 if status == "Failed" or status == "Error":
-                                    config.logger.error(f"    FINISHED PHASE: {dname} [{status}]")
+                                    config.logger.error(f"         FINISHED: {dname} [{status}]")
                                 if status == "Omitted":
-                                    config.logger.warning(f"  FINISHED PHASE: {dname} [{status}]")
+                                    config.logger.warning(f"       FINISHED: {dname} [{status}]")
                                 else:
-                                    config.logger.info(f"     FINISHED PHASE: {dname} [{status}]")
+                                    config.logger.info(f"          FINISHED: {dname} [{status}]")
                         phases[name]["finishedAt"] = node["finishedAt"]
                         try:
                             for artifact in node["outputs"]["artifacts"]:
@@ -534,7 +542,12 @@ class Activity():
         session_vars = {}
 
         if not products:
-            raise ActivityError(f"No products were found for {self.name}.  Was process-media ran?")
+            full_media_dir = config.media_base_dir + media_dir
+            if "process-media" in payload["input_parameters"]["stages"]:
+                config.logger.error(f"No IUF installable products were found in {full_media_dir}.")
+            else:
+                config.logger.error(f"No products were found in {self.name}.  Either the process-media stage has never been executed, or no IUF installable products were found in {full_media_dir}")
+            return sessions
 
         for product in products:
             name = product.get('name', None)
@@ -567,7 +580,7 @@ class Activity():
 
         session = api_result.json()
         sessionid = session['name']
-        config.logger.info("MONITORING SESSION: {}".format(sessionid))
+        config.logger.info("IUF SESSION: {}".format(sessionid))
 
         have_wf = True
         while have_wf:
