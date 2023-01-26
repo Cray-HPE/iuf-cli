@@ -136,7 +136,7 @@ class PodLogs():
             level = ""
             level_re = re.compile(r"level=(\w+)", re.IGNORECASE)
             msg_re = re.compile(r'msg="(.+?)"') # non-greedy re
-            generic_re = re.compile("(.*Z) ([A-Z]+) (.*)")
+            generic_re = re.compile("(.*Z) ([A-Z]+):* (.*)")
             time_re = re.compile(r'(^\d{4}\-\d{2}\-\d{2}.*Z) ')
 
             for line in lines:
