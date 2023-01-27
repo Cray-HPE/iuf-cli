@@ -485,6 +485,16 @@ class Activity():
 
         return yaml.safe_load(wf.stdout)
 
+    def abort_activity(self, config):
+        payload = {
+            "input_parameters": {},
+            "name": self.name,
+        }
+        try:
+            api_result = self.api.abort_activity(self.name, payload)
+        except Exception as ex:
+            config.logger.error(f"Unable to abort activity {self.name}: {ex}")
+
     def run_stages(self, config):
         if not self.api.activity_exists(self.name):
             raise ActivityError(f"The activity {self.name} does not exist.")
