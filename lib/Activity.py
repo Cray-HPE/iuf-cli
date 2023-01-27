@@ -520,6 +520,7 @@ class Activity():
                 "force": force,
                 "media_dir": media_dir,
                 "media_host": media_host,
+                "stages": [],
             }
         }
         self.site_conf = SiteConfig(config)
