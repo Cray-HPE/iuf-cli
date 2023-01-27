@@ -435,8 +435,8 @@ def main():
        help="""Override list used to target specific nodes only when rolling out managed nodes.""")
 
     install_sp.add_argument("--limit-management-rollout", action="store", nargs='+',
-        default=["Mangement_Worker"],
-        help="""Override list used to target specific nodes only when rolling out management nodes.""")
+        default=["Management_Worker"],
+        help="""Override list used to target specific role_subrole(s) only when rolling out management nodes.""")
 
     install_sp.add_argument("-mrp", "--mask-recipe-prods", action="store", nargs='+',
         help="""If `--recipe-vars` is specified, mask the versions found within the recipe variables YAML
