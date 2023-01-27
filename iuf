@@ -265,10 +265,7 @@ def process_restart(config):
 
 def process_abort(config):
     """Kill the running processes and abort the run."""
-    # I don't think we can implement this until we know what processes are
-    # being killed, etc.
-    pass
-
+    config.activity.abort_activity(config)
 
 def update_logger_config(config):
     """
