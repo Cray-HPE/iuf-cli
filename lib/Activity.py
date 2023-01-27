@@ -59,8 +59,7 @@ ACTIVITY_VALID_STATES = [
     'waiting_admin',
     'paused',
     'debug',
-    'blocked',
-    'finished'
+    'blocked'
 ]
 
 ACTIVITY_VALID_STATUS = [
@@ -114,13 +113,14 @@ class Activity():
         states = self.states
         ordered_states = sorted(states.keys())
         length = range(len(ordered_states))
+        summary = dict()
         for x in length:
             start = ordered_states[x]
             state = states[start]
             if x+1 in length:
                 end = ordered_states[x+1]
             else:
-                end = self.get_time()
+                end = start
 
             duration = self.get_duration(start, end)
             table.add_row([
@@ -131,6 +131,11 @@ class Activity():
                 duration,
                 state['comment']
             ])
+            if state['state'] not in summary:
+                summary[state['state']] = duration
+            else:
+                summary[state['state']] += duration
+
         table.align = "l"
 
         tstring = table.get_string()
@@ -143,6 +148,14 @@ class Activity():
         retstring = "+" + "-" * (table_width - 2) + "+\n"
         retstring += f"| Activity: {activity_name:<{table_width - 14}} |\n"
         retstring += tstring
+
+        if summary:
+            retstring += "\n\nSummary:\n"
+            retstring += "  Start time: " + self.start + "\n"
+            retstring += "    End time: " + ordered_states[-1] + "\n\n"
+            for astate in ACTIVITY_VALID_STATES:
+                if astate in summary:
+                    retstring += f"{astate:>14}: {summary[astate]}\n"
 
         return retstring
 
