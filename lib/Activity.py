@@ -486,10 +486,13 @@ class Activity():
         return yaml.safe_load(wf.stdout)
 
     def abort_activity(self, config):
+        """Abort an activity."""
+
         payload = {
             "input_parameters": {},
             "name": self.name,
             "comment": " ".join(config.args.get("comment", "")),
+            "force": config.args.get("force"),
         }
         try:
             api_result = self.api.abort_activity(self.name, payload)

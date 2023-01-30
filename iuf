@@ -443,9 +443,7 @@ def main():
 
     install_sp.add_argument("--limit-management-rollout", action="store", nargs='+',
         default=["Management_Worker"],
-        help="""Override list used to target specific role_subrole(s) only
-        when rolling out management nodes.  Arguments should be xnames or HSM
-        node groups.""")
+        help="""Override list used to target specific role_subrole(s) only when rolling out management nodes.""")
 
     install_sp.add_argument("-mrp", "--mask-recipe-prods", action="store", nargs='+',
         help="""If `--recipe-vars` is specified, mask the versions found within the recipe variables YAML
@@ -469,9 +467,17 @@ def main():
     restart_sp.set_defaults(func=process_restart)
     restart_sp.add_argument("comment", action="store", nargs="*")
 
-    abort_sp = subparsers.add_parser("abort", description='Abort a previously paused or failed IUF session for a given activity.')
+    abort_sp = subparsers.add_parser("abort", description='Abort an IUF session for a given activity after the current stage completes.')
     abort_sp.set_defaults(func=process_abort)
-    abort_sp.add_argument("comment", action="store", nargs="*")
+
+    # help for the comment flag should be something like,
+    # """Adds a comment to the "Comment" row if the `iuf activity ...` table.
+    # The option is hidden because it doesn't seem to be working in the backend.
+    abort_sp.add_argument("comment", action="store", nargs="*", help=argparse.SUPPRESS)
+
+    abort_sp.add_argument("-f", "--force", action="store_true",
+        help="""Force the abort immediately.""")
+
 
     activity_sp = subparsers.add_parser("activity", description='Create, display, or annotate activity information.')
     activity_sp.add_argument("--time", help="A time value used when creating or modifying an activity entry. Must be specified and match an existing time value to modify that entry. Defaults to now.", action="store")
