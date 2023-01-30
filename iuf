@@ -103,23 +103,34 @@ def validate_stages(config):
         stage is being run) it exists.
         """
         arg_value = config.args.get(arg_name, None)
+        param_name = "--{}".format(arg_name.replace("_", "-"))
         if not arg_value:
             return
+        elif not os.path.exists(arg_value):
+            errors.append(f"{param_name} {arg_value} was specified, but the file could not be found")
+            return
+        arg_val_basename = os.path.basename(arg_value)
+        new_config_loc = os.path.join(media_dir, arg_val_basename)
 
-        param_name = "--{}".format(arg_name.replace("_", "-"))
-        bp_config_loc = os.path.join(media_dir, arg_value)
-        if arg_value and stage in local_stages:
-            if not os.path.exists(bp_config_loc):
-                error_msg = f"""{arg_name} {arg_value} was specified but
-                could not be found. Note the path should be relative to the
-                media directory ({media_dir}).  So the full path to the file
-                would be {bp_config_loc}"""
-                errors.append(formatted(error_msg))
+        if os.path.exists(new_config_loc):
+            if os.path.isdir(new_config_loc):
+                shutil.rmtree(new_config_loc)
+            else:
+                os.remove(new_config_loc)
+        if os.path.isdir(arg_value):
+            shutil.copytree(src=arg_value, dst=new_config_loc) # copytree
+        else:
+            shutil.copy(arg_value, new_config_loc)
 
+        # Change the commandline arguments to the new location, relative to media_dir to make things
+        # seemless to the user.
+        relative_name = f"relative_{arg_name}"
+        config.args[relative_name] = os.path.basename(arg_val_basename)
     # Ensure the validity of the `--bootprep-config-managed` and the
     # `--bootprep-config-managment` arguments.
     check_bootprep_arg("bootprep_config_managed", "managed-nodes-rollout")
     check_bootprep_arg("bootprep_config_management", "management-nodes-rollout")
+    check_bootprep_arg("bootprep_config_dir", "bootprep-config-dir")
 
     if errors:
         install_logger.error("Problems were encountered:")
@@ -131,7 +142,6 @@ def validate_stages(config):
 
 def process_activity(config):
     state = config.args.get("state", None)
-    print("in process_activity, sessionid/argo_workflow_id={}".format(config.args.get("argo_workflow_id", None)))
     if state:
         try:
             config.activity.state(
@@ -397,11 +407,10 @@ def main():
 
     install_sp.add_argument("-bc", "--bootprep-config-managed", action="store",
         help="""List of `sat bootprep` config files for managed (compute and
-        application) nodes. Note the path is relative to the media directory (`iuf --media-dir`).""")
+        application) nodes.""")
 
     install_sp.add_argument("-bm", "--bootprep-config-management", action="store",
-        help="""List of `sat bootprep` config files for management NCNs.
-        Note the path is relative to the media directory (`iuf --media-dir`).""")
+        help="""List of `sat bootprep` config files for management NCNs.""")
 
     install_sp.add_argument("-bpcd", "--bootprep-config-dir", action="store",
         help="""Directory containing HPE `product_vars.yaml` and `sat bootprep` configuration files. The expected content is:
