@@ -131,11 +131,12 @@ def validate_stages(config):
 
 def process_activity(config):
     state = config.args.get("state", None)
+    print("in process_activity, sessionid/argo_workflow_id={}".format(config.args.get("argo_workflow_id", None)))
     if state:
         try:
             config.activity.state(
                 timestamp=config.args.get("time", None),
-                sessionid=config.args.get("sessionid", None),
+                sessionid=config.args.get("argo_workflow_id", None),
                 status=config.args.get("status", "n/a"),
                 comment=config.args.get("comment", None),
                 state=state,
@@ -265,7 +266,8 @@ def process_restart(config):
 
 def process_abort(config):
     """Kill the running processes and abort the run."""
-    config.activity.abort_activity(config)
+    activity_name = config.activity.abort_activity(config)
+    install_logger.info(f"Aborted activity {activity_name}")
 
 def update_logger_config(config):
     """
@@ -378,27 +380,26 @@ def main():
         formatter_class=argparse.RawTextHelpFormatter)
 
     install_sp.add_argument("-b", "--begin-stage", action="store",
-        help="The first stage to execute.")
+        help="The first stage to execute. Defaults to process-media")
 
     install_sp.add_argument("-e", "--end-stage", action="store",
-        help="The last stage to execute.")
+        help="The last stage to execute.  Defaults to post-install-check")
 
     install_sp.add_argument("-r", "--run-stages", nargs="+", action="store",
-        help="Run the specified stages only. This argument is not compatible with `-b`, `-e, or `-s`.")
+        help="Run the specified stages only. This argument is not compatible with `-b`, `-e`, or `-s`.")
 
     install_sp.add_argument("-s", "--skip-stages", nargs="+", action="store",
         help="Skip the execution of the specified stages.")
 
     install_sp.add_argument("-F", "--force", action="store", default=False,
-        help="Force re-execution of stage operations.")
+        #help="Force re-execution of stage operations.")
+        help=argparse.SUPPRESS)
 
     install_sp.add_argument("-bc", "--bootprep-config-managed", action="store",
-        #default = ['../vcs/bootprep/compute-and-uan-bootprep.yaml'],
         help="""List of `sat bootprep` config files for managed (compute and
         application) nodes. Note the path is relative to the media directory (`iuf --media-dir`).""")
 
     install_sp.add_argument("-bm", "--bootprep-config-management", action="store",
-        #default = ['../vcs/bootprep/management-bootprep.yaml'],
         help="""List of `sat bootprep` config files for management NCNs.
         Note the path is relative to the media directory (`iuf --media-dir`).""")
 
@@ -427,13 +428,15 @@ def main():
         concurrently based on the percentage specified. Must be an integer
         between 1-100. Defaults to 20 (percent).""")
 
-
     install_sp.add_argument("--limit-managed-rollout", action="store", nargs='+',
-       help="""Override list used to target specific nodes only when rolling out managed nodes.""")
+       help="""Override list used to target specific nodes only when rolling out
+       managed nodes.  Arguments should be xnames or HSM node groups.""")
 
     install_sp.add_argument("--limit-management-rollout", action="store", nargs='+',
         default=["Management_Worker"],
-        help="""Override list used to target specific role_subrole(s) only when rolling out management nodes.""")
+        help="""Override list used to target specific role_subrole(s) only
+        when rolling out management nodes.  Arguments should be xnames or HSM
+        node groups.""")
 
     install_sp.add_argument("-mrp", "--mask-recipe-prods", action="store", nargs='+',
         help="""If `--recipe-vars` is specified, mask the versions found within the recipe variables YAML
@@ -466,7 +469,7 @@ def main():
     activity_sp.add_argument("--create", help="Create a new activity entry.", action="store_true", default=False)
     activity_sp.add_argument("--comment", help="A comment to be associated with an activity entry.", action="store")
     activity_sp.add_argument("--status", help="A status value to be associated with an activity entry.", action="store", default="n/a", choices=lib.Activity.ACTIVITY_VALID_STATUS)
-    activity_sp.add_argument("--sessionid", help="An Argo workflow session identifier to be associated with an activity entry.", default=None)
+    activity_sp.add_argument("--argo-workflow-id", help="An Argo workflow identifier to be associated with an activity entry.", default=None)
     activity_sp.add_argument("state", nargs="?", help="activity state value", action="store", default=None, choices=lib.Activity.ACTIVITY_VALID_STATES)
 
     activity_sp.set_defaults(func=process_activity)
