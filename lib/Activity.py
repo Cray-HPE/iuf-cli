@@ -489,6 +489,7 @@ class Activity():
         payload = {
             "input_parameters": {},
             "name": self.name,
+            "comment": " ".join(config.args.get("comment", "")),
         }
         try:
             api_result = self.api.abort_activity(self.name, payload)
@@ -527,13 +528,17 @@ class Activity():
         self.site_conf = SiteConfig(config)
         self.site_conf.organize_merge()
 
-        bp_config_management = config.args.get("bootprep_config_management", None)
+        bp_config_management = config.args.get("relative_bootprep_config_management", None)
         if bp_config_management:
             payload["input_parameters"]["bootprep_config_management"] = bp_config_management
 
-        bp_config_managed = config.args.get("bootprep_config_managed", None)
+        bp_config_managed = config.args.get("relative_bootprep_config_managed", None)
         if bp_config_managed:
             payload["input_parameters"]["bootprep_config_managed"] = bp_config_managed
+
+        bp_config_dir = config.args.get("relative_bootprep_config_dir", None)
+        if bp_config_dir:
+            payload["input_parameters"]["bootprep_config_dir"] = bp_config_dir
 
         limit_management = config.args.get("limit_management_rollout", None)
         if limit_management:
