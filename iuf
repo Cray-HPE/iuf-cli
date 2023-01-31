@@ -131,7 +131,7 @@ def validate_stages(config):
         # Change the commandline arguments to the new location, relative to media_dir to make things
         # seemless to the user.
         relative_name = f"relative_{arg_name}"
-        config.args[relative_name] = os.path.basename(arg_val_basename)
+        config.args[relative_name] = os.path.relpath(new_config_loc, start=media_dir)
 
     # Ensure the validity of the `--bootprep-config-dir`,
     # `--bootprep-config-managed`, and `--bootprep-config-managment` arguments.
