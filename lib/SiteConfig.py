@@ -282,7 +282,7 @@ class SiteConfig():
             yaml.dump(self.rendered, fhandle)
 
     def update_dict_stack(self, stage):
-        deliver_stage = self.stage_enum["deliver-product"]
+        deliver_stage = self.stage_enum["update-vcs-config"]
         if stage in self.stage_enum:
             stage_index = self.stage_enum[stage]
         else:

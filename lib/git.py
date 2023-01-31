@@ -205,7 +205,6 @@ class Git:
         """
         clone_url = self.get_vcs_url(repo)
         repoinfo = self.clone_info.get(repo)
-        print(f"(git/clone) clone_url={clone_url}, repoinfo={repoinfo}")
         if repoinfo:
             clonedir = repoinfo["clonedir"]
         else:
