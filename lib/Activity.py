@@ -588,7 +588,8 @@ class Activity():
             session_vars[name] = {'version': version }
 
         if session_vars:
-            # session_vars should always exist if products exist.
+            # session_vars should always exist if products exist; i.e, any
+            # stage after process-media.
             self.site_conf.manage_session_vars(session_vars, write=True)
 
         # Generate site_parameters and patch the activity.
@@ -623,8 +624,8 @@ class Activity():
             config.logger.debug("Next workflow {}".format(wfid))
             wf = self.get_workflow(config, wfid)
             stage = wf['metadata']['labels']['stage']
-            config.stages.exec_stage(config, wfid, stage)
             self.site_conf.update_dict_stack(stage)
+            config.stages.exec_stage(config, wfid, stage)
 
         return sessionid
 

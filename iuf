@@ -87,11 +87,11 @@ def validate_stages(config):
             errors.append("`--concurrency` requires a positive integer argument.")
 
     # Check if any of the stages requiring site-vars, etc are being called.
-    # Note that they aren't strictly required in process-media, but all
+    # Note that they aren't strictly required in deliver-product, but all
     # the variables are resolved in that stage.  Further error-checking
     # related to this is done in SiteConfig.
-    if any(stage in local_stages for stage in ["process-media",
-        "update-vcs-config", "update-cfs-config", "management-nodes-rollout"]):
+    if any(stage in local_stages for stage in ["update-vcs-config",
+        "update-cfs-config", "management-nodes-rollout"]):
         if not (config.args.get("site_vars", None) or config.args.get("bootprep_config_dir", None) \
             or config.args.get("recipe_vars", None)):
             errors.append("bootprep or vcs stages were called, but none of "
@@ -418,24 +418,29 @@ def main():
         help=argparse.SUPPRESS)
 
     install_sp.add_argument("-bc", "--bootprep-config-managed", action="store",
-        help="""List of `sat bootprep` config files for managed (compute and
-        application) nodes.""")
+        help="""`sat bootprep` config file for managed (compute and
+        application) nodes.  Note the path is relative to $PWD, unless an
+        absolute path is specified.""")
 
     install_sp.add_argument("-bm", "--bootprep-config-management", action="store",
-        help="""List of `sat bootprep` config files for management NCNs.""")
+        help="""`sat bootprep` config file for management NCNs.  Note the
+        path is relative to $PWD, unless an absolute path is specified.""")
 
     install_sp.add_argument("-bpcd", "--bootprep-config-dir", action="store",
-        help="""Directory containing HPE `product_vars.yaml` and `sat bootprep` configuration files. The expected content is:
-        $(BOOTPREP_CONFIG_DIR)/product_vars.yaml
-        $(BOOTPREP_CONFIG_DIR)/bootprep/compute-and-uan-bootprep.yaml
-        $(BOOTPREP_CONFIG_DIR)/bootprep/management-bootprep.yaml""")
+        help="""Directory containing HPE `product_vars.yaml` and
+        `sat bootprep` configuration files. The expected content is:
+            $(BOOTPREP_CONFIG_DIR)/product_vars.yaml
+            $(BOOTPREP_CONFIG_DIR)/bootprep/compute-and-uan-bootprep.yaml
+            $(BOOTPREP_CONFIG_DIR)/bootprep/management-bootprep.yaml
+        Note the path is relative to $PWD, unless an absolute path is specified.""")
 
     install_sp.add_argument("-rv", "--recipe-vars", action="store",
         help="""Path to a recipe variables YAML file. HPE provides the `product_vars.yaml` recipe variables file with each release.""")
 
     install_sp.add_argument("-sv", "--site-vars", action="store", default=False,
         help="""Path to a site variables YAML file. This file allows the user to override values defined in
-        the recipe variables YAML file. Defaults to ${RBD_BASE_DIR}/${IUF_ACTIVITY}/site_vars.yaml.""")
+        the recipe variables YAML file. Defaults to ${RBD_BASE_DIR}/${IUF_ACTIVITY}/site_vars.yaml.
+        Note the path is relative to $PWD, unless an absolute path is specified.""")
 
     install_sp.add_argument("-mrs", "--managed-rollout-strategy", action="store",
         choices=["reboot", "stage"],
@@ -444,7 +449,7 @@ def main():
         'stage' (set up nodes to reboot into new image after next WLM job). Defaults to 'stage'.""")
 
     install_sp.add_argument("-cmrp", "--concurrent-management-rollout-percentage",
-        action="store", default=20,
+        action="store", default=20, type=int,
         help="""Limit the number of management nodes that roll out
         concurrently based on the percentage specified. Must be an integer
         between 1-100. Defaults to 20 (percent).""")
