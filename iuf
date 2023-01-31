@@ -102,6 +102,10 @@ def validate_stages(config):
         """Ensure that if a `sat bootprep` config was specified (and the
         stage is being run) it exists.
         """
+
+        # activity is required, so it should never be "undefined".
+        activity = config.args.get("activity", "undefined")
+
         arg_value = config.args.get(arg_name, None)
         param_name = "--{}".format(arg_name.replace("_", "-"))
         if not arg_value:
@@ -110,7 +114,9 @@ def validate_stages(config):
             errors.append(f"{param_name} {arg_value} was specified, but the file could not be found")
             return
         arg_val_basename = os.path.basename(arg_value)
-        new_config_loc = os.path.join(media_dir, arg_val_basename)
+        new_config_loc = os.path.join(media_dir, f".bootprep-{activity}", arg_val_basename)
+        if not os.path.exists(new_config_loc):
+            os.makedirs(new_config_loc)
 
         if os.path.exists(new_config_loc):
             if os.path.isdir(new_config_loc):
@@ -126,11 +132,17 @@ def validate_stages(config):
         # seemless to the user.
         relative_name = f"relative_{arg_name}"
         config.args[relative_name] = os.path.basename(arg_val_basename)
-    # Ensure the validity of the `--bootprep-config-managed` and the
-    # `--bootprep-config-managment` arguments.
+
+    # Ensure the validity of the `--bootprep-config-dir`,
+    # `--bootprep-config-managed`, and `--bootprep-config-managment` arguments.
+    # Copy the bootprep files to the media directory for sat.
+
+    # Process the `--bootprep-config-dir first.  It's not a fully-implemented option,
+    # so it would be better if the fully-supported options were ran later, incase
+    # there is any overwritting of files.
+    check_bootprep_arg("bootprep_config_dir", "bootprep-config-dir")
     check_bootprep_arg("bootprep_config_managed", "managed-nodes-rollout")
     check_bootprep_arg("bootprep_config_management", "management-nodes-rollout")
-    check_bootprep_arg("bootprep_config_dir", "bootprep-config-dir")
 
     if errors:
         install_logger.error("Problems were encountered:")
