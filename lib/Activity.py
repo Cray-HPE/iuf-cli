@@ -286,7 +286,7 @@ class Activity():
             
             session = rsession.json()
             status = session['current_state']
-            if status and status != 'in_progress' and status != 'transitioning':
+            if status and status not in ["in_progress", "transitioning"]:
                 config.logger.debug(f"Session {sessionid} is not in progress.  Status: {status}")
                 found = True
                 break
