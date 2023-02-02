@@ -286,7 +286,8 @@ class Activity():
             
             session = rsession.json()
             status = session['current_state']
-            if status and status != 'in_progress':
+            if status and status not in ["in_progress", "transitioning"]:
+                config.logger.debug(f"Session {sessionid} is not in progress.  Status: {status}")
                 found = True
                 break
             
@@ -616,10 +617,10 @@ class Activity():
         sessionid = session['name']
         config.logger.info("IUF SESSION: {}".format(sessionid))
 
-        have_wf = True
-        while have_wf:
+        while True:
             wfid = self.get_next_workflow(config, sessionid)
             if not wfid:
+                config.logger.debug(f"No more workflows found for session {sessionid}.")
                 break
             config.logger.debug("Next workflow {}".format(wfid))
             wf = self.get_workflow(config, wfid)
