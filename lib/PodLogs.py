@@ -79,9 +79,9 @@ class PodLogs():
         kubeconfig.load_kube_config()
         self.core = client.CoreV1Api()
         #service = self.core.read_namespaced_service(name="elasticsearch", namespace="sma")
-        cluster_ip = service.spec.cluster_ip
+        #cluster_ip = service.spec.cluster_ip
 
-        self.endpoint = f"http://{cluster_ip}:9200/_search"
+        #self.endpoint = f"http://{cluster_ip}:9200/_search"
         self._finished = False
 
 
