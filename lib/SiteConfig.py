@@ -215,43 +215,50 @@ class SiteConfig():
         if not (self.recipe_vars or self.bpcd):
             # Clone the repo.
 
-            repo = "hpc-csm-software-recipe"
-            versions_dict = {}
-            clone_loc = self.git.clone(repo)
-            version_re = re.compile("(\d+\.\d+.*$)")
-            branches = self.git.ls_remote(repo, just_branches=True)
-            for branch in branches:
-                parts = branch.split('/')
-                if len(parts) < 1:
-                    continue
-                vers_match = version_re.search(parts[-1])
-                if vers_match:
-                    version = vers_match.group(1)
-                    versions_dict[version] = branch
-            if versions_dict:
-                highest_version = highestVersion(versions_dict.keys())
-                co_branch = versions_dict[highest_version]
-            else:
-                # We shouldn't hit this with the hpc-csm-software-recipe repo.
-                # If that changes, we could get a lot more elaborate and check
-                # for integration and master branches.
-                co_branch = branches[0]
-                install_logger.warning(f"Couldn't find a versioned branch for {repo}.  Assuming branch {co_branch}.")
-            self.git.checkout("hpc-csm-software-recipe", co_branch)
+            try:
+                repo = "hpc-csm-software-recipe"
+                versions_dict = {}
+                clone_loc = self.git.clone(repo)
+                version_re = re.compile("(\d+\.\d+.*$)")
+                branches = self.git.ls_remote(repo, just_branches=True)
+                for branch in branches:
+                    parts = branch.split('/')
+                    if len(parts) < 1:
+                        continue
+                    vers_match = version_re.search(parts[-1])
+                    if vers_match:
+                        version = vers_match.group(1)
+                        versions_dict[version] = branch
+                if versions_dict:
+                    highest_version = highestVersion(versions_dict.keys())
+                    co_branch = versions_dict[highest_version]
+                else:
+                    # We shouldn't hit this with the hpc-csm-software-recipe repo.
+                    # If that changes, we could get a lot more elaborate and check
+                    # for integration and master branches.
+                    co_branch = branches[0]
+                    install_logger.warning(f"Couldn't find a versioned branch for {repo}.  Assuming branch {co_branch}.")
+                self.git.checkout("hpc-csm-software-recipe", co_branch)
 
-            recipe_file = os.path.join(clone_loc, RECIPE_VARS)
-            if os.path.exists(recipe_file):
-                msg = f"""Neither --recipe-vars nor --bootprep-config-dir
-                were specified, so {RECIPE_VARS}  will pulled from the
-                branch {co_branch} of the {repo} git repo."""
-                install_logger.info(formatted(msg))
-                self.recipe_vars = read_yaml(recipe_file)
-            else:
-                msg = f"""Could not find vcs/{RECIPE_VARS} on branch
-                {co_branch} within the {repo} repo. If one is desired, it
-                can be specified with the `--bootprep-config-dir` or
-                `--recipe-vars` arguments."""
+                recipe_file = os.path.join(clone_loc, RECIPE_VARS)
+                if os.path.exists(recipe_file):
+                    msg = f"""Neither --recipe-vars nor --bootprep-config-dir
+                    were specified, so {RECIPE_VARS}  will pulled from the
+                    branch {co_branch} of the {repo} git repo."""
+                    install_logger.info(formatted(msg))
+                    self.recipe_vars = read_yaml(recipe_file)
+                else:
+                    msg = f"""Could not find vcs/{RECIPE_VARS} on branch
+                    {co_branch} within the {repo} repo. If one is desired, it
+                    can be specified with the `--bootprep-config-dir` or
+                    `--recipe-vars` arguments."""
+                    install_logger.warning(msg)
+            except Exception as e:
+                msg = f"""Could not find vcs/{RECIPE_VARS} within the
+                {repo} repo. If one is desired, it can be specified with the
+                `--bootprep-config-dir` or `--recipe-vars` arguments."""
                 install_logger.warning(msg)
+                pass
 
         if self.recipe_vars:
             self.mask_prods()
