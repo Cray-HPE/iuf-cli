@@ -161,8 +161,10 @@ class Config:
                 break
 
         if not media_dir_ok:
-            self._error("Media directory must exist and reside in {}".format(self.media_base_dir))
-            validated = False
+            func = self._args.get("func")
+            if func and func.__name__ == "process_install":
+                self._error("Media directory must exist and reside in {}".format(self.media_base_dir))
+                validated = False
 
         for adir in ["state", "log"]:
             if not self._args.get(f"{adir}_dir", None):

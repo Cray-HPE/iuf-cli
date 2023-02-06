@@ -95,7 +95,6 @@ class Activity():
                 raise ActivityError(f"{filename} contains the activity {self.name}, but {name} was specified.")
         else:
             self.name = name
-            self.start = self.get_time()
 
             self.initialized = True
             self.write_activity_dict()
@@ -156,6 +155,12 @@ class Activity():
             for astate in ACTIVITY_VALID_STATES:
                 if astate in summary:
                     retstring += f"{astate:>14}: {summary[astate]}\n"
+            retstring += "\n"
+            total_time = self.get_duration(self.start, ordered_states[-1])
+            retstring += f"  Total time: {total_time}\n"
+            if "paused" in summary:
+                active_time = total_time - summary['paused']
+                retstring += f" Active time: {active_time}\n"
 
         return retstring
 
@@ -183,7 +188,6 @@ class Activity():
             activity = masterdict[aname]
 
             self.name = aname
-            self.start = self.get_time(activity["start"])
             self.filename = filename
             self.states = dict()
             if "states" in activity:
@@ -221,6 +225,14 @@ class Activity():
         data = self.yaml()
         with open(self.filename, "w", encoding=encoding) as f:
             f.write(data)
+
+    @property
+    def start(self):
+        ordered_states = sorted(self.states.keys())
+        if ordered_states:
+            return ordered_states[0]
+        else:
+            return self.get_time()
 
     def state(self, timestamp=None, sessionid=None, state=None, status="n/a", comment=None, create=False):
         if timestamp:
