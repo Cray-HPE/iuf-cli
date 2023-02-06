@@ -150,17 +150,17 @@ class Activity():
 
         if summary:
             retstring += "\n\nSummary:\n"
-            retstring += "  Start time: " + self.start + "\n"
-            retstring += "    End time: " + ordered_states[-1] + "\n\n"
+            retstring += "   Start time: " + self.start + "\n"
+            retstring += "     End time: " + ordered_states[-1] + "\n\n"
             for astate in ACTIVITY_VALID_STATES:
                 if astate in summary:
                     retstring += f"{astate:>14}: {summary[astate]}\n"
             retstring += "\n"
             total_time = self.get_duration(self.start, ordered_states[-1])
-            retstring += f"  Total time: {total_time}\n"
+            retstring += f"   Total time: {total_time}\n"
             if "paused" in summary:
                 active_time = total_time - summary['paused']
-                retstring += f" Active time: {active_time}\n"
+                retstring += f"Unpaused time: {active_time}\n"
 
         return retstring
 
