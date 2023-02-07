@@ -130,7 +130,8 @@ class Stages():
     @property
     def start_at(self):
         return self._start_at
-    
+
+
     @start_at.setter
     def start_at(self, value):
         self._start_at = value
@@ -152,6 +153,11 @@ class Stages():
                     self._run_stages.append(stage)
 
         return self._run_stages
+
+    def set_stages(self, stages):
+        """Set the stages to the input parameter.  Used on an `iuf resume`."""
+        self._stages = stages
+
 
     def set_summary(self, summary_key, summary_value):
         """Set a key (summary_key) in the summary dict to a particular value
