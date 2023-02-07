@@ -84,7 +84,7 @@ class PodLogs():
 
             self.endpoint = f"http://{cluster_ip}:9200/_search"
         except:
-            self.logger.debug("Unable to find elasticsearch service.")
+            config_param.logger.debug("Unable to find elasticsearch service.")
             pass
 
         self._finished = False
