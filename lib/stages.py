@@ -303,7 +303,7 @@ class Stages():
             # update the current state with the failure
             config.activity.state(timestamp=utime, status="Failed")
             # put the whole process into debug
-            config.activity.state(state="debug", comment=err)
+            config.activity.state(state="debug", comment=str(err))
 
             install_logger.debug("Exception while executing %s", stage, exc_info=True)
             print("")
