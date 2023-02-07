@@ -334,7 +334,8 @@ class Activity():
                 v = q.pop(0)
                 if v not in path:
                     path = path + [v]
-                    q = data[v] + q
+                    if v in data:
+                        q = data[v] + q
 
             return path
 
