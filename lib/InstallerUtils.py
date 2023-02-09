@@ -81,7 +81,10 @@ def get_product_catalog(config, all_products=False):
 
     for item in all_product_data:
         val = all_product_data[item]
-        all_product_data[item] = yaml.safe_load(val)
+        try:
+            all_product_data[item] = yaml.safe_load(val)
+        except AttributeError:
+            all_product_data[item] = val
 
     if all_products:
         return all_product_data
