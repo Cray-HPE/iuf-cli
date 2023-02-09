@@ -458,7 +458,7 @@ class Activity():
 
             if not finished:
                 time.sleep(1)
-        #self.podlogs.finished = True
+
         self.podlogs.collect_threads()
         return rstatus
 
@@ -546,8 +546,6 @@ class Activity():
 
         self.site_conf = SiteConfig(config)
         self.site_conf.organize_merge()
-        #self.monitor_workflow(config, session)
-        #self.podlogs.follow_pod_logs() # threaded at top-level, no waiting
         self.watch_next_wf(config, session)
         podlogs.finished = True
 
@@ -666,7 +664,6 @@ class Activity():
 
     def watch_next_wf(self, config, sessionid):
 
-        #self.podlogs.follow_pod_logs() # threaded at top-level, no waiting
         while True:
             wfid = self.get_next_workflow(config, sessionid)
             if not wfid:
@@ -741,8 +738,6 @@ class Activity():
                     # 1a -- disconnected in process media.  -- will stop after.
                     self.monitor_workflow(config, last_sessionid)
                     if last_stages:
-                        # FIXME: How do we know that process-media
-                        # (or whatever stage) is still running on the backend?
                         config.stages.set_stages(last_stages)
                         self.run_stages(config, resume=True)
                 else:
@@ -759,6 +754,7 @@ class Activity():
                                 sess_param = sess["name"]
                     result = self.api.get_activity_session(self.name, sess_param)
                     curr_session = result.json()
+
                     # Watch the running workflow.
                     self.monitor_workflow(config, last_sessionid)
 
@@ -781,13 +777,10 @@ class Activity():
                 "activity_name": self.name,
                 "comment": "comment goes here..."
             }
-            print(f"(Activity.py/resume)post resume name {self.name}")
             response = self.api.post_resume(self.name, payload)
-            print("response{response}")
             json_response = response.json()
             sess_name = json_response["name"]
             self.watch_next_wf(config, sess_name)
-            print("POST resume, response={}, json=\n{}".format(resume, pformat(json_response)))
 
 
 def valid_activity_name(aname):
