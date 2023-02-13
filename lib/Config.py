@@ -62,7 +62,8 @@ class Config:
     def activity(self):
         if self._activity_session is None:
             session = self.args.get("activity", None)
-            self._activity_session = lib.Activity.Activity(name=session, filename=self.activity_dict_file, dryrun=self.dryrun)
+            self._activity_session = lib.Activity.Activity(self, name=session,
+                filename=self.activity_dict_file, dryrun=self.dryrun)
 
         return self._activity_session
 

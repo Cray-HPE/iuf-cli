@@ -25,9 +25,9 @@ import datetime
 import os
 import re
 import requests
-import sys # DEBUG -- not actually needed.
 import threading
 import time
+
 
 from kubernetes import client, watch
 from kubernetes import config as kubeconfig
@@ -43,6 +43,8 @@ WAIT_FOR_PODS = 5 * 60 # 5 minutes
 # Poll the logs for 20 minutes.  It can take a while for the pods to be
 # scheduled.
 POLL_LOGS = 20 * 60 # 20 minutes
+
+EXIT_EARLY = False
 
 def generate_query(pod, container="", namespace=""):
     print(f"(generate_query)pod={pod}")
@@ -75,7 +77,6 @@ class PodLogs():
         self._running = []
         self._logs = []
         self.wfid = wfid
-
         kubeconfig.load_kube_config()
         self.core = client.CoreV1Api()
         try:
@@ -89,10 +90,13 @@ class PodLogs():
 
         self._finished = False
 
-
     @property
     def finished(self):
         return self._finished
+
+    @finished.setter
+    def finished(self, val):
+        self._finished = val
 
     @property
     def logs(self):
@@ -126,9 +130,9 @@ class PodLogs():
         fhandle.close()
 
 
-    def follow_pod_log(self, config, pod):
+    def follow_pod_log(self, pod):
         """Follow the log for a particular pod."""
-
+        global EXIT_EARLY
         def parse_str(instr):
             """Parse a block of text which is at least one line from the
             pod logs.  Return a list of 3-tuples, which are formatted as
@@ -222,50 +226,74 @@ class PodLogs():
                         install_logger.warning(f"Giving up following the log for pod {pod}!")
                         break
                     time.sleep(.5)
+                if EXIT_EARLY: # or self._finished:
+                    return
         fhandle.close()
 
 
-    def follow_all_pods(self, config):
+    def follow_all_pods(self):
         """Watch for pods that match self.wfid.  The matching pods
         correspond to a pod launched this run.  A thread is launched
         to watch each pod to prevent the overall process from stalling
         while watching the pods."""
+
+        # This job starts when the activity is initialized.
+        global EXIT_EARLY
         following_pods = []
+        start_wait = datetime.datetime.now()
+        got_pod = False
         while True:
+            # FIXME: It might be better to use `--selector=...`.  All the
+            # pods have a label on them.
             pods = self.core.list_namespaced_pod('argo')
-            job_pod_names = [pod.metadata.name for pod in pods.items if self.wfid in pod.metadata.name]
-            if not job_pod_names:
+            pod_id = re.sub('\W+', '-', self.wfid)
+            job_pod_names = [pod.metadata.name for pod in pods.items if pod_id in pod.metadata.name]
+
+            # Check that we've got a pod in addition to job_pod_names.
+            # It's possible that pods aren't being spun up when this thread
+            # is initially started.
+            if not job_pod_names and got_pod:
                 break
+            elif job_pod_names:
+                got_pod = True
+
             for jpn in job_pod_names:
                 if jpn not in following_pods:
                     following_pods.append(jpn)
-                    thread = threading.Thread(target=self.follow_pod_log, args=(config, jpn,))
+                    thread = threading.Thread(target=self.follow_pod_log, args=(jpn,))
                     thread.start()
                     self._running.append(thread)
+                    got_pod = True
             time.sleep(1)
+            waited = datetime.datetime.now() - start_wait
+            seconds_waited = int(waited.total_seconds())
+            if EXIT_EARLY or self._finished:
+                break
         self._finished = True
 
 
-    def follow_pod_logs(self, config):
+    def follow_pod_logs(self):
         """Launch a thread to follow the pod logs."""
-        thread = threading.Thread(target=self.follow_all_pods, args=(config,))
+        thread = threading.Thread(target=self.follow_all_pods)
         thread.start()
         self._running.append(thread)
 
-    def collect_threads(self):
+    def collect_threads(self, wait=True):
         """Collect the threads once the stages are completed."""
+        if wait:
+            start_wait = datetime.datetime.now()
 
-        start_wait = datetime.datetime.now()
-
-        # Wait for up to 5 minutes for the logging to finish.  It should
-        # only take a few seconds.
-        while not self.finished:
-            time.sleep(5)
-            waited = datetime.datetime.now() - start_wait
-            seconds_waited = int(waited.total_seconds())
-            if seconds_waited > WAIT_FOR_PODS:
-                install_logger.warning("Giving up waiting on pods!")
-                break
-
+            # Wait for up to 5 minutes for the logging to finish.  It should
+            # only take a few seconds.
+            while not self._finished:
+                time.sleep(5)
+                waited = datetime.datetime.now() - start_wait
+                seconds_waited = int(waited.total_seconds())
+                if seconds_waited > WAIT_FOR_PODS:
+                    install_logger.warning("Giving up waiting on pods!")
+                    break
+        else:
+            global EXIT_EARLY
+            EXIT_EARLY = True
         for thread in self._running:
             thread.join()
