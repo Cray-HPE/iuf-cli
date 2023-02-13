@@ -574,7 +574,7 @@ class Activity():
 
         self.site_conf = SiteConfig(self.config)
         self.site_conf.organize_merge()
-        self.watch_next_wf(self.config, session)
+        self.watch_next_wf(session)
         self.podlogs.finished = True
 
 
@@ -650,7 +650,7 @@ class Activity():
         if stages[0] == "process-media":
             stages.pop(0)
             payload["input_parameters"]["stages"] = ["process-media"]
-            sid = self.run_stage(self.config, payload)
+            sid = self.run_stage(payload)
             sessions.append(sid)
 
         ret_code = self.api.get_activity(self.name)
@@ -684,7 +684,7 @@ class Activity():
         # Run any remaining stages.
         if stages:
             payload["input_parameters"]["stages"] = stages
-            sid = self.run_stage(self.config, payload)
+            sid = self.run_stage(payload)
             sessions.append(sid)
 
         return sessions
@@ -762,10 +762,10 @@ class Activity():
                     last_stages.pop(0)
                 if backend_stages[0] == "process-media":
                     # 1a -- disconnected in process media.  -- will stop after.
-                    self.monitor_workflow(self.config, last_sessionid)
+                    self.monitor_workflow(last_sessionid)
                     if last_stages:
                         self.config.stages.set_stages(last_stages)
-                        self.run_stages(self.config, resume=True)
+                        self.run_stages(resume=True)
                 else:
                     # 1b -- Disconnected after process-media.  The backend
                     # should have all the necessary stage information.  Just re-attach.

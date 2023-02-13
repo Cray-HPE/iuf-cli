@@ -184,8 +184,8 @@ def process_activity(config):
 def process_install(config):
     """Run the install"""
 
-    config.activity.create_activity(config)
-    config.activity.run_stages(config, resume=False)
+    config.activity.create_activity()
+    config.activity.run_stages(resume=False)
 
     config.activity.state(state="waiting_admin")
     install_logger.info("Install completed in {}".format(elapsed_time(config.stages.installer_start)))
@@ -241,17 +241,17 @@ def get_comment(text_or_list):
 
 def process_resume(config):
     """Resume an activity"""
-    config.activity.resume(config)
+    config.activity.resume()
 
 
 def process_restart(config):
     """Restart an activity"""
-    config.activity.restart(config)
+    config.activity.restart()
 
 
 def process_abort(config):
     """Kill the running processes and abort the run."""
-    activity_name = config.activity.abort_activity(config)
+    activity_name = config.activity.abort_activity()
     install_logger.info(f"Aborted activity {activity_name}")
 
 def update_logger_config(config):
@@ -581,7 +581,7 @@ def main():
             print(answer_text)
             if not already_answered:
                 already_answered = True
-                config.activity.abort_activity(config, background_only=True)
+                config.activity.abort_activity(background_only=True)
                 print(f"Use `{script_name} -a {activity} resume` to re-connect")
                 print("Bye!")
                 sys.exit(0)
@@ -590,7 +590,7 @@ def main():
             answer_text = "Forcing an immediate abort"
             already_answered = True
             config.args["force"] = True
-            config.activity.abort_activity(config)
+            config.activity.abort_activity()
             print("Bye!")
             sys.exit(0)
         else:
