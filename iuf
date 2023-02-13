@@ -31,7 +31,9 @@ import atexit
 import logging
 import os
 import shutil
+import signal
 import sys
+import time
 import traceback
 
 from lib.vars import *
@@ -56,6 +58,7 @@ import yaml
 
 install_logger = get_install_logger()
 
+
 def validate_stages(config):
     """Validate that all of the various stage related args passed in are valid"""
 
@@ -71,8 +74,7 @@ def validate_stages(config):
 
     config.stages.validate(state_dir, begin_stage, end_stage, run_stages, skip_stages)
     local_stages = config.stages.get(all_stages=False, list_fmt=True)
-    if config.args.get("func", "") not in [process_install, process_resume,
-                                           process_restart]:
+    if config.args.get("func", "") not in [process_install]:
         # No need to do all the error checking if we're just calling
         # 'ls', 'activity', etc.
         return
@@ -152,6 +154,13 @@ def validate_stages(config):
             counter += 1
         sys.exit(1)
 
+    # If there were no errors, write the stages that are supposed to be
+    # executed out for a subsequent resume or restart.
+    if config.args.get("func", "") == process_install:
+        with open(os.path.join(state_dir, "curr_stages.yaml"), "w") as fhandle:
+            yaml.dump(local_stages, fhandle)
+
+
 def process_activity(config):
     state = config.args.get("state", None)
     if state:
@@ -176,7 +185,7 @@ def process_install(config):
     """Run the install"""
 
     config.activity.create_activity(config)
-    config.activity.run_stages(config)
+    config.activity.run_stages(config, resume=False)
 
     config.activity.state(state="waiting_admin")
     install_logger.info("Install completed in {}".format(elapsed_time(config.stages.installer_start)))
@@ -231,59 +240,13 @@ def get_comment(text_or_list):
     return comment
 
 def process_resume(config):
-    """Pick up where we left off."""
-    comment = get_comment(config.args.get("comment", None))
-    activity = config.args.get("activity")
-    config.stages.set_summary("comment", comment)
-
-    stage_status = config.stages.get_stage_status(activity)
-    unpaused_stage = False
-    next_stage = None
-    last_list_index = len(stage_status) - 1
-    for ctr, stagedict in enumerate(stage_status):
-        stage = stagedict["stage"]
-        run_status = config.stages.run_status(stage)
-        if run_status.lower() == 'paused':
-            # Unpause this stage.
-            unpaused_stage = stage
-            break
-        elif stagedict["succeeded"] is True:
-            last_index = ctr + 1  if ctr + 1  <= last_list_index else ctr
-            next_stage = stage_status[last_index]["stage"]
-
-    start_at = None
-    if unpaused_stage:
-        start_at = unpaused_stage
-    elif next_stage:
-        start_at = next_stage
-    else:
-        print("Couldn't find a successful or paused stage to resume.")
-        sys.exit(1)
-
-    config.stages.start_at = start_at
-    process_install(config)
+    """Resume an activity"""
+    config.activity.resume(config)
 
 
 def process_restart(config):
-    """Remove the files associated with this activity and start over."""
-    comment = get_comment(config.args.get("comment", None))
-
-    # Remove the files in state_dir.
-    state_dir = config.args.get("state_dir")
-    for file in os.listdir(state_dir):
-        fpath = os.path.join(state_dir, file)
-        if os.path.isfile(fpath):
-            os.unlink(fpath)
-
-    # Remove the directories in media_dir.
-    media_dir = config.args.get("media_dir")
-    for file in os.listdir(media_dir):
-        fpath = os.path.join(media_dir, file)
-        if os.path.isdir(fpath):
-            shutil.rmtree(fpath)
-    config.stages.set_summary("comment", comment)
-    config.stages.set_summary("ran_stages", "")
-    process_install(config)
+    """Restart an activity"""
+    config.activity.restart(config)
 
 
 def process_abort(config):
@@ -323,6 +286,21 @@ def log_state_files(config):
         if os.path.exists(config.stages_file):
             shutil.copy2(config.stages_file, logdir)
 
+
+def get_answer():
+    """Read input and handle related exceptions."""
+    answer = ""
+    try:
+        answer = input()
+    except RuntimeError:
+        # ctrl-c is being pressed repeatedly. Return anything except the
+        # allowed answers.
+        answer = "Invalid"
+    return answer
+
+# Interrupt variables
+already_answered = False
+answer_text = None
 
 def main():
     """Main entry point."""
@@ -435,7 +413,9 @@ def main():
         Note the path is relative to $PWD, unless an absolute path is specified.""")
 
     install_sp.add_argument("-rv", "--recipe-vars", action="store",
-        help="""Path to a recipe variables YAML file. HPE provides the `product_vars.yaml` recipe variables file with each release.""")
+        help="""Path to a recipe variables YAML file. HPE provides the
+        `product_vars.yaml` recipe variables file with each release. Note
+        the path is relative to $PWD, unless an absolute path is specified.""")
 
     install_sp.add_argument("-sv", "--site-vars", action="store", default=False,
         help="""Path to a site variables YAML file. This file allows the user to override values defined in
@@ -474,15 +454,13 @@ def main():
     list_sp = subparsers.add_parser("list-stages", description='List IUF stage information and status for a given activity specified via `-a`.', aliases=["ls"])
     list_sp.set_defaults(func=process_list)
 
-    # create a config object to store all of the configured options in the parser
-
-    resume_sp = subparsers.add_parser("resume", description='Resume a previously paused or failed IUF session for a given activity.')
+    resume_sp = subparsers.add_parser("resume", description='Resume a previously aborted or failed IUF session for a given activity.')
     resume_sp.set_defaults(func=process_resume)
-    resume_sp.add_argument("comment", action="store", nargs="*")
+    resume_sp.add_argument("comment", action="store", nargs="*", help=argparse.SUPPRESS)
 
-    restart_sp = subparsers.add_parser("restart", description='Restart a previously paused or failed IUF session for a given activity.')
+    restart_sp = subparsers.add_parser("restart", description='Restart a previously aborted or failed IUF session for a given activity.')
     restart_sp.set_defaults(func=process_restart)
-    restart_sp.add_argument("comment", action="store", nargs="*")
+    restart_sp.add_argument("comment", action="store", nargs="*", help=argparse.SUPPRESS)
 
     abort_sp = subparsers.add_parser("abort", description='Abort an IUF session for a given activity after the current stage completes.')
     abort_sp.set_defaults(func=process_abort)
@@ -495,7 +473,6 @@ def main():
     abort_sp.add_argument("-f", "--force", action="store_true",
         help="""Force the abort immediately.""")
 
-
     activity_sp = subparsers.add_parser("activity", description='Create, display, or annotate activity information.')
     activity_sp.add_argument("--time", help="A time value used when creating or modifying an activity entry. Must be specified and match an existing time value to modify that entry. Defaults to now.", action="store")
     activity_sp.add_argument("--create", help="Create a new activity entry.", action="store_true", default=False)
@@ -506,6 +483,7 @@ def main():
 
     activity_sp.set_defaults(func=process_activity)
 
+    # create a config object to store all of the configured options in the parser
     configfile = ConfigFile()
     configfile.load_parser_defaults(parser)
 
@@ -565,6 +543,61 @@ def main():
         configfile.write(config.args)
 
     atexit.register(log_state_files, config)
+
+    if config.args["write_input_file"]:
+        configfile.write(config.args)
+
+
+    def process_ctrl_c(sig, frameg):
+        """Override a ctrl-c interrupt."""
+        global already_answered, answer_text
+
+        if already_answered and answer_text:
+            print(answer_text)
+            return
+
+        proccessing_interrupt = True
+        activity = config.args.get("activity", None)
+        script_name = sys.argv[0]
+        print("Would you like to abort this run?")
+        print("    Enter Y, y, or yes to abort after the current stage")
+        print("    Enter F, f, or force to abort immediately.")
+        print("    Enter D, d, or  or disconnect to exit the IUF CLI.  The install will continue in the background, however no logs will be collected.")
+        print("")
+        print("    Enter <return> to resume monitoring.")
+        print("    Note all logging will be suspended when backgrounded.")
+        literal_answer = get_answer()
+        answer = literal_answer.lower()
+
+        if answer in ["y", "yes"]:
+            answer_text = "Aborting after the current stage completes."
+            if not already_answered:
+                print(answer_text)
+                already_answered = True
+                process_abort(config)
+
+        elif answer in ["d", "disconnect"]:
+            answer_text = "Preparing to exit cli"
+            print(answer_text)
+            if not already_answered:
+                already_answered = True
+                config.activity.abort_activity(config, background_only=True)
+                print(f"Use `{script_name} -a {activity} resume` to re-connect")
+                print("Bye!")
+                sys.exit(0)
+
+        elif answer in ["f", "force"]:
+            answer_text = "Forcing an immediate abort"
+            already_answered = True
+            config.args["force"] = True
+            config.activity.abort_activity(config)
+            print("Bye!")
+            sys.exit(0)
+        else:
+            print("Continuing...")
+        sys.stdout.flush()
+
+    signal.signal(signal.SIGINT, process_ctrl_c)
 
     try:
         args.func(config)

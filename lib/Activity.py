@@ -82,7 +82,7 @@ class Activity():
     workflows = None
     api_initialized = False
 
-    def __init__(self, filename=None, name=None, dryrun=False):
+    def __init__(self, config_parm, filename=None, name=None, dryrun=False):
         self.states = dict()
 
         self.dryrun = dryrun
@@ -98,6 +98,8 @@ class Activity():
 
             self.initialized = True
             self.write_activity_dict()
+
+        self.podlogs = PodLogs(config_parm, self.name)
 
         self.api = lib.ApiInterface.ApiInterface()
         self.workflows = []
@@ -178,7 +180,6 @@ class Activity():
     def load_activity_dict(self, filename=None, encoding='UTF-8'):
         if not filename or not os.path.exists(filename):
             return
-
         with open(filename, "r", encoding=encoding) as f:
             masterdict = yaml.full_load(f)
             if len(masterdict) > 1:
@@ -201,7 +202,8 @@ class Activity():
                             self.states[stime][attr] = state[attr]
 
         self.initialized = True
-            
+
+
     def get_time(self, time=None):
         if time:
             if type(time) is datetime.datetime:
@@ -210,7 +212,7 @@ class Activity():
                 dt = parser.parse(time)
         else:
             dt = datetime.datetime.now()
-        
+
         return dt.strftime("%Y-%m-%dt%H:%M:%S")
 
     def get_duration(self, start, end):
@@ -295,14 +297,14 @@ class Activity():
             except Exception as e:
                 config.logger.error(f"Unable to get session {sessionid}: {e}")
                 sys.exit(1)
-            
+
             session = rsession.json()
             status = session['current_state']
             if status and status not in ["in_progress", "transitioning"]:
                 config.logger.debug(f"Session {sessionid} is not in progress.  Status: {status}")
                 found = True
                 break
-            
+
             if "workflows" in session:
                 try:
                     for workflow in session['workflows']:
@@ -322,12 +324,13 @@ class Activity():
                 if (count % 15) == 0:
                     config.logger.warning(f"Still waiting for workflow startup after {count} seconds.")
                 time.sleep(1)
-        
+
         return retflow
-    
+
     def sort_phases(self, workflow, nodes):
-        """ depth first search """
+
         def dfs(data, start):
+            """ depth first search """
             path = []
             q = [start]
             while q:
@@ -372,8 +375,7 @@ class Activity():
 
         # Launch threads for the pod logs and continue on.  Gather the
         # threads after the while loop.
-        podlogs = PodLogs(config, workflow)
-        podlogs.follow_pod_logs(config) # threaded at top-level, no waiting.
+        self.podlogs.follow_pod_logs() # threaded at top-level, no waiting.
         printed_s3 = {}
         while not finished:
             try:
@@ -457,7 +459,7 @@ class Activity():
             if not finished:
                 time.sleep(1)
 
-        podlogs.collect_threads()
+        self.podlogs.collect_threads()
         return rstatus
 
     def monitor_session(self, config, sessionid, stime):
@@ -499,8 +501,16 @@ class Activity():
 
         return yaml.safe_load(wf.stdout)
 
-    def abort_activity(self, config):
+    def abort_activity(self, config, background_only=False):
         """Abort an activity."""
+
+
+        if background_only:
+            # If podlogs aren't initialized yet, skip collecting threads,
+            # since there will not be any.
+            if self.podlogs:
+                self.podlogs.collect_threads(wait=False)
+            return
 
         payload = {
             "input_parameters": {},
@@ -512,9 +522,36 @@ class Activity():
             api_result = self.api.abort_activity(self.name, payload)
         except Exception as ex:
             config.logger.error(f"Unable to abort activity {self.name}: {ex}")
+            raise
+
         return self.name
 
-    def run_stages(self, config):
+    def restart(self, config):
+        payload = {
+            "input_parameters": {},
+            "comment": " ".join(config.args.get("comment", "")),
+            "activity_name": config.args.get("activity"),
+        }
+        try:
+            api_results = self.api.post_restart(self.name, payload)
+        except Exception as ex:
+            config.logger.error(f"Unable to restart activity {self.name}: {ex}")
+            raise
+
+        api_json = api_results.json()
+        session = api_json["name"]
+        if "input_parameters" in api_json and "stages" in api_json["input_parameters"]:
+            stages = api_json["input_parameters"]["stages"]
+            config.stages.set_stages(stages)
+
+        self.site_conf = SiteConfig(config)
+        self.site_conf.organize_merge()
+        self.watch_next_wf(config, session)
+        podlogs.finished = True
+
+
+
+    def run_stages(self, config, resume=False):
         if not self.api.activity_exists(self.name):
             raise ActivityError(f"The activity {self.name} does not exist.")
 
@@ -524,6 +561,11 @@ class Activity():
 
         force = config.args.get("force", False)
         stages = config.stages.stages
+
+        if not resume:
+            with open(os.path.join(config.args.get("state_dir"), f"{self.name}_stages.yaml"), "w") as fhandle:
+                yaml.dump(stages, fhandle)
+
         # API backend wants relative paths only.  We make sure media dir is under base dir
         # in Config, so we can just strip the base dir off the front of the media dir
         media_dir = config.args.get("media_dir")[len(config.media_base_dir):]
@@ -619,16 +661,8 @@ class Activity():
 
         return sessions
 
-    def run_stage(self, config, payload):
-        try:
-            api_result = self.api.post_activity_history_run(self.name, payload)
-        except Exception as e:
-            config.logger.error(f"Unable to execute stage: {e}")
-            raise
 
-        session = api_result.json()
-        sessionid = session['name']
-        config.logger.info("IUF SESSION: {}".format(sessionid))
+    def watch_next_wf(self, config, sessionid):
 
         while True:
             wfid = self.get_next_workflow(config, sessionid)
@@ -641,7 +675,113 @@ class Activity():
             self.site_conf.update_dict_stack(stage)
             config.stages.exec_stage(config, wfid, stage)
 
+
+    def run_stage(self, config, payload):
+        try:
+            api_result = self.api.post_activity_history_run(self.name, payload)
+        except Exception as e:
+            config.logger.error(f"Unable to execute stage: {e}")
+            raise
+
+        session = api_result.json()
+        sessionid = session['name']
+        config.logger.info("IUF SESSION: {}".format(sessionid))
+
+        self.watch_next_wf(config, sessionid)
+
         return sessionid
+
+    def resume(self, config):
+        """Resume an activity."""
+
+        last_activity = {}
+        last_sessionid = None
+        self.site_conf = SiteConfig(config)
+        self.site_conf.organize_merge()
+
+        skeys = sorted(self.states.keys(), reverse=True)
+        for key in skeys:
+            if "sessionid" in self.states[key] and self.states[key]["sessionid"]:
+                last_activity = self.states[key]
+                last_sessionid = last_activity["sessionid"]
+                break
+
+        # process-media is a unique stage, because it is sent separately to
+        # the backend because it returns data needed by the API.  After
+        # process-media succeeds, the remaining stages are sent to the API.
+        # Cases to consider:
+        # 1.    The activity is still running.
+        #       -- a.   The activity disconnected in process media -- No other
+        #               stages can be obtained from the backend.
+        #       -- b.   The activity made it beyond process media. -- In this
+        #               case, we can get the stages from the backend.
+        # 2.    The activity is not still running.  In this case, I think we
+        #       send a 'resume' to the backend, and monitor it. Still need to pay attention
+        # to whether or not process-media is the first stage.
+
+        if last_activity["state"] == 'in_progress' and last_activity["status"] == "Running":
+
+            result = self.api.get_activity(self.name)
+            backend_data = result.json()
+
+            # 1. The activity is still running.
+            if 'input_parameters' in backend_data and 'stages' in backend_data['input_parameters']:
+                backend_stages = backend_data['input_parameters']['stages']
+                last_stages = []
+                stages_file = os.path.join(config.args.get("state_dir"), f"{self.name}_stages.yaml")
+                if os.path.exists(stages_file):
+                    with open(stages_file, "r") as fhandle:
+                        last_stages = yaml.load(fhandle, yaml.SafeLoader)
+                if last_stages and last_stages[0] == "process-media":
+                    last_stages.pop(0)
+                if backend_stages[0] == "process-media":
+                    # 1a -- disconnected in process media.  -- will stop after.
+                    self.monitor_workflow(config, last_sessionid)
+                    if last_stages:
+                        config.stages.set_stages(last_stages)
+                        self.run_stages(config, resume=True)
+                else:
+                    # 1b -- Disconnected after process-media.  The backend
+                    # should have all the necessary stage information.  Just re-attach.
+                    result = self.api.get_activity_sessions(self.name)
+                    sessions = result.json()
+                    sess_param = last_sessionid
+                    for sess in sessions:
+                        tmpstages = {}
+                        if "input_parameters" in sess and "stages" in sess["input_parameters"]:
+                            tmpstages = sess["input_parameters"]["stages"]
+                            if sess["name"] in last_sessionid:
+                                sess_param = sess["name"]
+                    result = self.api.get_activity_session(self.name, sess_param)
+                    curr_session = result.json()
+
+                    # Watch the running workflow.
+                    self.monitor_workflow(config, last_sessionid)
+
+                    bad_stage = True
+                    while bad_stage:
+                        try:
+                            self.watch_next_wf(config, sess_param)
+                            bad_stage = False
+                        except Exception as ex:
+                            if len(last_stages) > 1:
+                                last_stages.pop(0)
+                                config.stages.set_stages(last_stages)
+                            else:
+                                install_logger.warning("Giving up on executing stages.")
+                                bad_stage = False
+        else:
+            # The session is no longer running.  Call resume on the backend.
+            payload = {
+                "input_parameters": {},
+                "activity_name": self.name,
+                "comment": "comment goes here..."
+            }
+            response = self.api.post_resume(self.name, payload)
+            json_response = response.json()
+            sess_name = json_response["name"]
+            self.watch_next_wf(config, sess_name)
+
 
 def valid_activity_name(aname):
     if re.match('^[0-9A-Za-z\.-]+$', aname):

@@ -86,6 +86,23 @@ class ApiInterface(object):
         except:
             raise
 
+    def post_resume(self, activity, payload):
+        api_path = f"/activities/{activity}/history/resume"
+        try:
+            api_response = self.request("POST", api_path, payload)
+            return api_response
+        except:
+            raise
+
+
+    def post_restart(self, activity, payload):
+        api_path = f"/activities/{activity}/history/restart"
+        try:
+            api_response = self.request("POST", api_path, payload)
+            return api_response
+        except:
+            raise
+
     def post_activity(self, payload):
         api_path = "/activities"
 
@@ -94,6 +111,7 @@ class ApiInterface(object):
             return api_response
         except:
             raise
+
 
     def patch_activity(self, activity, payload):
         api_path = f"/activities/{activity}"
