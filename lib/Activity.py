@@ -82,12 +82,13 @@ class Activity():
     workflows = None
     api_initialized = False
 
-    def __init__(self, config_parm, filename=None, name=None, dryrun=False):
+    def __init__(self, filename=None, name=None, dryrun=False, config=None):
         self.states = dict()
 
         self.dryrun = dryrun
         self.filename = filename
         self.site_conf = None
+        self.config = config
         if os.path.exists(filename):
             self.load_activity_dict(filename)
 
@@ -99,7 +100,7 @@ class Activity():
             self.initialized = True
             self.write_activity_dict()
 
-        self.podlogs = PodLogs(config_parm, self.name)
+        self.podlogs = PodLogs(config, self.name)
 
         self.api = lib.ApiInterface.ApiInterface()
         self.workflows = []
@@ -192,14 +193,28 @@ class Activity():
             self.filename = filename
             self.states = dict()
             if "states" in activity:
-                for rtime in activity["states"].keys():
+                for rtime in sorted(activity["states"].keys()):
                     state = activity["states"][rtime]
                     # reprocess the time in case the formats changed or something
                     stime = self.get_time(rtime)
                     self.states[stime] = dict()
                     for attr in ACTIVITY_NEW_STATE:
                         if attr in state:
+                            if attr == "status" and state[attr] not in ["Succeeded","Failed"]:
+                                if state.get("sessionid", None):
+                                    state['status'], last_finished = self.get_workflow_status(state["sessionid"])
                             self.states[stime][attr] = state[attr]
+            
+            # if we have a finishedAt from some workflow, let's see if we need to add in a final state
+            if last_finished:
+                ordered_states = sorted(self.states.keys())
+                last_state = self.states[ordered_states[-1]]
+                if last_state.get("sessionid", None):
+                    # ok, so the last state has a sessionid so it isn't a debug/waiting state
+                    if last_state.get("status") == "Succeeded":
+                        self.state(timestamp=last_finished, state='waiting_admin', create=True)
+                    elif last_state.get("status") == "Failed":
+                        self.state(timestamp=last_finished, state='debug', create=True)
 
         self.initialized = True
 
@@ -273,7 +288,7 @@ class Activity():
 
         return stime
 
-    def create_activity(self, config):
+    def create_activity(self):
         payload = {
             "input_parameters": {},
             "name": self.name
@@ -283,10 +298,10 @@ class Activity():
             try:
                 self.api.post_activity(payload)
             except Exception as e:
-                config.logger.error(f"Unable to create activity: {e}")
+                self.config.logger.error(f"Unable to create activity: {e}")
                 sys.exit(1)
     
-    def get_next_workflow(self, config, sessionid):
+    def get_next_workflow(self, sessionid):
         retflow = None
         found = False
         count = 0
@@ -295,13 +310,13 @@ class Activity():
             try:
                 rsession = self.api.get_activity_session(self.name, sessionid)
             except Exception as e:
-                config.logger.error(f"Unable to get session {sessionid}: {e}")
+                self.config.logger.error(f"Unable to get session {sessionid}: {e}")
                 sys.exit(1)
 
             session = rsession.json()
             status = session['current_state']
             if status and status not in ["in_progress", "transitioning"]:
-                config.logger.debug(f"Session {sessionid} is not in progress.  Status: {status}")
+                self.config.logger.debug(f"Session {sessionid} is not in progress.  Status: {status}")
                 found = True
                 break
 
@@ -319,10 +334,10 @@ class Activity():
                 count += 1
                 if (count % 600) == 0:
                     # it's been 10 minutes, give up if the admin hasn't
-                    config.logger.error(f"Giving up after 10 minutes.  Check to ensure the ARGO backend is functional then try again.")
+                    self.config.logger.error(f"Giving up after 10 minutes.  Check to ensure the ARGO backend is functional then try again.")
                     sys.exit(1)
                 if (count % 15) == 0:
-                    config.logger.warning(f"Still waiting for workflow startup after {count} seconds.")
+                    self.config.logger.warning(f"Still waiting for workflow startup after {count} seconds.")
                 time.sleep(1)
 
         return retflow
@@ -358,9 +373,22 @@ class Activity():
             dpath = []
 
         return dpath
+    
+    def get_workflow_status(self, workflow):
+        rstatus = "Unknown"
+        rfinished = None
 
-    def monitor_workflow(self, config, workflow):
-        config.logger.debug(f"Monitoring workflow {workflow}")
+        try:
+            wflow = self.get_workflow(workflow)
+            rstatus = wflow['metadata']['labels']['workflows.argoproj.io/phase']
+            rfinished = workflow['status']['finishedAt']
+        except:
+            pass
+
+        return rstatus, rfinished
+
+    def monitor_workflow(self, workflow):
+        self.config.logger.debug(f"Monitoring workflow {workflow}")
         finished = False
         rstatus = 'Unknown'
         phases = dict()
@@ -379,9 +407,9 @@ class Activity():
         printed_s3 = {}
         while not finished:
             try:
-                wflow = self.get_workflow(config, workflow)
+                wflow = self.get_workflow(workflow)
             except Exception as e:
-                config.logger.error(f"Unable to get workflow {workflow}: {e}")
+                self.config.logger.error(f"Unable to get workflow {workflow}: {e}")
                 sys.exit(1)
 
             """ TODO: Need to figure out how to tell if the workflow has failed in some bad way """
@@ -427,7 +455,7 @@ class Activity():
                     if "startedAt" in node:
                         if not phases[name]["startedAt"]:
                             if display:
-                                config.logger.info(f"             BEGIN: {dname}")
+                                self.config.logger.info(f"             BEGIN: {dname}")
                         phases[name]["startedAt"] = node["startedAt"]
 
                     if "phase" in node:
@@ -438,11 +466,11 @@ class Activity():
                             if display:
                                 status = phases[name]["status"]
                                 if status == "Failed" or status == "Error":
-                                    config.logger.error(f"         FINISHED: {dname} [{status}]")
+                                    self.config.logger.error(f"         FINISHED: {dname} [{status}]")
                                 if status == "Omitted":
-                                    config.logger.warning(f"       FINISHED: {dname} [{status}]")
+                                    self.config.logger.warning(f"       FINISHED: {dname} [{status}]")
                                 else:
-                                    config.logger.info(f"          FINISHED: {dname} [{status}]")
+                                    self.config.logger.info(f"          FINISHED: {dname} [{status}]")
                         phases[name]["finishedAt"] = node["finishedAt"]
                         try:
                             for artifact in node["outputs"]["artifacts"]:
@@ -451,7 +479,7 @@ class Activity():
                                     phases[name]["log"] = s3
                                     dname_s3 = f"{dname}: {s3}"
                                     if dname_s3 not in printed_s3:
-                                        config.logger.debug(f"           LOG FILE FOR {dname_s3}")
+                                        self.config.logger.debug(f"           LOG FILE FOR {dname_s3}")
                                         printed_s3[dname_s3] = True
                         except:
                             pass
@@ -462,8 +490,8 @@ class Activity():
         self.podlogs.collect_threads()
         return rstatus
 
-    def monitor_session(self, config, sessionid, stime):
-        config.logger.debug(f"Monitoring session {sessionid} at {stime}")
+    def monitor_session(self, sessionid, stime):
+        self.config.logger.debug(f"Monitoring session {sessionid} at {stime}")
         completed = False
 
         self.state(timestamp=stime, status="Running")
@@ -472,7 +500,7 @@ class Activity():
             try:
                 session = self.api.get_activity_session(self.name, sessionid)
             except Exception as e:
-                config.logger.error(f"Unable to get session {sessionid}: {e}")
+                self.config.logger.error(f"Unable to get session {sessionid}: {e}")
                 sys.exit(1)
 
             status = session.json()['current_state']
@@ -488,20 +516,20 @@ class Activity():
 
         self.state(timestamp=stime, status=stat)
 
-        config.logger.debug(f"Finished monitoring session {sessionid}")
+        self.config.logger.debug(f"Finished monitoring session {sessionid}")
 
         return stat
 
-    def get_workflow(self, config, workflow):
+    def get_workflow(self, workflow):
         try:
-            wf = config.connection.run("kubectl -n argo get Workflow/{workflow} -o yaml".format(workflow=workflow))
+            wf = self.config.connection.run("kubectl -n argo get Workflow/{workflow} -o yaml".format(workflow=workflow))
         except Exception as e:
-            config.logger.error(f"Unable to get workflow {workflow}: {e}")
+            self.config.logger.error(f"Unable to get workflow {workflow}: {e}")
             sys.exit(1)
 
         return yaml.safe_load(wf.stdout)
 
-    def abort_activity(self, config, background_only=False):
+    def abort_activity(self, background_only=False):
         """Abort an activity."""
 
 
@@ -515,63 +543,63 @@ class Activity():
         payload = {
             "input_parameters": {},
             "name": self.name,
-            "comment": " ".join(config.args.get("comment", "")),
-            "force": config.args.get("force"),
+            "comment": " ".join(self.config.args.get("comment", "")),
+            "force": self.config.args.get("force"),
         }
         try:
-            api_result = self.api.abort_activity(self.name, payload)
+            self.api.abort_activity(self.name, payload)
         except Exception as ex:
-            config.logger.error(f"Unable to abort activity {self.name}: {ex}")
+            self.config.logger.error(f"Unable to abort activity {self.name}: {ex}")
             raise
 
         return self.name
 
-    def restart(self, config):
+    def restart(self):
         payload = {
             "input_parameters": {},
-            "comment": " ".join(config.args.get("comment", "")),
-            "activity_name": config.args.get("activity"),
+            "comment": " ".join(self.config.args.get("comment", "")),
+            "activity_name": self.config.args.get("activity"),
         }
         try:
             api_results = self.api.post_restart(self.name, payload)
         except Exception as ex:
-            config.logger.error(f"Unable to restart activity {self.name}: {ex}")
+            self.config.logger.error(f"Unable to restart activity {self.name}: {ex}")
             raise
 
         api_json = api_results.json()
         session = api_json["name"]
         if "input_parameters" in api_json and "stages" in api_json["input_parameters"]:
             stages = api_json["input_parameters"]["stages"]
-            config.stages.set_stages(stages)
+            self.config.stages.set_stages(stages)
 
-        self.site_conf = SiteConfig(config)
+        self.site_conf = SiteConfig(self.config)
         self.site_conf.organize_merge()
-        self.watch_next_wf(config, session)
-        podlogs.finished = True
+        self.watch_next_wf(self.config, session)
+        self.podlogs.finished = True
 
 
 
-    def run_stages(self, config, resume=False):
+    def run_stages(self, resume=False):
         if not self.api.activity_exists(self.name):
             raise ActivityError(f"The activity {self.name} does not exist.")
 
-        config.stages.set_summary("activity", config.args.get("activity"))
-        config.stages.set_summary("media_dir", config.args.get("media_dir"))
-        config.stages.set_summary("log_dir", config.args.get("log_dir"))
+        self.config.stages.set_summary("activity", self.config.args.get("activity"))
+        self.config.stages.set_summary("media_dir", self.config.args.get("media_dir"))
+        self.config.stages.set_summary("log_dir", self.config.args.get("log_dir"))
 
-        force = config.args.get("force", False)
-        stages = config.stages.stages
+        force = self.config.args.get("force", False)
+        stages = self.config.stages.stages
 
         if not resume:
-            with open(os.path.join(config.args.get("state_dir"), f"{self.name}_stages.yaml"), "w") as fhandle:
+            with open(os.path.join(self.config.args.get("state_dir"), f"{self.name}_stages.yaml"), "w") as fhandle:
                 yaml.dump(stages, fhandle)
 
         # API backend wants relative paths only.  We make sure media dir is under base dir
         # in Config, so we can just strip the base dir off the front of the media dir
-        media_dir = config.args.get("media_dir")[len(config.media_base_dir):]
+        media_dir = self.config.args.get("media_dir")[len(self.config.media_base_dir):]
 
-        media_host = config.args.get("media_host", "ncn-m001")
-        concurrency = config.args.get("concurrency", None)
+        media_host = self.config.args.get("media_host", "ncn-m001")
+        concurrency = self.config.args.get("concurrency", None)
         if concurrency != None:
             concurrency = int(concurrency)
 
@@ -584,34 +612,34 @@ class Activity():
                 "stages": [],
             }
         }
-        self.site_conf = SiteConfig(config)
+        self.site_conf = SiteConfig(self.config)
         self.site_conf.organize_merge()
 
-        bp_config_management = config.args.get("relative_bootprep_config_management", None)
+        bp_config_management = self.config.args.get("relative_bootprep_config_management", None)
         if bp_config_management:
             payload["input_parameters"]["bootprep_config_management"] = bp_config_management
 
-        bp_config_managed = config.args.get("relative_bootprep_config_managed", None)
+        bp_config_managed = self.config.args.get("relative_bootprep_config_managed", None)
         if bp_config_managed:
             payload["input_parameters"]["bootprep_config_managed"] = bp_config_managed
 
-        bp_config_dir = config.args.get("relative_bootprep_config_dir", None)
+        bp_config_dir = self.config.args.get("relative_bootprep_config_dir", None)
         if bp_config_dir:
             payload["input_parameters"]["bootprep_config_dir"] = bp_config_dir
 
-        limit_management = config.args.get("limit_management_rollout", None)
+        limit_management = self.config.args.get("limit_management_rollout", None)
         if limit_management:
             payload["input_parameters"]["limit_management_nodes"] = limit_management
 
-        limit_managed = config.args.get("limit_managed_rollout", None)
+        limit_managed = self.config.args.get("limit_managed_rollout", None)
         if limit_managed:
             payload["input_parameters"]["limit_managed_nodes"] = limit_managed
 
-        managed_rollout_strat = config.args.get("managed_rollout_strategy", None)
+        managed_rollout_strat = self.config.args.get("managed_rollout_strategy", None)
         if managed_rollout_strat:
             payload["input_parameters"]["managed_rollout_strategy"] = managed_rollout_strat
 
-        rollout_percentage = config.args.get("concurrent_management_rollout_percentage")
+        rollout_percentage = self.config.args.get("concurrent_management_rollout_percentage")
         if rollout_percentage:
            payload["input_parameters"]["concurrent_management_rollout_percentage"] = rollout_percentage
 
@@ -622,7 +650,7 @@ class Activity():
         if stages[0] == "process-media":
             stages.pop(0)
             payload["input_parameters"]["stages"] = ["process-media"]
-            sid = self.run_stage(config, payload)
+            sid = self.run_stage(self.config, payload)
             sessions.append(sid)
 
         ret_code = self.api.get_activity(self.name)
@@ -631,11 +659,11 @@ class Activity():
         session_vars = {}
 
         if not products:
-            full_media_dir = config.media_base_dir + media_dir
+            full_media_dir = self.config.media_base_dir + media_dir
             if "process-media" in payload["input_parameters"]["stages"]:
-                config.logger.error(f"No IUF installable products were found in {full_media_dir}.")
+                self.config.logger.error(f"No IUF installable products were found in {full_media_dir}.")
             else:
-                config.logger.error(f"No products were found in {self.name}.  Either the process-media stage has never been executed, or no IUF installable products were found in {full_media_dir}")
+                self.config.logger.error(f"No products were found in {self.name}.  Either the process-media stage has never been executed, or no IUF installable products were found in {full_media_dir}")
             return sessions
 
         for product in products:
@@ -656,47 +684,45 @@ class Activity():
         # Run any remaining stages.
         if stages:
             payload["input_parameters"]["stages"] = stages
-            sid = self.run_stage(config, payload)
+            sid = self.run_stage(self.config, payload)
             sessions.append(sid)
 
         return sessions
 
-
-    def watch_next_wf(self, config, sessionid):
-
+    def watch_next_wf(self, sessionid):
         while True:
-            wfid = self.get_next_workflow(config, sessionid)
+            wfid = self.get_next_workflow(sessionid)
             if not wfid:
-                config.logger.debug(f"No more workflows found for session {sessionid}.")
+                self.config.logger.debug(f"No more workflows found for session {sessionid}.")
                 break
-            config.logger.debug("Next workflow {}".format(wfid))
-            wf = self.get_workflow(config, wfid)
+            self.config.logger.debug("Next workflow {}".format(wfid))
+            wf = self.get_workflow(wfid)
             stage = wf['metadata']['labels']['stage']
             self.site_conf.update_dict_stack(stage)
-            config.stages.exec_stage(config, wfid, stage)
+            self.config.stages.exec_stage(self.config, wfid, stage)
 
 
-    def run_stage(self, config, payload):
+    def run_stage(self, payload):
         try:
             api_result = self.api.post_activity_history_run(self.name, payload)
         except Exception as e:
-            config.logger.error(f"Unable to execute stage: {e}")
+            self.config.logger.error(f"Unable to execute stage: {e}")
             raise
 
         session = api_result.json()
         sessionid = session['name']
-        config.logger.info("IUF SESSION: {}".format(sessionid))
+        self.config.logger.info("IUF SESSION: {}".format(sessionid))
 
-        self.watch_next_wf(config, sessionid)
+        self.watch_next_wf(sessionid)
 
         return sessionid
 
-    def resume(self, config):
+    def resume(self):
         """Resume an activity."""
 
         last_activity = {}
         last_sessionid = None
-        self.site_conf = SiteConfig(config)
+        self.site_conf = SiteConfig(self.config)
         self.site_conf.organize_merge()
 
         skeys = sorted(self.states.keys(), reverse=True)
@@ -728,7 +754,7 @@ class Activity():
             if 'input_parameters' in backend_data and 'stages' in backend_data['input_parameters']:
                 backend_stages = backend_data['input_parameters']['stages']
                 last_stages = []
-                stages_file = os.path.join(config.args.get("state_dir"), f"{self.name}_stages.yaml")
+                stages_file = os.path.join(self.config.args.get("state_dir"), f"{self.name}_stages.yaml")
                 if os.path.exists(stages_file):
                     with open(stages_file, "r") as fhandle:
                         last_stages = yaml.load(fhandle, yaml.SafeLoader)
@@ -736,10 +762,10 @@ class Activity():
                     last_stages.pop(0)
                 if backend_stages[0] == "process-media":
                     # 1a -- disconnected in process media.  -- will stop after.
-                    self.monitor_workflow(config, last_sessionid)
+                    self.monitor_workflow(self.config, last_sessionid)
                     if last_stages:
-                        config.stages.set_stages(last_stages)
-                        self.run_stages(config, resume=True)
+                        self.config.stages.set_stages(last_stages)
+                        self.run_stages(self.config, resume=True)
                 else:
                     # 1b -- Disconnected after process-media.  The backend
                     # should have all the necessary stage information.  Just re-attach.
@@ -756,19 +782,19 @@ class Activity():
                     curr_session = result.json()
 
                     # Watch the running workflow.
-                    self.monitor_workflow(config, last_sessionid)
+                    self.monitor_workflow(last_sessionid)
 
                     bad_stage = True
                     while bad_stage:
                         try:
-                            self.watch_next_wf(config, sess_param)
+                            self.watch_next_wf(sess_param)
                             bad_stage = False
                         except Exception as ex:
                             if len(last_stages) > 1:
                                 last_stages.pop(0)
-                                config.stages.set_stages(last_stages)
+                                self.config.stages.set_stages(last_stages)
                             else:
-                                install_logger.warning("Giving up on executing stages.")
+                                self.config.logger.warning("Giving up on executing stages.")
                                 bad_stage = False
         else:
             # The session is no longer running.  Call resume on the backend.
@@ -780,7 +806,7 @@ class Activity():
             response = self.api.post_resume(self.name, payload)
             json_response = response.json()
             sess_name = json_response["name"]
-            self.watch_next_wf(config, sess_name)
+            self.watch_next_wf(sess_name)
 
 
 def valid_activity_name(aname):
