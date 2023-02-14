@@ -340,6 +340,7 @@ class SiteConfig():
 
             # don't render defaults
             if name in ['default']:
+                self.rendered.update({"default": data})
                 continue
 
             try:
