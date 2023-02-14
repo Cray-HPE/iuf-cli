@@ -62,8 +62,7 @@ class Config:
     def activity(self):
         if self._activity_session is None:
             session = self.args.get("activity", None)
-            self._activity_session = lib.Activity.Activity(self, name=session,
-                filename=self.activity_dict_file, dryrun=self.dryrun)
+            self._activity_session = lib.Activity.Activity(name=session, filename=self.activity_dict_file, dryrun=self.dryrun, config=self)
 
         return self._activity_session
 
@@ -102,7 +101,6 @@ class Config:
     @property
     def logger(self):
         return get_install_logger()
-        #return self._logger
 
     @property
     def media_base_dir(self):

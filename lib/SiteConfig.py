@@ -162,7 +162,6 @@ class SiteConfig():
         if type(list_of_dicts) != list:
             raise UnexpectedState("merge_dicts called with '{}'.  Expected a list.".format(list_of_dicts))
 
-
         def merge_two_dicts(dict1, dict2):
             for elt in dict2:
                 if elt in dict1:
@@ -243,22 +242,21 @@ class SiteConfig():
 
                 recipe_file = os.path.join(clone_loc, RECIPE_VARS)
                 if os.path.exists(recipe_file):
-                    msg = f"""Neither --recipe-vars nor --bootprep-config-dir
-                    were specified, so {RECIPE_VARS}  will pulled from the
-                    branch {co_branch} of the {repo} git repo."""
+                    msg = ("Neither --recipe-vars nor --bootprep-config-dir were specified, "
+                            f"so {RECIPE_VARS} will be pulled from the branch {co_branch} "
+                            f"of the {repo} git repo.")
                     install_logger.info(formatted(msg))
                     self.recipe_vars = read_yaml(recipe_file)
                 else:
-                    msg = f"""Could not find vcs/{RECIPE_VARS} on branch
-                    {co_branch} within the {repo} repo. If one is desired, it
-                    can be specified with the `--bootprep-config-dir` or
-                    `--recipe-vars` arguments."""
-                    install_logger.warning(msg)
+                    msg = (f"Could not find vcs/{RECIPE_VARS} on branch {co_branch} within "
+                           f"the {repo} repo. If one is desired, it can be specified with the "
+                           "`--bootprep-config-dir` or `--recipe-vars` arguments.")
+                    install_logger.warning(formatted(msg))
             except Exception as e:
-                msg = f"""Could not find vcs/{RECIPE_VARS} within the
-                {repo} repo. If one is desired, it can be specified with the
-                `--bootprep-config-dir` or `--recipe-vars` arguments."""
-                install_logger.warning(msg)
+                msg = (f"Could not find vcs/{RECIPE_VARS} within the "
+                f"{repo} repo. If one is desired, it can be specified with the "
+                "`--bootprep-config-dir` or `--recipe-vars` arguments.")
+                install_logger.warning(formatted(msg))
                 pass
 
         if self.recipe_vars:

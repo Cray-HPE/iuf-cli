@@ -273,7 +273,7 @@ class Stages():
         try:
             self.current_stage = stage
             stage_start = datetime.datetime.now()
-            status = config.activity.monitor_workflow(config, workflow)
+            status = config.activity.monitor_workflow(workflow)
             config.logger.info(f"         RESULT: {status}")
             if status == "Succeeded":
                 failed = False
