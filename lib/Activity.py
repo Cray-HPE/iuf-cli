@@ -188,6 +188,7 @@ class Activity():
 
             aname = list(masterdict)[0]
             activity = masterdict[aname]
+            last_finished = None
 
             self.name = aname
             self.filename = filename
@@ -200,21 +201,25 @@ class Activity():
                     self.states[stime] = dict()
                     for attr in ACTIVITY_NEW_STATE:
                         if attr in state:
+                            # Update any sessions that don't have a finished state
                             if attr == "status" and state[attr] not in ["Succeeded","Failed"]:
                                 if state.get("sessionid", None):
                                     state['status'], last_finished = self.get_workflow_status(state["sessionid"])
                             self.states[stime][attr] = state[attr]
             
-            # if we have a finishedAt from some workflow, let's see if we need to add in a final state
-            if last_finished:
-                ordered_states = sorted(self.states.keys())
-                last_state = self.states[ordered_states[-1]]
-                if last_state.get("sessionid", None):
-                    # ok, so the last state has a sessionid so it isn't a debug/waiting state
-                    if last_state.get("status") == "Succeeded":
-                        self.state(timestamp=last_finished, state='waiting_admin', create=True)
-                    elif last_state.get("status") == "Failed":
-                        self.state(timestamp=last_finished, state='debug', create=True)
+            # now see if the client was killed before putting the activity into debug or waiting_admin
+            ordered_states = sorted(self.states.keys())
+            last_state = self.states[ordered_states[-1]]
+            sessionid = last_state.get("sessionid", None)
+            if sessionid:
+                # ok, so the last state has a sessionid so it isn't a debug/waiting
+                last_status, last_finished = self.get_workflow_status(sessionid)
+
+                if last_status == "Succeeded":
+                    self.state(timestamp=last_finished, state='waiting_admin', create=True)
+                elif last_status == "Failed":
+                    self.state(timestamp=last_finished, state='debug', create=True)
+                #else it's still running and we don't care for now
 
         self.initialized = True
 
@@ -381,7 +386,7 @@ class Activity():
         try:
             wflow = self.get_workflow(workflow)
             rstatus = wflow['metadata']['labels']['workflows.argoproj.io/phase']
-            rfinished = workflow['status']['finishedAt']
+            rfinished = wflow['status']['finishedAt']
         except:
             pass
 
@@ -555,6 +560,11 @@ class Activity():
         return self.name
 
     def restart(self):
+        self.config.logger.info(f"Attempting to restart activity {self.name}")
+        if not self.api.activity_exists(self.name):
+            self.config.logger.error(f"Activity {self.name} does not exist.")
+            return
+
         payload = {
             "input_parameters": {},
             "comment": " ".join(self.config.args.get("comment", "")),
@@ -577,14 +587,13 @@ class Activity():
         self.watch_next_wf(session)
         self.podlogs.finished = True
 
-
-
     def run_stages(self, resume=False):
         if not self.api.activity_exists(self.name):
             raise ActivityError(f"The activity {self.name} does not exist.")
 
         self.config.stages.set_summary("activity", self.config.args.get("activity"))
         self.config.stages.set_summary("media_dir", self.config.args.get("media_dir"))
+        self.config.stages.set_summary("state_dir", self.config.args.get("state_dir"))
         self.config.stages.set_summary("log_dir", self.config.args.get("log_dir"))
 
         force = self.config.args.get("force", False)
@@ -719,6 +728,10 @@ class Activity():
 
     def resume(self):
         """Resume an activity."""
+        self.config.logger.info(f"Attempting to resume activity {self.name}")
+        if not self.api.activity_exists(self.name):
+            self.config.logger.error(f"Activity {self.name} does not exist.")
+            return
 
         last_activity = {}
         last_sessionid = None
@@ -744,12 +757,14 @@ class Activity():
         # 2.    The activity is not still running.  In this case, I think we
         #       send a 'resume' to the backend, and monitor it. Still need to pay attention
         # to whether or not process-media is the first stage.
-
-        if last_activity["state"] == 'in_progress' and last_activity["status"] == "Running":
-
+        try:
             result = self.api.get_activity(self.name)
             backend_data = result.json()
+        except:
+            self.config.logger.error(f"Unable to get activity {self.name} from backend.")
+            return
 
+        if last_activity["state"] == 'in_progress' and last_activity["status"] == "Running":
             # 1. The activity is still running.
             if 'input_parameters' in backend_data and 'stages' in backend_data['input_parameters']:
                 backend_stages = backend_data['input_parameters']['stages']
@@ -803,9 +818,19 @@ class Activity():
                 "activity_name": self.name,
                 "comment": "comment goes here..."
             }
-            response = self.api.post_resume(self.name, payload)
-            json_response = response.json()
-            sess_name = json_response["name"]
+            try:
+                response = self.api.post_resume(self.name, payload)
+                json_response = response.json()
+                sess_name = json_response["name"]
+            except Exception as e:
+                # ok, so we got an error.   the server just tosses a 500 if the activity is not
+                # resumable withou any additional info.  Try to invent some context.
+                if backend_data.get("activity_state", "") == "wait_for_admin":
+                    self.config.logger.warning(f"{self.name} cannot be resumed because it is either Completed or Aborted.")
+                else:
+                    self.config.logger.error(f"Unable to resume activity: {e}")
+                return
+
             self.watch_next_wf(sess_name)
 
 

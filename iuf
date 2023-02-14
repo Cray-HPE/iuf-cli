@@ -33,21 +33,17 @@ import os
 import shutil
 import signal
 import sys
-import time
 import traceback
 
 from lib.vars import *
 from lib.InstallLogger import *
 
 from lib.InstallerUtils import elapsed_time
-from lib.InstallerUtils import formatted
 
 from lib.ConfigFile import ConfigFile
 from lib.ConfigFile import InvertableArgument
 import lib.Config
 import lib.Activity
-
-from lib.SiteConfig import read_yaml
 
 # Import lib.stages without the 'as stages' to prevent namespace collisions.
 import lib.stages
@@ -474,7 +470,7 @@ def main():
         help="""Force the abort immediately.""")
 
     activity_sp = subparsers.add_parser("activity", description='Create, display, or annotate activity information.')
-    activity_sp.add_argument("--time", help="A time value used when creating or modifying an activity entry. Must be specified and match an existing time value to modify that entry. Defaults to now.", action="store")
+    activity_sp.add_argument("--time", help="A time value used when creating or modifying an activity entry. Must match an existing time value to modify that entry. Defaults to now.", action="store")
     activity_sp.add_argument("--create", help="Create a new activity entry.", action="store_true", default=False)
     activity_sp.add_argument("--comment", help="A comment to be associated with an activity entry.", action="store")
     activity_sp.add_argument("--status", help="A status value to be associated with an activity entry.", action="store", default="n/a", choices=lib.Activity.ACTIVITY_VALID_STATUS)
@@ -539,9 +535,6 @@ def main():
     config.stages = lib.stages.Stages(stage_dict=STAGE_DICT, state_dir=config.args["state_dir"])
     validate_stages(config)
 
-    if config.args["write_input_file"]:
-        configfile.write(config.args)
-
     atexit.register(log_state_files, config)
 
     if config.args["write_input_file"]:
@@ -560,9 +553,9 @@ def main():
         activity = config.args.get("activity", None)
         script_name = sys.argv[0]
         print("Would you like to abort this run?")
-        print("    Enter Y, y, or yes to abort after the current stage")
+        print("    Enter Y, y, or yes to abort after the current stage.")
         print("    Enter F, f, or force to abort immediately.")
-        print("    Enter D, d, or  or disconnect to exit the IUF CLI.  The install will continue in the background, however no logs will be collected.")
+        print("    Enter D, d, or disconnect to exit the IUF CLI.  The install will continue in the background, however no logs will be collected.")
         print("")
         print("    Enter <return> to resume monitoring.")
         print("    Note all logging will be suspended when backgrounded.")
