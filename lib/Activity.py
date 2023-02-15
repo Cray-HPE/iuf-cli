@@ -839,6 +839,6 @@ class Activity():
 
 
 def valid_activity_name(aname):
-    if re.match('^[0-9A-Za-z\.-]+$', aname):
+    if re.match('^[0-9a-z\.-]+$', aname):
         return True
     return False

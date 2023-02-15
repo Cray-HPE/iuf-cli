@@ -524,7 +524,7 @@ def main():
     config_error = False
 
     if not lib.Activity.valid_activity_name(args.activity):
-        install_logger.error(f"Activity {args.activity} invalid. Names must only contain letters, numbers, periods, and dashes")
+        install_logger.error(f"Activity {args.activity} invalid. Names must only contain lowercase letters, numbers, periods, and dashes")
         config_error = True
 
     if len(sys.argv) < 2:
