@@ -552,7 +552,11 @@ class Activity():
             "force": self.config.args.get("force"),
         }
         try:
+            self.config.logger.debug(f"sending an abort, background_only={background_only}, payload={payload}")
             self.api.abort_activity(self.name, payload)
+            wait = not self.config.args.get("force")
+            self.podlogs.collect_threads(wait)
+
         except Exception as ex:
             self.config.logger.error(f"Unable to abort activity {self.name}: {ex}")
             raise
@@ -764,7 +768,7 @@ class Activity():
             self.config.logger.error(f"Unable to get activity {self.name} from backend.")
             return
 
-        if last_activity["state"] == 'in_progress' and last_activity["status"] == "Running":
+        if last_activity["state"] == 'in_progress':
             # 1. The activity is still running.
             if 'input_parameters' in backend_data and 'stages' in backend_data['input_parameters']:
                 backend_stages = backend_data['input_parameters']['stages']
