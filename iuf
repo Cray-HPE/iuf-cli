@@ -89,7 +89,7 @@ def validate_stages(config):
     # the variables are resolved in that stage.  Further error-checking
     # related to this is done in SiteConfig.
     if any(stage in local_stages for stage in ["update-vcs-config",
-        "update-cfs-config", "management-nodes-rollout"]):
+        "update-cfs-config"]):
         if not (config.args.get("site_vars", None) or config.args.get("bootprep_config_dir", None) \
             or config.args.get("recipe_vars", None)):
             errors.append("bootprep or vcs stages were called, but none of "
