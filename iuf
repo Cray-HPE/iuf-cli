@@ -430,13 +430,16 @@ def main():
         concurrently based on the percentage specified. Must be an integer
         between 1-100. Defaults to 20 (percent).""")
 
-    install_sp.add_argument("--limit-managed-rollout", action="store", nargs='+',
+    install_sp.add_argument("--limit-managed-rollout", action="store",
+            nargs='+', default=["Compute"],
        help="""Override list used to target specific nodes only when rolling out
-       managed nodes.  Arguments should be xnames or HSM node groups.""")
+       managed nodes.  Arguments should be xnames or HSM node groups.
+       Defaults to the Compute role.""")
 
     install_sp.add_argument("--limit-management-rollout", action="store", nargs='+',
         default=["Management_Worker"],
-        help="""Override list used to target specific role_subrole(s) only when rolling out management nodes.""")
+        help="""Override list used to target specific role_subrole(s) only when rolling out management nodes.
+        Defaults to the Management_Worker role.""")
 
     install_sp.add_argument("-mrp", "--mask-recipe-prods", action="store", nargs='+',
         help="""If `--recipe-vars` is specified, mask the versions found within the recipe variables YAML
@@ -579,7 +582,6 @@ def main():
                 config.activity.abort_activity(background_only=True)
                 print(f"Use `{script_name} -a {activity} resume` to re-connect")
                 print("Bye!")
-                sys.exit(0)
 
         elif answer in ["f", "force"]:
             answer_text = "Forcing an immediate abort."
@@ -587,7 +589,7 @@ def main():
             config.args["force"] = True
             config.activity.abort_activity()
             print("Bye!")
-            sys.exit(0)
+
         else:
             print("Continuing...")
         sys.stdout.flush()

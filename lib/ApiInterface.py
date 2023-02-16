@@ -82,7 +82,7 @@ class ApiInterface(object):
     def abort_activity(self, activity, payload):
         api_path = f"/activities/{activity}/history/abort"
         try:
-            api_respose = self.request("POST", api_path, payload)
+            api_response = self.request("POST", api_path, payload)
         except:
             raise
 
