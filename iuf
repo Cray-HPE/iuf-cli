@@ -582,6 +582,7 @@ def main():
                 config.activity.abort_activity(background_only=True)
                 print(f"Use `{script_name} -a {activity} resume` to re-connect")
                 print("Bye!")
+                sys.exit(0)
 
         elif answer in ["f", "force"]:
             answer_text = "Forcing an immediate abort."
@@ -589,6 +590,7 @@ def main():
             config.args["force"] = True
             config.activity.abort_activity()
             print("Bye!")
+            sys.exit(0)
 
         else:
             print("Continuing...")
