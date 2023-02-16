@@ -556,12 +556,14 @@ def main():
         activity = config.args.get("activity", None)
         script_name = sys.argv[0]
         print("Would you like to abort this run?")
-        print("    Enter Y, y, or yes to abort after the current stage.")
-        print("    Enter F, f, or force to abort immediately.")
+        print("    Enter Y, y, or yes to abort after the current stage completes.")
+        print("    Enter F, f, or force to abort the current stage immediately.")
         print("    Enter D, d, or disconnect to exit the IUF CLI.  The install will continue in the background, however no logs will be collected.")
         print("")
         print("    Enter <return> to resume monitoring.")
-        print("    Note all logging will be suspended when backgrounded.")
+        print("    NOTE: The IUF CLI will remain connected until Argo completes the abort process.  Use the disconnect option to exit the IUF CLI immediately.")
+        print("    NOTE: All logging will be suspended when disconnected.")
+
         literal_answer = get_answer()
         answer = literal_answer.lower()
 
@@ -573,7 +575,7 @@ def main():
                 process_abort(config)
 
         elif answer in ["d", "disconnect"]:
-            answer_text = "Preparing to exit cli"
+            answer_text = "Attempting to exit the CLI cleanly."
             print(answer_text)
             if not already_answered:
                 already_answered = True
@@ -582,7 +584,7 @@ def main():
                 print("Bye!")
 
         elif answer in ["f", "force"]:
-            answer_text = "Forcing an immediate abort"
+            answer_text = "Forcing an immediate abort."
             already_answered = True
             config.args["force"] = True
             config.activity.abort_activity()
