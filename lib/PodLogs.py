@@ -297,3 +297,6 @@ class PodLogs():
             EXIT_EARLY = True
         for thread in self._running:
             thread.join()
+        # Allow some time for the theads to be collected, incase sys.exit()
+        # is called immediately afterwards.
+        time.sleep(5)
