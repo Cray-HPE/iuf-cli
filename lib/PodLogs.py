@@ -28,6 +28,7 @@ import requests
 import threading
 import time
 
+from urllib3.exceptions import ReadTimeoutError as ReadTimeoutError
 
 from kubernetes import client, watch
 from kubernetes import config as kubeconfig
@@ -43,8 +44,6 @@ WAIT_FOR_PODS = 5 * 60 # 5 minutes
 # Poll the logs for 20 minutes.  It can take a while for the pods to be
 # scheduled.
 POLL_LOGS = 20 * 60 # 20 minutes
-
-EXIT_EARLY = False
 
 def generate_query(pod, container="", namespace=""):
     print(f"(generate_query)pod={pod}")
@@ -74,7 +73,9 @@ class PodLogs():
         log_dir = config_param.args.get("log_dir")
         self._log_dir = os.path.join(log_dir, config_param.timestamp, "argo_logs")
         os.makedirs(self._log_dir, exist_ok=True)
-        self._running = []
+        self._running_subthreads = []
+        self._running_mainthread = None
+        self.mt_event = None
         self._logs = []
         self.wfid = wfid
         kubeconfig.load_kube_config()
@@ -87,16 +88,6 @@ class PodLogs():
         except:
             config_param.logger.debug("Unable to find elasticsearch service.")
             pass
-
-        self._finished = False
-
-    @property
-    def finished(self):
-        return self._finished
-
-    @finished.setter
-    def finished(self, val):
-        self._finished = val
 
     @property
     def logs(self):
@@ -114,7 +105,7 @@ class PodLogs():
                 query["search_after"] = search_after
             try:
                 data = requests.get(self.endpoint, json=query)
-            except Exception as ex:
+            except Exception:
                 break
             hits = data.json().get("hits", {}).get("hits", [])
             print(f"(follow_pod_log)pod={pod}, hits={hits}")
@@ -130,9 +121,8 @@ class PodLogs():
         fhandle.close()
 
 
-    def follow_pod_log(self, pod):
+    def follow_pod_log(self, pod, st_event):
         """Follow the log for a particular pod."""
-        global EXIT_EARLY
         def parse_str(instr):
             """Parse a block of text which is at least one line from the
             pod logs.  Return a list of 3-tuples, which are formatted as
@@ -200,9 +190,15 @@ class PodLogs():
             while True:
                 try:
                     watcher = watch.Watch()
+                    watch_kwargs = {
+                        "container": container,
+                        "follow": True,
+                        "timestamps": True,
+                        "pretty": True,
+                        "_request_timeout": 5
+                    }
                     for event in watcher.stream(self.core.read_namespaced_pod_log,
-                        name=pod, namespace='argo', container=container,
-                        follow=True, timestamps=True, pretty=True):
+                                                name=pod, namespace='argo', **watch_kwargs):
                         for level, stdoutline, logline in parse_str(event):
                             print(f"{logline}", file=fhandle, flush=True)
                             # at some point we need to revisit this, INFO should map to DEBUG but
@@ -215,8 +211,13 @@ class PodLogs():
                                 install_logger.error(f"            {stdoutline}")
                             else:
                                 install_logger.debug(stdoutline)
+                            if st_event.is_set():
+                                break
+                        if st_event.is_set():
+                            break
                     watcher.stop()
-                    break
+                    if st_event.is_set():
+                        break
                 except (client.rest.ApiException, client.exceptions.ApiException):
                     # Catch this exception NTRIES times, then give up
                     # waiting. This exception gets hit when the container isn't ready yet.
@@ -226,7 +227,12 @@ class PodLogs():
                         install_logger.warning(f"Giving up following the log for pod {pod}!")
                         break
                     time.sleep(.5)
-                if EXIT_EARLY: # or self._finished:
+                except ReadTimeoutError:
+                    # Timed out reading in the watcher.stream(...).  The
+                    # timeout is low, so just continue.
+                    continue
+
+                if st_event.is_set():
                     return
         fhandle.close()
 
@@ -238,10 +244,9 @@ class PodLogs():
         while watching the pods."""
 
         # This job starts when the activity is initialized.
-        global EXIT_EARLY
         following_pods = []
-        start_wait = datetime.datetime.now()
         got_pod = False
+        st_event = threading.Event()
         while True:
             # FIXME: It might be better to use `--selector=...`.  All the
             # pods have a label on them.
@@ -260,43 +265,32 @@ class PodLogs():
             for jpn in job_pod_names:
                 if jpn not in following_pods:
                     following_pods.append(jpn)
-                    thread = threading.Thread(target=self.follow_pod_log, args=(jpn,))
+                    thread = threading.Thread(target=self.follow_pod_log, args=(jpn, st_event,))
                     thread.start()
-                    self._running.append(thread)
+                    self._running_subthreads.append(thread)
                     got_pod = True
-            time.sleep(1)
-            waited = datetime.datetime.now() - start_wait
-            seconds_waited = int(waited.total_seconds())
-            if EXIT_EARLY or self._finished:
+
+            is_set =  self.mt_event.is_set()
+            if is_set:
+                st_event.set()
+                for thread in self._running_subthreads:
+                    thread.join()
                 break
-        self._finished = True
+
+            time.sleep(1)
 
 
     def follow_pod_logs(self):
         """Launch a thread to follow the pod logs."""
+        self.mt_event = threading.Event()
         thread = threading.Thread(target=self.follow_all_pods)
         thread.start()
-        self._running.append(thread)
+        self._running_mainthread = thread
 
-    def collect_threads(self, wait=True):
+    def collect_threads(self):
         """Collect the threads once the stages are completed."""
-        if wait:
-            start_wait = datetime.datetime.now()
 
-            # Wait for up to 5 minutes for the logging to finish.  It should
-            # only take a few seconds.
-            while not self._finished:
-                time.sleep(5)
-                waited = datetime.datetime.now() - start_wait
-                seconds_waited = int(waited.total_seconds())
-                if seconds_waited > WAIT_FOR_PODS:
-                    install_logger.warning("Giving up waiting on pods!")
-                    break
-        else:
-            global EXIT_EARLY
-            EXIT_EARLY = True
-        for thread in self._running:
-            thread.join()
-        # Allow some time for the theads to be collected, incase sys.exit()
-        # is called immediately afterwards.
-        time.sleep(5)
+        self.mt_event.set()
+
+        if self._running_mainthread:
+            self._running_mainthread.join()

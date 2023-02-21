@@ -305,7 +305,7 @@ class Activity():
             except Exception as e:
                 self.config.logger.error(f"Unable to create activity: {e}")
                 sys.exit(1)
-    
+
     def get_next_workflow(self, sessionid):
         retflow = None
         found = False
@@ -318,7 +318,17 @@ class Activity():
                 self.config.logger.error(f"Unable to get session {sessionid}: {e}")
                 sys.exit(1)
 
-            session = rsession.json()
+            # FIXME:
+            # We sometimes abort on this line because rsession returns a list of
+            # dicts rather than a dict.
+            tmp_session = rsession.json()
+            if type(tmp_session) is list:
+                if len(tmp_session) > 1:
+                    install_logger.warning("multiple sessions found.  Taking the first one...")
+                session = tmp_session[0]
+            else:
+                session = tmp_session
+
             status = session['current_state']
             if status and status not in ["in_progress", "transitioning"]:
                 self.config.logger.debug(f"Session {sessionid} is not in progress.  Status: {status}")
@@ -537,12 +547,11 @@ class Activity():
     def abort_activity(self, background_only=False):
         """Abort an activity."""
 
-
         if background_only:
             # If podlogs aren't initialized yet, skip collecting threads,
             # since there will not be any.
             if self.podlogs:
-                self.podlogs.collect_threads(wait=False)
+                self.podlogs.collect_threads()
             return
 
         payload = {
@@ -554,8 +563,7 @@ class Activity():
         try:
             self.config.logger.debug(f"sending an abort, background_only={background_only}, payload={payload}")
             self.api.abort_activity(self.name, payload)
-            wait = not self.config.args.get("force")
-            self.podlogs.collect_threads(wait)
+            self.podlogs.collect_threads()
 
         except Exception as ex:
             self.config.logger.error(f"Unable to abort activity {self.name}: {ex}")
@@ -589,7 +597,6 @@ class Activity():
         self.site_conf = SiteConfig(self.config)
         self.site_conf.organize_merge()
         self.watch_next_wf(session)
-        self.podlogs.finished = True
 
     def run_stages(self, resume=False):
         if not self.api.activity_exists(self.name):
@@ -768,7 +775,7 @@ class Activity():
             self.config.logger.error(f"Unable to get activity {self.name} from backend.")
             return
 
-        if last_activity["state"] == 'in_progress':
+        if last_activity["state"] == 'in_progress' and last_activity["status"].lower() not in ["succeeded", "failed"]:
             # 1. The activity is still running.
             if 'input_parameters' in backend_data and 'stages' in backend_data['input_parameters']:
                 backend_stages = backend_data['input_parameters']['stages']
@@ -788,6 +795,7 @@ class Activity():
                 else:
                     # 1b -- Disconnected after process-media.  The backend
                     # should have all the necessary stage information.  Just re-attach.
+
                     result = self.api.get_activity_sessions(self.name)
                     sessions = result.json()
                     sess_param = last_sessionid

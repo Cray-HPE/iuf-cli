@@ -322,7 +322,7 @@ def main():
     ### TODO, make default value product_vars.yaml 'recipe', fallback to pwd
     parser.add_argument("-a", "--activity", action="store",
         help="""Activity name.  Must be a unique identifier.
-        Activity names must only contain letters (A-Za-z), numbers (0-9), periods (.), and dashes (-).
+        Activity names must contain only lowercase letters (a-z), numbers (0-9), periods (.), and dashes (-).
         Can also be set via the IUF_ACTIVITY environment variable.""")
 
     concurrency_help = """Run Argo processes concurrently. Defaults to a fully concurrent model. To
