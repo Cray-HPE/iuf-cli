@@ -324,7 +324,7 @@ class Activity():
             tmp_session = rsession.json()
             if type(tmp_session) is list:
                 if len(tmp_session) > 1:
-                    install_logger.warning("multiple sessions found.  Taking the first one...")
+                    self.config.logger.warning("multiple sessions found.  Taking the first one...")
                 session = tmp_session[0]
             else:
                 session = tmp_session
@@ -605,7 +605,8 @@ class Activity():
         self.config.stages.set_summary("activity", self.config.args.get("activity"))
         self.config.stages.set_summary("media_dir", self.config.args.get("media_dir"))
         self.config.stages.set_summary("state_dir", self.config.args.get("state_dir"))
-        self.config.stages.set_summary("log_dir", self.config.args.get("log_dir"))
+        logdir = os.path.join(self.config.args.get("log_dir"), self.config.timestamp)
+        self.config.stages.set_summary("log_dir", logdir)
 
         force = self.config.args.get("force", False)
         stages = self.config.stages.stages
