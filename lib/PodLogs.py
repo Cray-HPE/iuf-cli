@@ -212,11 +212,14 @@ class PodLogs():
                             else:
                                 install_logger.debug(stdoutline)
                             if st_event.is_set():
-                                break
-                        if st_event.is_set():
-                            break
+                                watcher.stop()
+                                return
                     watcher.stop()
                     if st_event.is_set():
+                        # The event was set, and this thread needs to exit.
+                        return
+                    else:
+                        # Break and watch the next container.
                         break
                 except (client.rest.ApiException, client.exceptions.ApiException):
                     # Catch this exception NTRIES times, then give up
@@ -225,7 +228,7 @@ class PodLogs():
                     polled_seconds = int(total_polled_time.seconds)
                     if polled_seconds >= POLL_LOGS:
                         install_logger.warning(f"Giving up following the log for pod {pod}!")
-                        break
+                        return
                     time.sleep(.5)
                 except ReadTimeoutError:
                     # Timed out reading in the watcher.stream(...).  The
@@ -233,8 +236,35 @@ class PodLogs():
                     continue
 
                 if st_event.is_set():
+                    # The threads are being collected.
+                    return
+                elif not self.is_running(pod):
+                    # Return, since the pod is not running.
                     return
         fhandle.close()
+
+
+    def is_running(self, pod):
+        """Check if a pod is running."""
+        # We might want to look at the phases, which would look something like this:
+            # job_pod_names = [p for p in pods.items if pod == p.metadata.name]
+            # if not job_pod_names:
+            #   return False
+            # last_pod = job_pod_names[-1]
+            # phase = last_pod.status.phase
+        # Then use phase to determine whether or not the pod should continue running
+        # The phases that are running are ["pending", "running"].  The reason this wasn't 
+        # implemented here is because it seemed that pods could go from 'Success' back into
+        # 'Running' or 'Pending'.  So we're just doing a list of the pods, and then return
+        # true if the pod is in the list.
+
+        pods = self.core.list_namespaced_pod('argo')
+        running_phases = ["pending", "running"]
+        job_pod_names = [p for p in pods.items if pod == p.metadata.name]
+        if not job_pod_names:
+            return False
+        else:
+            return True
 
 
     def follow_all_pods(self):
@@ -289,8 +319,11 @@ class PodLogs():
 
     def collect_threads(self):
         """Collect the threads once the stages are completed."""
-
-        self.mt_event.set()
+        try:
+            self.mt_event.set()
+        except AttributeError:
+            # The threads haven't been launched yet.
+            pass
 
         if self._running_mainthread:
             self._running_mainthread.join()
