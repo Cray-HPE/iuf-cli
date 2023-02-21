@@ -424,7 +424,7 @@ class Activity():
             try:
                 wflow = self.get_workflow(workflow)
             except Exception as e:
-                self.config.logger.error(f"Unable to get workflow {workflow}: {e}")
+                self.config.logger.debug(f"Unable to get workflow {workflow}: {e}")
                 sys.exit(1)
 
             """ TODO: Need to figure out how to tell if the workflow has failed in some bad way """
@@ -539,7 +539,7 @@ class Activity():
         try:
             wf = self.config.connection.run("kubectl -n argo get Workflow/{workflow} -o yaml".format(workflow=workflow))
         except Exception as e:
-            self.config.logger.error(f"Unable to get workflow {workflow}: {e}")
+            self.config.logger.debug(f"Unable to get workflow {workflow}: {e}")
             sys.exit(1)
 
         return yaml.safe_load(wf.stdout)
