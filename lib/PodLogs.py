@@ -121,7 +121,7 @@ class PodLogs():
         fhandle.close()
 
 
-    def follow_pod_log(self, pod, st_event):
+    def follow_pod_log(self, pod, st_event, container):
         """Follow the log for a particular pod."""
         def parse_str(instr):
             """Parse a block of text which is at least one line from the
@@ -181,66 +181,60 @@ class PodLogs():
                     outlines.append((level, f"{line}", f"{line}"))
             return outlines
 
-        log_name = os.path.join(self._log_dir, f"{pod}.txt")
+        log_name = os.path.join(self._log_dir, f"{pod}-{container}.txt")
         fhandle = open(log_name, 'w', encoding='UTF-8')
-        for container in ['init', 'wait', 'main']:
-            print(f"[{container}]", file=fhandle, flush=True)
-            start_poll = datetime.datetime.now()
+        start_poll = datetime.datetime.now()
 
-            while True:
-                try:
-                    watcher = watch.Watch()
-                    watch_kwargs = {
-                        "container": container,
-                        "follow": True,
-                        "timestamps": True,
-                        "pretty": True,
-                        "_request_timeout": 5
-                    }
-                    for event in watcher.stream(self.core.read_namespaced_pod_log,
-                                                name=pod, namespace='argo', **watch_kwargs):
-                        for level, stdoutline, logline in parse_str(event):
-                            print(f"{logline}", file=fhandle, flush=True)
-                            # at some point we need to revisit this, INFO should map to DEBUG but
-                            # not everyone has updated their logging for that distinction
-                            if level == 'NOTICE' or level == 'INFO':
-                                install_logger.info(f"            {stdoutline}")
-                            elif level == 'WARNING':
-                                install_logger.warning(f"            {stdoutline}")
-                            elif level == 'ERROR':
-                                install_logger.error(f"            {stdoutline}")
-                            else:
-                                install_logger.debug(stdoutline)
-                            if st_event.is_set():
-                                watcher.stop()
-                                return
-                    watcher.stop()
-                    if st_event.is_set():
-                        # The event was set, and this thread needs to exit.
-                        return
-                    else:
-                        # Break and watch the next container.
-                        break
-                except (client.rest.ApiException, client.exceptions.ApiException):
-                    # Catch this exception NTRIES times, then give up
-                    # waiting. This exception gets hit when the container isn't ready yet.
-                    total_polled_time = datetime.datetime.now() - start_poll
-                    polled_seconds = int(total_polled_time.seconds)
-                    if polled_seconds >= POLL_LOGS:
-                        install_logger.warning(f"Giving up following the log for pod {pod}!")
-                        return
-                    time.sleep(.5)
-                except ReadTimeoutError:
-                    # Timed out reading in the watcher.stream(...).  The
-                    # timeout is low, so just continue.
-                    continue
+        while True:
+            try:
+                watcher = watch.Watch()
+                watch_kwargs = {
+                    "container": container,
+                    "follow": True,
+                    "timestamps": True,
+                    "pretty": True,
+                    "_request_timeout": 5
+                }
+                for event in watcher.stream(self.core.read_namespaced_pod_log,
+                                            name=pod, namespace='argo', **watch_kwargs):
+                    for level, stdoutline, logline in parse_str(event):
+                        print(f"{logline}", file=fhandle, flush=True)
+                        # at some point we need to revisit this, INFO should map to DEBUG but
+                        # not everyone has updated their logging for that distinction
+                        if level == 'NOTICE' or level == 'INFO':
+                            install_logger.info(f"            {stdoutline}")
+                        elif level == 'WARNING':
+                            install_logger.warning(f"            {stdoutline}")
+                        elif level == 'ERROR':
+                            install_logger.error(f"            {stdoutline}")
+                        else:
+                            install_logger.debug(stdoutline)
+                        if st_event.is_set():
+                            watcher.stop()
+                            return
+                watcher.stop()
+                break
 
-                if st_event.is_set():
-                    # The threads are being collected.
+            except (client.rest.ApiException, client.exceptions.ApiException):
+                # Catch this exception NTRIES times, then give up
+                # waiting. This exception gets hit when the container isn't ready yet.
+                total_polled_time = datetime.datetime.now() - start_poll
+                polled_seconds = int(total_polled_time.seconds)
+                if polled_seconds >= POLL_LOGS:
+                    install_logger.warning(f"Giving up following the log for pod {pod}!")
                     return
-                elif not self.is_running(pod):
-                    # Return, since the pod is not running.
-                    return
+                time.sleep(.5)
+            except ReadTimeoutError:
+                # Timed out reading in the watcher.stream(...).  The
+                # timeout is low, so just continue.
+                continue
+
+            if st_event.is_set():
+                # The threads are being collected.
+                return
+            elif not self.is_running(pod):
+                # Return, since the pod is not running.
+                return
         fhandle.close()
 
 
@@ -295,10 +289,11 @@ class PodLogs():
             for jpn in job_pod_names:
                 if jpn not in following_pods:
                     following_pods.append(jpn)
-                    thread = threading.Thread(target=self.follow_pod_log, args=(jpn, st_event,))
-                    thread.start()
-                    self._running_subthreads.append(thread)
-                    got_pod = True
+                    for container in ["init", "wait", "main"]:
+                        thread = threading.Thread(target=self.follow_pod_log, args=(jpn, st_event, container))
+                        thread.start()
+                        self._running_subthreads.append(thread)
+                        got_pod = True
 
             is_set =  self.mt_event.is_set()
             if is_set:
