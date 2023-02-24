@@ -335,7 +335,7 @@ class Activity():
                 found = True
                 break
 
-            if "workflows" in session:
+            if status and "workflows" in session:
                 try:
                     for workflow in session['workflows']:
                         if workflow['id'] not in self.workflows:
