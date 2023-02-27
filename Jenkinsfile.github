@@ -82,7 +82,7 @@ pipeline {
                             docker {
                                 label 'docker'
                                 reuseNode true
-                                image "${pythonImage}:${pythonVersion}-SLES${sleVersion}"
+                                image "${pythonImage}:${pythonVersion}"
                             }
                         }
                         steps {
@@ -104,7 +104,7 @@ pipeline {
                             docker {
                                 label 'docker'
                                 reuseNode true
-                                image "${pythonImage}:${pythonVersion}-SLES${sleVersion}"
+                                image "${pythonImage}:${pythonVersion}"
                             }
                         }
                         steps {
