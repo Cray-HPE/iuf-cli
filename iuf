@@ -84,19 +84,44 @@ def validate_stages(config):
         except ValueError:
             errors.append("`--concurrency` requires a positive integer argument.")
 
+    bpcd = config.args.get("bootprep_config_dir", None)
+    rvars = config.args.get("recipe_vars", None)
+    bpc_managed = config.args.get("bootprep_config_managed", None)
+    bpc_management = config.args.get("bootprep_config_management", None)
+
     # Check if any of the stages requiring site-vars, etc are being called.
-    # Note that they aren't strictly required in deliver-product, but all
-    # the variables are resolved in that stage.  Further error-checking
-    # related to this is done in SiteConfig.
+    # Further error-checking related to this is done in SiteConfig.
     if any(stage in local_stages for stage in ["update-vcs-config",
         "update-cfs-config"]):
-        if not (config.args.get("site_vars", None) or config.args.get("bootprep_config_dir", None) \
-            or config.args.get("recipe_vars", None)):
+        if not (bpcd or rvars or config.args.get("site_vars", None)):
             errors.append("bootprep or vcs stages were called, but none of "
                           "--site-vars/-sv, --bootprep-config-dir/-bpcd, nor --recipe-vars/-rv "
                           "were specified. At least one of them needs to be specified")
 
-    def check_bootprep_arg(arg_name, stage):
+    # Allow `--bootprep-config-dir` to override some commandline flags if
+    # they were not specified.
+    if bpcd:
+        if not rvars:
+            # `--recipe-vars` was not specified on the commandline.  Allow
+            # The corresponding `bootprep-config-dir` file to override it.
+            rv_path = os.path.join(bpcd, RECIPE_VARS)
+            if os.path.exists(rv_path):
+                config.args["recipe_vars"] = rv_path
+        if not bpc_managed:
+            # `--bootprep-config-managed` was not specified via the
+            # commandline but `bootprep-config-dir` was.  Allow the
+            # `--bootprep-config-dir` option to override it.
+            managed_path = os.path.join(bpcd, "bootprep", BP_CONFIG_MANAGED)
+            if os.path.exists(managed_path):
+                config.args["bootprep_config_managed"] = managed_path
+        if not bpc_management:
+            # Ditto for `bootprep-config-management`.
+            management_path = os.path.join(bpcd, "bootprep", BP_CONFIG_MANAGEMENT)
+            if os.path.exists(management_path):
+                config.args["bootprep_config_management"] = management_path
+
+
+    def check_bootprep_arg(arg_name):
         """Ensure that if a `sat bootprep` config was specified (and the
         stage is being run) it exists.
         """
@@ -138,9 +163,9 @@ def validate_stages(config):
     # Process the `--bootprep-config-dir first.  It's not a fully-implemented option,
     # so it would be better if the fully-supported options were ran later, incase
     # there is any overwritting of files.
-    check_bootprep_arg("bootprep_config_dir", "bootprep-config-dir")
-    check_bootprep_arg("bootprep_config_managed", "managed-nodes-rollout")
-    check_bootprep_arg("bootprep_config_management", "management-nodes-rollout")
+    check_bootprep_arg("bootprep_config_dir")
+    check_bootprep_arg("bootprep_config_managed")
+    check_bootprep_arg("bootprep_config_management")
 
     if errors:
         install_logger.error("Problems were encountered:")
