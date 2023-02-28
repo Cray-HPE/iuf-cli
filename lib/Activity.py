@@ -581,6 +581,7 @@ class Activity():
             "input_parameters": {},
             "comment": " ".join(self.config.args.get("comment", "")),
             "activity_name": self.config.args.get("activity"),
+            "force": self.config.args.get("force", False),
         }
         try:
             api_results = self.api.post_restart(self.name, payload)
