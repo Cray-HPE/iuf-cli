@@ -35,6 +35,8 @@ import signal
 import sys
 import traceback
 
+from pprint import pformat
+
 from lib.vars import *
 from lib.InstallLogger import *
 
@@ -173,7 +175,8 @@ def process_activity(config):
             install_logger.error(f"{e}")
             install_logger.debug(traceback.format_exc())
             sys.exit(1)
-
+    history = config.activity.get_history()
+    #print(f"(process_activity)history=\n{history}")
     print(config.activity)
 
 
@@ -467,7 +470,8 @@ def main():
     # help for the comment flag should be something like,
     # """Adds a comment to the "Comment" row if the `iuf activity ...` table.
     # The option is hidden because it doesn't seem to be working in the backend.
-    abort_sp.add_argument("comment", action="store", nargs="*", help=argparse.SUPPRESS)
+    #abort_sp.add_argument("comment", action="store", nargs="*", help=argparse.SUPPRESS)
+    abort_sp.add_argument("comment", action="store", nargs="*", help="Add a comment for the abort to the activity log")
 
     abort_sp.add_argument("-f", "--force", action="store_true",
         help="""Force the abort immediately.""")
@@ -598,14 +602,15 @@ def main():
 
     signal.signal(signal.SIGINT, process_ctrl_c)
 
-    try:
+    #try:
+    if True:
         args.func(config)
-    except AttributeError:
-        install_logger.error("A subcommand was not specified.")
-        sys.exit(1)
-    except Exception as e:
-        install_logger.error("An unexpected error occurred: {}".format(e))
-        raise
+    #except AttributeError:
+    #    install_logger.error("A subcommand was not specified.")
+    #    sys.exit(1)
+    #except Exception as e:
+    #    install_logger.error("An unexpected error occurred: {}".format(e))
+    #    raise
 
 if __name__ == "__main__":
     main()

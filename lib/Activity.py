@@ -35,6 +35,8 @@ import lib.ApiInterface
 import base64
 import gzip
 
+from pprint import pformat # DEBUG
+
 from lib.PodLogs import PodLogs
 from lib.SiteConfig import SiteConfig
 
@@ -206,7 +208,7 @@ class Activity():
                                 if state.get("sessionid", None):
                                     state['status'], last_finished = self.get_workflow_status(state["sessionid"])
                             self.states[stime][attr] = state[attr]
-            
+
             # now see if the client was killed before putting the activity into debug or waiting_admin
             ordered_states = sorted(self.states.keys())
             last_state = self.states[ordered_states[-1]]
@@ -561,6 +563,7 @@ class Activity():
             "force": self.config.args.get("force"),
         }
         try:
+            print(f"sending an abort, background_only={background_only}, payload={payload}")
             self.config.logger.debug(f"sending an abort, background_only={background_only}, payload={payload}")
             self.api.abort_activity(self.name, payload)
             self.podlogs.collect_threads()
@@ -597,6 +600,36 @@ class Activity():
         self.site_conf = SiteConfig(self.config)
         self.site_conf.organize_merge()
         self.watch_next_wf(session)
+
+    def get_history(self):
+
+        activity = self.config.args.get("activity")
+        payload = {
+            "activity_name": activity,
+        }
+
+        history = self.api.get_history(activity, payload)
+        sessions = self.api.get_activity_sessions(activity).json()
+        #history = history_raw.json()
+        #print("(get_history) history=\n{}".format(pformat(history)))
+        #print("(get_history) sessions =\n{}".format(pformat(sessions)))
+        table = PrettyTable()
+        table.field_names = ["session", "start", "current state", "argo workflow", "comment"]
+        table.align = 'l'
+        for sess in sessions:
+            name = sess["name"]
+            wfids = [elt["id"] for elt in sess["workflows"]]
+            wfid_len = len(wfids)
+            workflow = sess["workflows"][0]["id"]
+            #print(f"name={name}, workflow={workflow}")
+            sess_hist = [hist for hist in history if hist["session_name"] == name]
+            sh_len = len(sess_hist)
+            print(f"name={name}, workflow={workflow}, wfid_len={wfid_len}, sh_len={sh_len}, sess_hist={sess_hist}, workflows={sess['workflows']}")
+            for hist in sess_hist:
+                table.add_row([name, hist["start_time"], sess["current_state"], workflow, hist["comment"]])
+
+        print(table)
+        return history
 
     def run_stages(self, resume=False):
         if not self.api.activity_exists(self.name):

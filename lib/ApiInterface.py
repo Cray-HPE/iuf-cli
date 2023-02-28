@@ -130,6 +130,13 @@ class ApiInterface(object):
             return api_response
         except:
             raise
+    def get_history(self, activity, payload):
+        api_path = f"/activities/{activity}/history"
+        try:
+            api_response = self.request("GET", api_path)
+            return api_response.json()
+        except:
+            raise
 
     def get_activity_sessions(self, activity):
         api_path = f"/activities/{activity}/sessions"
