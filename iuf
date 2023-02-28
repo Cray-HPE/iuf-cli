@@ -84,19 +84,44 @@ def validate_stages(config):
         except ValueError:
             errors.append("`--concurrency` requires a positive integer argument.")
 
+    bpcd = config.args.get("bootprep_config_dir", None)
+    rvars = config.args.get("recipe_vars", None)
+    bpc_managed = config.args.get("bootprep_config_managed", None)
+    bpc_management = config.args.get("bootprep_config_management", None)
+
     # Check if any of the stages requiring site-vars, etc are being called.
-    # Note that they aren't strictly required in deliver-product, but all
-    # the variables are resolved in that stage.  Further error-checking
-    # related to this is done in SiteConfig.
+    # Further error-checking related to this is done in SiteConfig.
     if any(stage in local_stages for stage in ["update-vcs-config",
         "update-cfs-config"]):
-        if not (config.args.get("site_vars", None) or config.args.get("bootprep_config_dir", None) \
-            or config.args.get("recipe_vars", None)):
+        if not (bpcd or rvars or config.args.get("site_vars", None)):
             errors.append("bootprep or vcs stages were called, but none of "
                           "--site-vars/-sv, --bootprep-config-dir/-bpcd, nor --recipe-vars/-rv "
                           "were specified. At least one of them needs to be specified")
 
-    def check_bootprep_arg(arg_name, stage):
+    # Allow `--bootprep-config-dir` to override some commandline flags if
+    # they were not specified.
+    if bpcd:
+        if not rvars:
+            # `--recipe-vars` was not specified on the commandline.  Allow
+            # The corresponding `bootprep-config-dir` file to override it.
+            rv_path = os.path.join(bpcd, RECIPE_VARS)
+            if os.path.exists(rv_path):
+                config.args["recipe_vars"] = rv_path
+        if not bpc_managed:
+            # `--bootprep-config-managed` was not specified via the
+            # commandline but `bootprep-config-dir` was.  Allow the
+            # `--bootprep-config-dir` option to override it.
+            managed_path = os.path.join(bpcd, "bootprep", BP_CONFIG_MANAGED)
+            if os.path.exists(managed_path):
+                config.args["bootprep_config_managed"] = managed_path
+        if not bpc_management:
+            # Ditto for `bootprep-config-management`.
+            management_path = os.path.join(bpcd, "bootprep", BP_CONFIG_MANAGEMENT)
+            if os.path.exists(management_path):
+                config.args["bootprep_config_management"] = management_path
+
+
+    def check_bootprep_arg(arg_name):
         """Ensure that if a `sat bootprep` config was specified (and the
         stage is being run) it exists.
         """
@@ -138,9 +163,9 @@ def validate_stages(config):
     # Process the `--bootprep-config-dir first.  It's not a fully-implemented option,
     # so it would be better if the fully-supported options were ran later, incase
     # there is any overwritting of files.
-    check_bootprep_arg("bootprep_config_dir", "bootprep-config-dir")
-    check_bootprep_arg("bootprep_config_managed", "managed-nodes-rollout")
-    check_bootprep_arg("bootprep_config_management", "management-nodes-rollout")
+    check_bootprep_arg("bootprep_config_dir")
+    check_bootprep_arg("bootprep_config_managed")
+    check_bootprep_arg("bootprep_config_management")
 
     if errors:
         install_logger.error("Problems were encountered:")
@@ -371,36 +396,35 @@ def main():
     subparsers = parser.add_subparsers(title="subcommands", metavar='{run,activity,list-stages|ls,resume,restart,abort}')
     stage_list = lib.stages.get_stage_help()
 
-    install_sp = subparsers.add_parser("run", description='Run IUF stages to execute install, upgrade and/or deploy operations for a given activity.',
+    run_sp = subparsers.add_parser("run", description='Run IUF stages to execute install, upgrade and/or deploy operations for a given activity.',
         epilog="Valid stages:\n{}".format(stage_list),
         formatter_class=argparse.RawTextHelpFormatter)
 
-    install_sp.add_argument("-b", "--begin-stage", action="store",
+    run_sp.add_argument("-b", "--begin-stage", action="store",
         help="The first stage to execute. Defaults to process-media")
 
-    install_sp.add_argument("-e", "--end-stage", action="store",
+    run_sp.add_argument("-e", "--end-stage", action="store",
         help="The last stage to execute.  Defaults to post-install-check")
 
-    install_sp.add_argument("-r", "--run-stages", nargs="+", action="store",
+    run_sp.add_argument("-r", "--run-stages", nargs="+", action="store",
         help="Run the specified stages only. This argument is not compatible with `-b`, `-e`, or `-s`.")
 
-    install_sp.add_argument("-s", "--skip-stages", nargs="+", action="store",
+    run_sp.add_argument("-s", "--skip-stages", nargs="+", action="store",
         help="Skip the execution of the specified stages.")
 
-    install_sp.add_argument("-F", "--force", action="store", default=False,
-        #help="Force re-execution of stage operations.")
-        help=argparse.SUPPRESS)
+    run_sp.add_argument("-f", "--force", action="store_true", default=False,
+        help="Force re-execution of stage operations.")
 
-    install_sp.add_argument("-bc", "--bootprep-config-managed", action="store",
+    run_sp.add_argument("-bc", "--bootprep-config-managed", action="store",
         help="""`sat bootprep` config file for managed (compute and
         application) nodes.  Note the path is relative to $PWD, unless an
         absolute path is specified.""")
 
-    install_sp.add_argument("-bm", "--bootprep-config-management", action="store",
+    run_sp.add_argument("-bm", "--bootprep-config-management", action="store",
         help="""`sat bootprep` config file for management NCNs.  Note the
         path is relative to $PWD, unless an absolute path is specified.""")
 
-    install_sp.add_argument("-bpcd", "--bootprep-config-dir", action="store",
+    run_sp.add_argument("-bpcd", "--bootprep-config-dir", action="store",
         help="""Directory containing HPE `product_vars.yaml` and
         `sat bootprep` configuration files. The expected content is:
             $(BOOTPREP_CONFIG_DIR)/product_vars.yaml
@@ -408,47 +432,47 @@ def main():
             $(BOOTPREP_CONFIG_DIR)/bootprep/management-bootprep.yaml
         Note the path is relative to $PWD, unless an absolute path is specified.""")
 
-    install_sp.add_argument("-rv", "--recipe-vars", action="store",
+    run_sp.add_argument("-rv", "--recipe-vars", action="store",
         help="""Path to a recipe variables YAML file. HPE provides the
         `product_vars.yaml` recipe variables file with each release. Note
         the path is relative to $PWD, unless an absolute path is specified.""")
 
-    install_sp.add_argument("-sv", "--site-vars", action="store", default=False,
+    run_sp.add_argument("-sv", "--site-vars", action="store", default=False,
         help="""Path to a site variables YAML file. This file allows the user to override values defined in
         the recipe variables YAML file. Defaults to ${RBD_BASE_DIR}/${IUF_ACTIVITY}/site_vars.yaml.
         Note the path is relative to $PWD, unless an absolute path is specified.""")
 
-    install_sp.add_argument("-mrs", "--managed-rollout-strategy", action="store",
+    run_sp.add_argument("-mrs", "--managed-rollout-strategy", action="store",
         choices=["reboot", "stage"],
         default="stage",
         help="""Method to update the managed nodes. Accepted values are 'reboot' (reboot nodes _now_) or
         'stage' (set up nodes to reboot into new image after next WLM job). Defaults to 'stage'.""")
 
-    install_sp.add_argument("-cmrp", "--concurrent-management-rollout-percentage",
+    run_sp.add_argument("-cmrp", "--concurrent-management-rollout-percentage",
         action="store", default=20, type=int,
         help="""Limit the number of management nodes that roll out
         concurrently based on the percentage specified. Must be an integer
         between 1-100. Defaults to 20 (percent).""")
 
-    install_sp.add_argument("--limit-managed-rollout", action="store",
+    run_sp.add_argument("--limit-managed-rollout", action="store",
             nargs='+', default=["Compute"],
        help="""Override list used to target specific nodes only when rolling out
        managed nodes.  Arguments should be xnames or HSM node groups.
        Defaults to the Compute role.""")
 
-    install_sp.add_argument("--limit-management-rollout", action="store", nargs='+',
+    run_sp.add_argument("--limit-management-rollout", action="store", nargs='+',
         default=["Management_Worker"],
         help="""Override list used to target specific role_subrole(s) only when rolling out management nodes.
         Defaults to the Management_Worker role.""")
 
-    install_sp.add_argument("-mrp", "--mask-recipe-prods", action="store", nargs='+',
+    run_sp.add_argument("-mrp", "--mask-recipe-prods", action="store", nargs='+',
         help="""If `--recipe-vars` is specified, mask the versions found within the recipe variables YAML
         file for the specified products, such that the largest version of the package already installed on
         the system (found in the product catalog) is used instead of the version supplied in the HPC CSM
         Software Recipe. Note that the versions found via `--site-vars` (or the versions being installed)
         will override it as well.""")
 
-    install_sp.set_defaults(func=process_install, skip_stages=list(), run_stages=list())
+    run_sp.set_defaults(func=process_install, skip_stages=list(), run_stages=list())
 
     list_sp = subparsers.add_parser("list-stages", description='List IUF stage information and status for a given activity specified via `-a`.', aliases=["ls"])
     list_sp.set_defaults(func=process_list)
@@ -459,6 +483,9 @@ def main():
 
     restart_sp = subparsers.add_parser("restart", description='Restart a previously aborted or failed IUF session for a given activity.')
     restart_sp.set_defaults(func=process_restart)
+    restart_sp.add_argument("-f", "--force", action="store_true",
+        help="""Force all operations to be re-executed irrespective if they
+        have been successful in the past.""")
     restart_sp.add_argument("comment", action="store", nargs="*", help=argparse.SUPPRESS)
 
     abort_sp = subparsers.add_parser("abort", description='Abort an IUF session for a given activity after the current stage completes.')
