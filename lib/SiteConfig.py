@@ -78,8 +78,8 @@ class SiteConfig():
         self.session_vars = {}
         self.pre_rendered = {}
         self.rendered = {}
-        self.bp_managed = ""
-        self.bp_management = ""
+        self.bp_managed = config.args.get("bootprep_config_managed")
+        self.bp_management = config.args.get("bootprep_config_management")
         self.product_catalog = {}
         self.mask_recipe_prods = []
         self.state_dir = config.args.get("state_dir")
@@ -91,6 +91,7 @@ class SiteConfig():
         self.printed_sv_msg = False
 
         errors = []
+
         # Get the product catalog as the base layer.
         full_product_catalog = get_product_catalog(config, all_products=True)
         for prod in full_product_catalog:
@@ -197,7 +198,7 @@ class SiteConfig():
     def organize_merge(self):
         """Merge the dictionaries in the following order:
             1.  Product Catalog
-            2.  recipe_vars <==>product_vars
+            2.  recipe_vars <==> product_vars
             3.  site_vars – customer/site info
             4.  session_vars – What we get from process-media
 
@@ -207,7 +208,6 @@ class SiteConfig():
             from their original state are self.rendered and
             self.pre_rendered.
         """
-
         # 1. The product catalog
         self.pre_rendered = copy.deepcopy(self.product_catalog)
 
