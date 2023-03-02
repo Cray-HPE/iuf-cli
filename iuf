@@ -33,6 +33,7 @@ import os
 import shutil
 import signal
 import sys
+import time
 import traceback
 
 from lib.vars import *
@@ -570,26 +571,35 @@ def main():
     if config.args["write_input_file"]:
         configfile.write(config.args)
 
+    def try_print(txt):
+        while True:
+            try:
+                print(txt)
+                break
+            except RuntimeError:
+                time.sleep(.25)
+
 
     def process_ctrl_c(sig, frameg):
         """Override a ctrl-c interrupt."""
         global already_answered, answer_text
 
         if already_answered and answer_text:
-            print(answer_text)
+            try_print(answer_text)
             return
 
         proccessing_interrupt = True
         activity = config.args.get("activity", None)
         script_name = sys.argv[0]
-        print("Would you like to abort this run?")
-        print("    Enter Y, y, or yes to abort after the current stage completes.")
-        print("    Enter F, f, or force to abort the current stage immediately.")
-        print("    Enter D, d, or disconnect to exit the IUF CLI.  The install will continue in the background, however no logs will be collected.")
-        print("")
-        print("    Enter <return> to resume monitoring.")
-        print("    NOTE: The IUF CLI will remain connected until Argo completes the abort process.  Use the disconnect option to exit the IUF CLI immediately.")
-        print("    NOTE: All logging will be suspended when disconnected.")
+
+        try_print("Would you like to abort this run?")
+        try_print("    Enter Y, y, or yes to abort after the current stage completes.")
+        try_print("    Enter F, f, or force to abort the current stage immediately.")
+        try_print("    Enter D, d, or disconnect to exit the IUF CLI.  The install will continue in the background, however no logs will be collected.")
+        try_print("")
+        try_print("    Enter <return> to resume monitoring.")
+        try_print("    NOTE: The IUF CLI will remain connected until Argo completes the abort process.  Use the disconnect option to exit the IUF CLI immediately.")
+        try_print("    NOTE: All logging will be suspended when disconnected.")
 
         literal_answer = get_answer()
         answer = literal_answer.lower()
@@ -597,18 +607,18 @@ def main():
         if answer in ["y", "yes"]:
             answer_text = "Aborting after the current stage completes."
             if not already_answered:
-                print(answer_text)
+                try_print(answer_text)
                 already_answered = True
                 process_abort(config)
 
         elif answer in ["d", "disconnect"]:
             answer_text = "Attempting to exit the CLI cleanly."
-            print(answer_text)
+            try_print(answer_text)
             if not already_answered:
                 already_answered = True
                 config.activity.abort_activity(background_only=True)
-                print(f"Use `{script_name} -a {activity} resume` to re-connect")
-                print("Bye!")
+                try_print(f"Use `{script_name} -a {activity} resume` to re-connect")
+                try_print("Bye!")
                 sys.exit(0)
 
         elif answer in ["f", "force"]:
@@ -616,11 +626,11 @@ def main():
             already_answered = True
             config.args["force"] = True
             config.activity.abort_activity()
-            print("Bye!")
+            try_print("Bye!")
             sys.exit(0)
 
         else:
-            print("Continuing...")
+            try_print("Continuing...")
         sys.stdout.flush()
 
     signal.signal(signal.SIGINT, process_ctrl_c)
