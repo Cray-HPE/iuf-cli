@@ -172,6 +172,9 @@ class Stages():
         return_str = []
 
         for elt in self.stage_hist.summary:
+            # we're not adding this anymore, but it can still exist in older stage.yaml files
+            if elt == "ran_stages":
+                continue
             return_str.append("{}: {}".format(elt.replace("_", " "), self.stage_hist.summary[elt]))
 
         # Insert a header if there is any history.
@@ -239,8 +242,6 @@ class Stages():
 
             # Print the status and duration if status was specified.
             if status:
-                ran = self.stage_hist._status[stage]["ran"]
-                succeeded = self.stage_hist._status[stage]["succeeded"]
                 duration = self.stage_hist._status[stage]["duration"]
                 if duration == None:
                     duration = "N/A"
@@ -259,14 +260,6 @@ class Stages():
         config.logger.info(f"      IUF STAGE: {stage}")
         config.logger.info(f"  ARGO WORKFLOW: {workflow}")
         utime = config.activity.state(state="in_progress", status="Running", sessionid=workflow, comment=f"Run {stage}")
-
-        # Add "run_stages" and "args" to the stage summary.
-        if "ran_stages" in self.stage_hist.summary:
-            ran_stages = self.stage_hist.summary["ran_stages"].split()
-            if stage not in ran_stages:
-                self.stage_hist.summary["ran_stages"] += " {}".format(stage)
-        else:
-            self.stage_hist.summary["ran_stages"] = stage
 
         # Execute the stage.
         failed = True
