@@ -70,6 +70,32 @@ ACTIVITY_VALID_STATUS = [
     'n/a'
 ]
 
+def list_activity():
+    """
+    List an activity.  This is done outside the activity class so
+    a user can list activities without having to specify an activity.
+    """
+    api = lib.ApiInterface.ApiInterface()
+    activities = api.get_activities().json()
+
+    table = PrettyTable()
+    table.field_names = ["Activity Name", "State", "Stages"]
+
+    for act in activities:
+        stage_list = act["input_parameters"]["stages"]
+
+        if stage_list:
+            stage_str = ", ".join(stage_list)
+        else:
+            stage_str = ""
+        if len(stage_str) > 77:
+            stage_str = stage_str[:77] + "..."
+        table.add_row([act["name"], act["activity_state"], stage_str])
+    table.align = 'l'
+
+    return table.get_string()
+
+
 class Activity():
     config = None
     states = None
