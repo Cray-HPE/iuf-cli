@@ -25,6 +25,9 @@ from collections import OrderedDict
 import logging
 
 import os
+
+import threading
+
 class VMConnectionException(Exception):
     """A pass-through class."""
 
@@ -138,6 +141,7 @@ MEDIA_VERSIONS = "media_versions.yaml"
 BP_CONFIG_MANAGED = "compute-and-uan-bootprep.yaml"
 BP_CONFIG_MANAGEMENT = "management-bootprep.yaml"
 
+RLOCK = threading.RLock()
 
 # RBD/media/state/activity dir defaults
 RBD_BASE_DIR = "/etc/cray/upgrade/csm"
