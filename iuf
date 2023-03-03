@@ -353,8 +353,9 @@ def main():
         Activity names must contain only lowercase letters (a-z), numbers (0-9), periods (.), and dashes (-).
         Can also be set via the IUF_ACTIVITY environment variable.""")
 
-    concurrency_help = """Run Argo processes concurrently. Defaults to a fully concurrent model. To
-    use at most N threads, specify `concurrency N`."""
+    concurrency_help = """During stage processing Argo runs workflow steps in parallel.
+        By default up to 10 steps will be excuted simultaneously.  Use `--concurrency N` 
+        to decrease the limit to N.   Increasing this limit is not recommended."""
     parser.add_argument("-c", "--concurrency", action="store", default=None,
         help=concurrency_help)
 
