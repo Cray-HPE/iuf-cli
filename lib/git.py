@@ -370,8 +370,8 @@ class Git:
         try:
             result = self.connection.sudo(fullcommand, env=self.env, quiet=quiet, dryrun=dryrun)
         except RunException as err:
-            install_logger.error("git command failed: {}.".format(fullcommand))
-            install_logger.error("         Error was: {}".format(err.stderr))
+            install_logger.debug("git command failed: {}.".format(fullcommand))
+            install_logger.debug("         Error was: {}".format(err.stderr))
             raise
 
         return result

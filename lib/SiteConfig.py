@@ -237,7 +237,7 @@ class SiteConfig():
                     # If that changes, we could get a lot more elaborate and check
                     # for integration and master branches.
                     co_branch = branches[0]
-                    install_logger.warning(f"Couldn't find a versioned branch for {repo}.  Assuming branch {co_branch}.")
+                    install_logger.debug(f"Couldn't find a versioned branch for {repo}.  Assuming branch {co_branch}.")
                 self.git.checkout("hpc-csm-software-recipe", co_branch)
 
                 recipe_file = os.path.join(clone_loc, RECIPE_VARS)
@@ -251,12 +251,12 @@ class SiteConfig():
                     msg = (f"Could not find vcs/{RECIPE_VARS} on branch {co_branch} within "
                            f"the {repo} repo. If one is desired, it can be specified with the "
                            "`--bootprep-config-dir` or `--recipe-vars` arguments.")
-                    install_logger.warning(formatted(msg))
+                    install_logger.debug(formatted(msg))
             except Exception as e:
                 msg = (f"Could not find vcs/{RECIPE_VARS} within the "
                 f"{repo} repo. If one is desired, it can be specified with the "
                 "`--bootprep-config-dir` or `--recipe-vars` arguments.")
-                install_logger.warning(formatted(msg))
+                install_logger.debug(formatted(msg))
                 pass
 
         if self.recipe_vars:
