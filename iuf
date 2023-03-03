@@ -55,7 +55,6 @@ import yaml
 
 install_logger = get_install_logger()
 
-
 def validate_stages(config):
     """Validate that all of the various stage related args passed in are valid"""
 
@@ -313,11 +312,14 @@ def get_answer():
     """Read input and handle related exceptions."""
     answer = ""
     try:
+        RLOCK.acquire()
         answer = input()
-    except RuntimeError:
+    except (RuntimeError, EOFError):
         # ctrl-c is being pressed repeatedly. Return anything except the
         # allowed answers.
         answer = "Invalid"
+    finally:
+        RLOCK.release()
     return answer
 
 # Interrupt variables
@@ -572,12 +574,10 @@ def main():
         configfile.write(config.args)
 
     def try_print(txt):
-        while True:
-            try:
-                print(txt)
-                break
-            except RuntimeError:
-                time.sleep(.25)
+        RLOCK.acquire()
+        print(txt)
+        sys.stdout.flush()
+        RLOCK.release()
 
 
     def process_ctrl_c(sig, frameg):
@@ -631,7 +631,6 @@ def main():
 
         else:
             try_print("Continuing...")
-        sys.stdout.flush()
 
     signal.signal(signal.SIGINT, process_ctrl_c)
 
