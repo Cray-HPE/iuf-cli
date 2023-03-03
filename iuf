@@ -275,6 +275,11 @@ def process_abort(config):
     activity_name = config.activity.abort_activity()
     install_logger.info(f"Aborted activity {activity_name}")
 
+
+def process_list_activity(config):
+    activities = lib.Activity.list_activity()
+    print(activities)
+
 def update_logger_config(config):
     """
     Sets the static CmdInterface interface to "dryrun" mode
@@ -357,6 +362,44 @@ def print_extra_summary(config):
                 print("")
                 for hint in list(dict.fromkeys(log_hints)):
                     print("  ", hint)
+
+
+def initialization(config, args):
+    """Config/Activity-specific initilization."""
+
+    # Convert the args to a dict, and use that rather than the argparse
+    # object.  This is so that we have a dictionary of all options, so that
+    # we can more easily determine which values can be passed via an input
+    # deck.
+
+    config.args = vars(args)
+    process_debug_level(config)
+    update_logger_config(config)
+    install_logger.debug(config.args)
+
+    config_error = False
+
+    if not lib.Activity.valid_activity_name(args.activity):
+        install_logger.error(f"Activity {args.activity} invalid. Names must only contain lowercase letters, numbers, periods, and dashes")
+        config_error = True
+
+    if len(sys.argv) < 2:
+        install_logger.error("{} requires at least 1 argument".format(sys.argv[0]))
+        config_error = True
+
+    if config_error:
+        parser.print_help(sys.stderr)
+        sys.exit(1)
+
+    config.stages = lib.stages.Stages(stage_dict=STAGE_DICT, state_dir=config.args["state_dir"])
+    validate_stages(config)
+
+    atexit.register(log_state_files, config)
+    atexit.register(print_extra_summary, config)
+
+    if config.args["write_input_file"]:
+        configfile.write(config.args)
+
 
 def get_answer():
     """Read input and handle related exceptions."""
@@ -563,6 +606,9 @@ def main():
 
     activity_sp.set_defaults(func=process_activity)
 
+    list_activity_sp = subparsers.add_parser("list-activities")
+    list_activity_sp.set_defaults(func=process_list_activity)
+
     # create a config object to store all of the configured options in the parser
     configfile = ConfigFile()
     configfile.load_parser_defaults(parser)
@@ -586,44 +632,12 @@ def main():
     # parse the command line for real
     args = parser.parse_args()
 
-    # Check this before we do anything else so we get a reasonable error message
-    if not args.activity:
-        print("ERROR: --activity is required.")
-        parser.print_help(sys.stderr)
-        sys.exit(1)
-
-    # Convert the args to a dict, and use that rather than the argparse
-    # object.  This is so that we have a dictionary of all options, so that
-    # we can more easily determine which values can be passed via an input
-    # deck.
-    config.args = vars(args)
-
-    process_debug_level(config)
-    update_logger_config(config)
-    install_logger.debug(config.args)
-
-    config_error = False
-
-    if not lib.Activity.valid_activity_name(args.activity):
-        install_logger.error(f"Activity {args.activity} invalid. Names must only contain lowercase letters, numbers, periods, and dashes")
-        config_error = True
-
-    if len(sys.argv) < 2:
-        install_logger.error("{} requires at least 1 argument".format(sys.argv[0]))
-        config_error = True
-
-    if config_error:
-        parser.print_help(sys.stderr)
-        sys.exit(1)
-
-    config.stages = lib.stages.Stages(stage_dict=STAGE_DICT, state_dir=config.args["state_dir"])
-    validate_stages(config)
-
-    atexit.register(log_state_files, config)
-    atexit.register(print_extra_summary, config)
-
-    if config.args["write_input_file"]:
-        configfile.write(config.args)
+    if args.func not in [process_list_activity]:
+        initialization(config, args)
+        if not args.activity:
+            print("ERROR: --activity is required.")
+            parser.print_help(sys.stderr)
+            sys.exit(1)
 
     def try_print(txt):
         RLOCK.acquire()
