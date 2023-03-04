@@ -307,6 +307,56 @@ def log_state_files(config):
         if os.path.exists(config.stages_file):
             shutil.copy2(config.stages_file, logdir)
 
+def print_extra_summary(config):
+    if not hasattr(config, "args"):
+        return
+    log_dir_base = config.args["log_dir"]
+    install_log = os.path.join(log_dir_base, config.timestamp, "install.log")
+
+    log_hints = []
+    error_messages = []
+    artifacts = []
+
+    if os.path.exists(install_log):
+        with open(install_log, "r") as fhandle:
+            lines = fhandle.readlines()
+            for line in lines:
+                if "ERROR" in line or "INFO" in line:
+                    try:
+                        timestamp, level, msg = line.strip().split(" ", 2)
+                        message = msg.strip()
+                        if level == "ERROR":
+                            if message.startswith("FINISHED"):
+                                continue
+                            error_messages.append(message)
+                        if level == "INFO":
+                            if "Logs from the failed" in message:
+                                log_hints.append(message)
+                            if message.startswith("Successfully created CFS configuration "):
+                                artifacts.append(message)
+                            if message.startswith("Successfully created BOS session template "):
+                                artifacts.append(message)
+                            if message.startswith("Creation of image "):
+                                artifacts.append(message)
+                    except:
+                        pass
+
+        if len(artifacts) > 0:
+            print("")
+            print("Artifacts created:")
+            for artifact in list(dict.fromkeys(artifacts)):
+                print("  ", artifact)
+
+        if len(error_messages) > 0:
+            print("")
+            print("Error Summary:")
+            for message in list(dict.fromkeys(error_messages)):
+                print("  ", message)
+
+            if len(log_hints) > 0:
+                print("")
+                for hint in list(dict.fromkeys(log_hints)):
+                    print("  ", hint)
 
 def get_answer():
     """Read input and handle related exceptions."""
@@ -570,6 +620,7 @@ def main():
     validate_stages(config)
 
     atexit.register(log_state_files, config)
+    atexit.register(print_extra_summary, config)
 
     if config.args["write_input_file"]:
         configfile.write(config.args)
