@@ -25,6 +25,7 @@
 from xml.sax.handler import property_declaration_handler
 import yaml
 import os
+import copy
 import datetime
 from dateutil import parser
 from prettytable import PrettyTable
@@ -731,7 +732,7 @@ class Activity():
             self.site_conf.manage_session_vars(session_vars, write=True)
 
         # Generate site_parameters and patch the activity.
-        patched_payload = payload
+        patched_payload = copy.deepcopy(payload)
         patched_payload["site_parameters"] = self.site_conf.site_params
 
         # Remove the "force" key from input_parameters for the patched
