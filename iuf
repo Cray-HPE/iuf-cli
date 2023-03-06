@@ -120,6 +120,13 @@ def validate_stages(config):
             if os.path.exists(management_path):
                 config.args["bootprep_config_management"] = management_path
 
+    if "mask_recipe_prods" in config.args:
+        mrp_type = type(config.args["mask_recipe_prods"]).__name__
+        if mrp_type != "list":
+            # This shouldn't happen via the commandline, but can happen when
+            # specifying the argument via the input file ('-i/--input-file).
+            errors.append(f"-mrp/--mask-recipe-prods requires a list, but the argument was passed as {mrp_type}")
+
 
     def check_bootprep_arg(arg_name):
         """Ensure that if a `sat bootprep` config was specified (and the
