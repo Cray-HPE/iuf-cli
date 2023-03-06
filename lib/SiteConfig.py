@@ -192,8 +192,8 @@ class SiteConfig():
             for prod in self.mask_recipe_prods:
                 # Remove the products specified in `--mask-recipe-prods` from
                 # recipe_vars.
-                self.recipe_vars.pop(prod, None)
-
+                if "version" in self.recipe_vars[prod]:
+                    self.recipe_vars[prod].pop("version")
 
     def organize_merge(self):
         """Merge the dictionaries in the following order:
@@ -292,7 +292,7 @@ class SiteConfig():
             yaml.dump(self.rendered, fhandle)
 
     def update_dict_stack(self, stage):
-        deliver_stage = self.stage_enum["update-vcs-config"]
+        vcs_stage = self.stage_enum["update-vcs-config"]
         if stage in self.stage_enum:
             stage_index = self.stage_enum[stage]
         else:
@@ -301,7 +301,7 @@ class SiteConfig():
             the dictionary stack; but the larger problem is probably the
             unknown {stage} stage."""
             install_logger.warning(msg)
-        if stage_index >= deliver_stage:
+        if stage_index >= vcs_stage:
             self.organize_merge()
             self.manage_session_vars(self.session_vars)
 
