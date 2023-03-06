@@ -120,7 +120,7 @@ def validate_stages(config):
             if os.path.exists(management_path):
                 config.args["bootprep_config_management"] = management_path
 
-    if "mask_recipe_prods" in config.args:
+    if "mask_recipe_prods" in config.args and config.args["mask_recipe_prods"]:
         mrp_type = type(config.args["mask_recipe_prods"]).__name__
         if mrp_type != "list":
             # This shouldn't happen via the commandline, but can happen when
