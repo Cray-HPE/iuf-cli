@@ -139,6 +139,13 @@ class ApiInterface(object):
         except:
             raise
 
+    def get_activities(self):
+        api_path = f"/activities"
+        try:
+            api_response = self.request("GET", api_path)
+            return api_response
+        except:
+            raise
     def get_activity_session(self, activity, session):
         api_path = f"/activities/{activity}/sessions/{session}"
         try:
@@ -146,4 +153,4 @@ class ApiInterface(object):
             return api_response
         except:
             raise
-        
+
