@@ -78,23 +78,9 @@ def list_activity():
     """
     api = lib.ApiInterface.ApiInterface()
     activities = api.get_activities().json()
+    act_list = sorted([act["name"] for act in activities])
 
-    table = PrettyTable()
-    table.field_names = ["Activity Name", "State", "Stages"]
-
-    for act in activities:
-        stage_list = act["input_parameters"]["stages"]
-
-        if stage_list:
-            stage_str = ", ".join(stage_list)
-        else:
-            stage_str = ""
-        if len(stage_str) > 77:
-            stage_str = stage_str[:77] + "..."
-        table.add_row([act["name"], act["activity_state"], stage_str])
-    table.align = 'l'
-
-    return table.get_string()
+    return "\n".join(act_list)
 
 
 class Activity():
