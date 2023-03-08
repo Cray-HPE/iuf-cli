@@ -30,6 +30,7 @@ import datetime
 from dateutil import parser
 from prettytable import PrettyTable
 import re
+import requests
 import sys
 import time
 import lib.ApiInterface
@@ -583,7 +584,9 @@ class Activity():
             self.config.logger.debug(f"sending an abort, background_only={background_only}, payload={payload}")
             self.api.abort_activity(self.name, payload)
             self.podlogs.collect_threads()
-
+        except requests.ReadTimeout:
+            self.config.logger.warning(f"Timed out sending an abort request.")
+            self.config.logger.warning(f"Ensure the argo workflow for {self.name} is not running.")
         except Exception as ex:
             self.config.logger.error(f"Unable to abort activity {self.name}: {ex}")
             raise
