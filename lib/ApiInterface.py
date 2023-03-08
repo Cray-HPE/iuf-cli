@@ -38,7 +38,7 @@ class ApiInterface(object):
         except:
             return False
 
-    def request(self, method, path, payload=None):
+    def request(self, method, path, payload=None, timeout=None):
         method = method.upper()
         assert method in ['GET', 'HEAD', 'DELETE', 'POST', 'PUT',
                           'PATCH', 'OPTIONS']
@@ -59,9 +59,9 @@ class ApiInterface(object):
         method_func = method.lower()
         try:
             if payload:
-                result = getattr(requests, method_func)(url, headers=headers, json=payload, verify=False)
+                result = getattr(requests, method_func)(url, headers=headers, json=payload, verify=False, timeout=timeout)
             else:
-                result = getattr(requests, method_func)(url, headers=headers, verify=False)
+                result = getattr(requests, method_func)(url, headers=headers, verify=False, timeout=timeout)
         except:
             raise
 
@@ -82,8 +82,10 @@ class ApiInterface(object):
     def abort_activity(self, activity, payload):
         api_path = f"/activities/{activity}/history/abort"
         try:
-            api_response = self.request("POST", api_path, payload)
-        except:
+            api_response = self.request("POST", api_path, payload, timeout=90)
+        except requests.ReadTimeout as exc:
+            raise exc
+        except Exception as ex:
             raise
 
     def post_resume(self, activity, payload):
