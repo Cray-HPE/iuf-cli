@@ -497,7 +497,7 @@ def main():
     # are fully independent; for example, we have an unpack stage, and an
     # install stage.  The install stage needs to install what was unpacked.
 
-    subparsers = parser.add_subparsers(title="subcommands", metavar='{run,activity,list-stages|ls,resume,restart,abort}')
+    subparsers = parser.add_subparsers(title="subcommands", metavar='{run,activity,list-stages|ls,resume,restart,abort,list-activities|la}')
     stage_list = lib.stages.get_stage_help()
 
     run_sp = subparsers.add_parser("run", description='Run IUF stages to execute install, upgrade and/or deploy operations for a given activity.',
@@ -613,7 +613,8 @@ def main():
 
     activity_sp.set_defaults(func=process_activity)
 
-    list_activity_sp = subparsers.add_parser("list-activities")
+    list_activity_sp = subparsers.add_parser("list-activities",
+        description="List all IUF activities stored in argo.", aliases=["la"])
     list_activity_sp.set_defaults(func=process_list_activity)
 
     # create a config object to store all of the configured options in the parser
