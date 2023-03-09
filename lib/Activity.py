@@ -31,6 +31,7 @@ from dateutil import parser
 from prettytable import PrettyTable
 import re
 import requests
+import shutil
 import sys
 import time
 import lib.ApiInterface
@@ -105,7 +106,18 @@ class Activity():
         self.site_conf = None
         self.config = config
         if os.path.exists(filename):
-            self.load_activity_dict(filename)
+            try:
+                self.load_activity_dict(filename)
+            except (IndexError, TypeError):
+
+                for index in range(1000):
+                    backup_file = f"{filename}.{index}"
+                    if not os.path.exists(backup_file):
+                        break
+                self.config.logger.debug(f"Activity file {filename} seems corrupt.\n"
+                                         f"Backing it up to {backup_file} and creating a new one.")
+                shutil.copyfile(filename, backup_file)
+                self.write_activity_dict()
 
             if self.name != name:
                 raise ActivityError(f"{filename} contains the activity {self.name}, but {name} was specified.")
