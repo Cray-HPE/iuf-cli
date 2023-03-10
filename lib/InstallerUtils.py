@@ -141,7 +141,7 @@ def get_product_catalog(config, all_products=False):
 
 
 
-def elapsed_time(start_time):
+def elapsed_time(start_time, to_str=True):
     """
     return elapsed time in H:M:S format
     """
@@ -149,4 +149,7 @@ def elapsed_time(start_time):
     seconds_waited = int(dt_diff.total_seconds())
     time_waited = str(datetime.timedelta(seconds=seconds_waited))
 
-    return time_waited
+    if to_str:
+        return time_waited
+    else:
+        return seconds_waited
