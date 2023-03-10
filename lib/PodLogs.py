@@ -33,6 +33,7 @@ from urllib3.exceptions import ReadTimeoutError as ReadTimeoutError
 from kubernetes import client, watch
 from kubernetes import config as kubeconfig
 
+from lib.InstallerUtils import elapsed_time
 from lib.InstallLogger import get_install_logger
 install_logger = get_install_logger(__name__)
 
@@ -184,7 +185,7 @@ class PodLogs():
         log_name = os.path.join(self._log_dir, f"{pod}-{container}.txt")
         fhandle = open(log_name, 'w', encoding='UTF-8')
         start_poll = datetime.datetime.now()
-
+        last_read = None
         while True:
             try:
                 watcher = watch.Watch()
@@ -193,8 +194,16 @@ class PodLogs():
                     "follow": True,
                     "timestamps": True,
                     "pretty": True,
-                    "_request_timeout": 5
+                    "_request_timeout": 30
                 }
+                if last_read:
+                    seconds_back = elapsed_time(last_read, to_str=False)
+                    # Dont set watch_kwargs["seconds_since"] to 0.  It causes
+                    # an exception on the backend, and will always be 0.
+                    if seconds_back > 0:
+                        watch_kwargs["since_seconds"] = seconds_back
+                    else:
+                        watch_kwargs["since_seconds"] = 1
                 for event in watcher.stream(self.core.read_namespaced_pod_log,
                                             name=pod, namespace='argo', **watch_kwargs):
                     for level, stdoutline, logline in parse_str(event):
@@ -212,6 +221,7 @@ class PodLogs():
                         if st_event.is_set():
                             watcher.stop()
                             return
+                last_read = datetime.datetime.now()
                 watcher.stop()
                 break
 
@@ -223,10 +233,12 @@ class PodLogs():
                 if polled_seconds >= POLL_LOGS:
                     install_logger.warning(f"Giving up following the log for pod {pod}!")
                     return
+                last_read = datetime.datetime.now()
                 time.sleep(.5)
             except ReadTimeoutError:
                 # Timed out reading in the watcher.stream(...).  The
                 # timeout is low, so just continue.
+                last_read = datetime.datetime.now()
                 continue
 
             if st_event.is_set():
