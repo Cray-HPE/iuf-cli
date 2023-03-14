@@ -138,6 +138,8 @@ class PodLogs():
             msg_re = re.compile(r'msg="(.+?)"') # non-greedy re
             generic_re = re.compile("(.*Z) ([A-Z]+):* (.*)")
             time_re = re.compile(r'(^\d{4}\-\d{2}\-\d{2}.*Z) ')
+            erroreq_re = re.compile(r'error="(.+?)"')
+            errorloft_re = re.compile("(.*Z) ERR (.*)")
 
             for line in lines:
                 generic_match = generic_re.search(line)
@@ -173,6 +175,28 @@ class PodLogs():
                 else:
                     # Assume debug
                     level = 'DEBUG'
+
+                error_match = erroreq_re.search(line)
+                if error_match:
+                    # if we match this expression it's an error from loftsman/helm
+                    msg = error_match.group(1)
+                    level = 'ERROR'
+                    if time:
+                        outlines.append((level, f"{msg}", f"{time} {level} {msg}"))
+                    else:
+                        outlines.append((level, f"{msg}", f"{level} {msg}"))
+                    continue
+
+                errorloft_match = errorloft_re.search(line)
+                if errorloft_match:
+                    # if we match this expression it's an error from loftsman/helm
+                    time = errorloft_match.group(1)
+                    msg = errorloft_match.group(2)
+
+                    level = 'ERROR'
+                    outlines.append((level, f"{msg}", f"{time} {level} {msg}"))
+
+                    continue
 
                 msg_match = msg_re.search(line)
                 if msg_match:
