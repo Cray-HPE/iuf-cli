@@ -138,10 +138,36 @@ class PodLogs():
             msg_re = re.compile(r'msg="(.+?)"') # non-greedy re
             generic_re = re.compile("(.*Z) ([A-Z]+):* (.*)")
             time_re = re.compile(r'(^\d{4}\-\d{2}\-\d{2}.*Z) ')
-            erroreq_re = re.compile(r'error="(.+?)"')
-            errorloft_re = re.compile("(.*Z) ERR (.*)")
+            erroreq_re = re.compile('error="(.*)"')
+            loftsman_re = re.compile("(.*?Z) (.*?Z) ([A-Z]{3})\s+(.*)")
+            ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
-            for line in lines:
+            for rawline in lines:
+                # loftsman and helm have colors in their log output.  Strip
+                line = ansi_escape.sub('', rawline)
+
+                loftsman_match = loftsman_re.search(line)
+                if loftsman_match:
+                    # if we match this expression it's an error from loftsman/helm
+                    time = loftsman_match.group(1)
+                    msg = loftsman_match.group(4)
+                    severity = loftsman_match.group(3)
+
+                    if severity == "ERR":
+                        level = "ERROR"
+                        # some loftsman errors are "ERR error=<real message>", get rid of the redundant "error="
+                        quotederr = erroreq_re.search(msg)
+                        if quotederr:
+                            msg = quotederr.group(1)
+                    elif severity == "INF":
+                        level = "DEBUG"
+                    else:
+                        # obviously redundant, but some day INF will become INFO
+                        level = "DEBUG"
+
+                    outlines.append((level, f"{msg}", f"{time} {level} {msg}"))
+                    continue
+
                 generic_match = generic_re.search(line)
                 if generic_match:
                     # The most obvious INFO line.  Example:
@@ -175,28 +201,6 @@ class PodLogs():
                 else:
                     # Assume debug
                     level = 'DEBUG'
-
-                error_match = erroreq_re.search(line)
-                if error_match:
-                    # if we match this expression it's an error from loftsman/helm
-                    msg = error_match.group(1)
-                    level = 'ERROR'
-                    if time:
-                        outlines.append((level, f"{msg}", f"{time} {level} {msg}"))
-                    else:
-                        outlines.append((level, f"{msg}", f"{level} {msg}"))
-                    continue
-
-                errorloft_match = errorloft_re.search(line)
-                if errorloft_match:
-                    # if we match this expression it's an error from loftsman/helm
-                    time = errorloft_match.group(1)
-                    msg = errorloft_match.group(2)
-
-                    level = 'ERROR'
-                    outlines.append((level, f"{msg}", f"{time} {level} {msg}"))
-
-                    continue
 
                 msg_match = msg_re.search(line)
                 if msg_match:
