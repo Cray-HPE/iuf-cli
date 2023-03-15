@@ -51,8 +51,6 @@ pipeline {
         NAME = getRepoName()
         VERSION = sh(returnStdout: true, script: "git describe --tags | tr -s '-' '~' | tr -d '^v'").trim()
         TAG_POINTS_AT_HEAD = sh(returnStdout: true, script: "git tag --points-at HEAD | tr -d '^v'").trim()
-        ADDITIONAL_VERSIONS = "${env.VERSION == env.TAG_POINTS_AT_HEAD ? 'latest' : ''}"
-        SLACK_CHANNEL_ALERTS = "csm-release-alerts"
     }
 
     stages {
@@ -122,12 +120,10 @@ pipeline {
                                 } else {
                                     RELEASE_FOLDER = ""
                                 }
-                                ADDITIONAL_VERSIONS = ("${env.ADDITIONAL_VERSIONS}" == "null") ? [] : ["${env.ADDITIONAL_VERSIONS}"]
                                 sles_version_parts = "${sleVersion}".tokenize('.')
                                 sles_major = "${sles_version_parts[0]}"
                                 sles_minor = "${sles_version_parts[1]}"
                                 publishCsmRpms(
-                                        additionalVersions: ADDITIONAL_VERSIONS,
                                         arch: "x86_64",
                                         component: env.NAME + RELEASE_FOLDER,
                                         isStable: isStable,
@@ -135,7 +131,6 @@ pipeline {
                                         pattern: "dist/rpmbuild/RPMS/x86_64/*.rpm",
                                 )
                                 publishCsmRpms(
-                                        additionalVersions: ADDITIONAL_VERSIONS,
                                         arch: "src",
                                         component: env.NAME + RELEASE_FOLDER,
                                         isStable: isStable,
