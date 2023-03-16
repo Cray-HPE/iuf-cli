@@ -32,6 +32,8 @@ from lib.Connection import CmdMgr
 import lib.Activity
 from lib.InstallLogger import get_install_logger
 
+from lib.vars import UndefinedActivity
+
 class Config:
     _activity_session = None
     _activity_dict_file = None
@@ -41,6 +43,7 @@ class Config:
     timestamp = None
     all_product_data = None
     _media_base_dir = None
+    _partial_init = False
 
     def __init__(self):
         self.timestamp = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
@@ -103,6 +106,10 @@ class Config:
         return get_install_logger()
 
     @property
+    def partial_init(self):
+        return self._partial_init
+
+    @property
     def media_base_dir(self):
         if not self._media_base_dir:
             try:
@@ -116,7 +123,6 @@ class Config:
                         break
             except:
                 self.logger.debug("Unable to determine media base directory from NLS deployment. Using default.")
-                pass
             finally:
                 if not self._media_base_dir:
                     self._media_base_dir = MEDIA_BASE_DIR
@@ -139,32 +145,13 @@ class Config:
         # sanity test the directories
         activity = self._args.get("activity", None)
         if not activity:
-            self._error("No activity specified")
-            sys.exit(1)
+            self._partial_init = True
+            raise UndefinedActivity
 
         default_base_dir = os.path.join(IUF_BASE_DIR, activity)
         base_dir = self._args.get("base_dir", None)
         if base_dir is None:
             base_dir = default_base_dir
-
-        if not self._args.get("media_dir", None):
-            self._args["media_dir"] = os.path.join(self.media_base_dir, activity)
-
-        media_dir_ok = False
-        media_dir = self._args.get("media_dir")
-
-        for dir in [media_dir, os.path.abspath(media_dir), os.path.join(self.media_base_dir, media_dir)]:
-            if dir.startswith(self.media_base_dir) and os.path.exists(dir):
-                media_dir_ok = True
-                self._args["media_dir"] = dir
-                break
-
-        if not media_dir_ok:
-            func = self._args.get("func", None)
-            # we only care about the media directory if we're installing something
-            if func and func.__name__ == "process_install":
-                self._error("Media directory must exist and reside in {}".format(self.media_base_dir))
-                validated = False
 
         for adir in ["state", "log"]:
             if not self._args.get(f"{adir}_dir", None):
@@ -186,3 +173,23 @@ class Config:
         if not validated:
             sys.exit(1)
 
+    def check_media_dir(self, stages):
+        if self._args.get("media_dir", None) is None:
+            # if `--media-dir` was not specified on the commandline, default
+            # it to self.media_base_dir/self.activity.name
+            self._args["media_dir"] = os.path.join(self.media_base_dir, self.activity.name)
+
+        media_dir_ok = False
+        media_dir = self._args.get("media_dir")
+
+        for adir in [media_dir, os.path.abspath(media_dir), os.path.join(self.media_base_dir, media_dir)]:
+            if adir.startswith(self.media_base_dir) and os.path.exists(adir):
+                media_dir_ok = True
+                self._args["media_dir"] = adir
+                break
+
+        if not media_dir_ok:
+            func = self._args.get("func", None)
+            if func.__name__ ==  "process_install" and "process-media" in stages:
+                self._error(f"Media directory must exist and reside in {self.media_base_dir}")
+                sys.exit(1)

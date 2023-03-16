@@ -58,6 +58,10 @@ class RunTimeoutError(Exception):
         self.returncode = returncode
 
 
+class UndefinedActivity(Exception):
+    """A wrapper for rasing an undefined activity exception"""
+    pass
+
 class COSProblem(Exception):
     """A wrapper for raising a COSProblem exception."""
     pass
