@@ -138,8 +138,36 @@ class PodLogs():
             msg_re = re.compile(r'msg="(.+?)"') # non-greedy re
             generic_re = re.compile("(.*Z) ([A-Z]+):* (.*)")
             time_re = re.compile(r'(^\d{4}\-\d{2}\-\d{2}.*Z) ')
+            erroreq_re = re.compile('error="(.*)"')
+            loftsman_re = re.compile("(.*?Z) (.*?Z) ([A-Z]{3})\s+(.*)")
+            ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
-            for line in lines:
+            for rawline in lines:
+                # loftsman and helm have colors in their log output.  Strip
+                line = ansi_escape.sub('', rawline)
+
+                loftsman_match = loftsman_re.search(line)
+                if loftsman_match:
+                    # if we match this expression it's an error from loftsman/helm
+                    time = loftsman_match.group(1)
+                    msg = loftsman_match.group(4)
+                    severity = loftsman_match.group(3)
+
+                    if severity == "ERR":
+                        level = "ERROR"
+                        # some loftsman errors are "ERR error=<real message>", get rid of the redundant "error="
+                        quotederr = erroreq_re.search(msg)
+                        if quotederr:
+                            msg = quotederr.group(1)
+                    elif severity == "INF":
+                        level = "DEBUG"
+                    else:
+                        # obviously redundant, but some day INF will become INFO
+                        level = "DEBUG"
+
+                    outlines.append((level, f"{msg}", f"{time} {level} {msg}"))
+                    continue
+
                 generic_match = generic_re.search(line)
                 if generic_match:
                     # The most obvious INFO line.  Example:
