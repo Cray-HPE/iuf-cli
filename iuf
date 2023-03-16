@@ -33,6 +33,7 @@ import os
 import shutil
 import signal
 import sys
+import textwrap
 import time
 import traceback
 
@@ -66,7 +67,6 @@ def validate_stages(config):
     run_stages = config.args.get('run_stages')
     skip_stages = config.args.get('skip_stages')
     state_dir = config.args.get('state_dir')
-    media_dir = config.args.get('media_dir')
 
     config.stages.validate(state_dir, begin_stage, end_stage, run_stages, skip_stages)
     local_stages = config.stages.get(all_stages=False, list_fmt=True)
@@ -74,6 +74,11 @@ def validate_stages(config):
         # No need to do all the error checking if we're just calling
         # 'ls', 'activity', etc.
         return
+    else:
+        # Check and set the media directory.
+        config.check_media_dir(local_stages)
+
+    media_dir = config.args.get('media_dir')
 
     concurrency = config.args.get("concurrency", None)
     if concurrency is not None:
@@ -89,10 +94,12 @@ def validate_stages(config):
     bpc_managed = config.args.get("bootprep_config_managed", None)
     bpc_management = config.args.get("bootprep_config_management", None)
 
+    in_bootprep_stage = False
     # Check if any of the stages requiring site-vars, etc are being called.
     # Further error-checking related to this is done in SiteConfig.
     if any(stage in local_stages for stage in ["update-vcs-config",
         "update-cfs-config"]):
+        in_bootprep_stage = True
         if not (bpcd or rvars or config.args.get("site_vars", None)):
             errors.append("bootprep or vcs stages were called, but none of "
                           "--site-vars/-sv, --bootprep-config-dir/-bpcd, nor --recipe-vars/-rv "
@@ -144,6 +151,21 @@ def validate_stages(config):
             errors.append(f"{param_name} {arg_value} was specified, but the file could not be found")
             return
         arg_val_basename = os.path.basename(arg_value)
+        if not os.path.exists(media_dir):
+            if in_bootprep_stage:
+                # The media directory is necessary during the bootprep stage
+                # because bootprep files are copied to the media directory.
+                err_msg = f"""`{arg_name} {arg_value}` was specified, but
+                `-m/--media-dir` does not exist or was not specified.  The
+                media directory is necessary during the bootprep stages."""
+                install_logger.error(textwrap.dedent(err_msg))
+                sys.exit(1)
+            else:
+                # The media directory is not strictly required for any stages
+                # except process-media and the bootprep stages.  The checks
+                # for process-media are done elsewhere; this function is
+                # specific to bootprep.
+                return
         new_config_loc = os.path.join(media_dir, f".bootprep-{activity}", arg_val_basename)
         if not os.path.exists(new_config_loc):
             os.makedirs(new_config_loc)
@@ -225,12 +247,20 @@ def process_install(config):
 def process_list(config): #pylint: disable=unused-argument
     """Process the arguments to the list subparser"""
 
-    if config.args.get("format", None) == "csv":
-        all_stages = ','.join(config.stages.get(long=True, status=True, all_stages=True, list_fmt=True))
-        summary = None
+    summary = None
+
+    if config.partial_init:
+        # No activity was specified, and config is only partially initialized.
+        stages = lib.stages.Stages(state_dir="/tmp", stage_dict=STAGE_DICT)
+        all_stages = stages.get(long=True, list_fmt=False, status=False)
     else:
-        all_stages = config.stages.get(long=True, status=True, all_stages=True, list_fmt=False)
-        summary = config.stages.get_summary(load=True)
+        if config.args.get("format", None) == "csv":
+            all_stages = ','.join(config.stages.get(long=True, status=True, all_stages=True, list_fmt=False))
+        else:
+            all_stages = config.stages.get(long=True, status=True, all_stages=True, list_fmt=False)
+            summary = config.stages.get_summary(load=True)
+
+
 
     print(all_stages)
     if summary:
@@ -379,7 +409,12 @@ def initialization(config, args):
     # we can more easily determine which values can be passed via an input
     # deck.
 
-    config.args = vars(args)
+    try:
+        config.args = vars(args)
+    except UndefinedActivity:
+        # This happens in a subcommand that doesn't require an activity.
+        return
+
     process_debug_level(config)
     update_logger_config(config)
     install_logger.debug(config.args)
@@ -403,9 +438,6 @@ def initialization(config, args):
 
     atexit.register(log_state_files, config)
     atexit.register(print_extra_summary, config)
-
-    if config.args["write_input_file"]:
-        configfile.write(config.args)
 
 
 def get_answer():
@@ -627,10 +659,13 @@ def main():
         parser.set_defaults(input_file=env_input_file)
 
     # parse the arguments once to get input file
-    tmp_args = parser.parse_args()
+    tmp_vars = vars(parser.parse_args())
 
     # load any defaults from the input file
-    configfile.set_defaults(parser,vars(tmp_args))
+    configfile.set_defaults(parser,tmp_vars)
+
+    if tmp_vars["write_input_file"]:
+        configfile.write(tmp_vars)
 
     # allow the activity to be defined in the environment
     env_session = os.getenv("IUF_ACTIVITY", None)
@@ -639,13 +674,11 @@ def main():
 
     # parse the command line for real
     args = parser.parse_args()
-
-    if args.func not in [process_list_activity]:
-        initialization(config, args)
-        if not args.activity:
-            print("ERROR: --activity is required.")
-            parser.print_help(sys.stderr)
-            sys.exit(1)
+    initialization(config, args)
+    if not args.activity and args.func in [process_install, process_activity]:
+        print("ERROR: --activity is required.")
+        parser.print_help(sys.stderr)
+        sys.exit(1)
 
     def try_print(txt):
         RLOCK.acquire()
