@@ -46,10 +46,12 @@ Framework API.
 PYTHONPATH=%{__pipdir} %{__pyinstaller} --onefile iuf
 
 %install
-
 %{__install} -m 755 -D dist/iuf %{buildroot}%{_bindir}/iuf
 
 %clean
+
+%check
+sh rpmbuild_check.sh %{buildroot}%{_bindir}/iuf
 
 %files
 %license LICENSE
