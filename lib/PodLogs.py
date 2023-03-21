@@ -29,6 +29,7 @@ import threading
 import time
 
 from urllib3.exceptions import ReadTimeoutError as ReadTimeoutError
+from urllib3.exceptions import MaxRetryError as MaxRetryError
 
 from kubernetes import client, watch
 from kubernetes import config as kubeconfig
@@ -248,14 +249,15 @@ class PodLogs():
                             install_logger.debug(stdoutline)
                         if st_event.is_set():
                             watcher.stop()
+                            fhandle.close()
                             return
                 last_read = datetime.datetime.now()
                 watcher.stop()
-                break
 
-            except (client.rest.ApiException, client.exceptions.ApiException):
+            except (client.rest.ApiException, client.exceptions.ApiException, MaxRetryError):
                 # Catch this exception NTRIES times, then give up
-                # waiting. This exception gets hit when the container isn't ready yet.
+                # waiting. These exceptions get hit when a container isn't ready yet
+                # or when migrating pods.
                 total_polled_time = datetime.datetime.now() - start_poll
                 polled_seconds = int(total_polled_time.seconds)
                 if polled_seconds >= POLL_LOGS:
@@ -271,9 +273,11 @@ class PodLogs():
 
             if st_event.is_set():
                 # The threads are being collected.
+                fhandle.close()
                 return
             elif not self.is_running(pod):
                 # Return, since the pod is not running.
+                fhandle.close()
                 return
         fhandle.close()
 
@@ -287,7 +291,7 @@ class PodLogs():
             # last_pod = job_pod_names[-1]
             # phase = last_pod.status.phase
         # Then use phase to determine whether or not the pod should continue running
-        # The phases that are running are ["pending", "running"].  The reason this wasn't 
+        # The phases that are running are ["pending", "running"].  The reason this wasn't
         # implemented here is because it seemed that pods could go from 'Success' back into
         # 'Running' or 'Pending'.  So we're just doing a list of the pods, and then return
         # true if the pod is in the list.
