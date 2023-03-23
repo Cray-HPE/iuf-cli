@@ -218,7 +218,6 @@ class Activity():
             if "args" in last_state and "media_dir" in last_state["args"]:
                 self._media_dir = last_state["args"]["media_dir"]
                 self.config.args["media_dir"] = self._media_dir
-            else:
         return self._media_dir
 
 
