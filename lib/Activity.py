@@ -23,21 +23,22 @@
 #
 
 from xml.sax.handler import property_declaration_handler
-import yaml
-import os
+import base64
 import copy
 import datetime
 from dateutil import parser
+import gzip
+import json
+import os
 from prettytable import PrettyTable
 import re
 import requests
 import shutil
 import sys
 import time
-import lib.ApiInterface
-import base64
-import gzip
+import yaml
 
+import lib.ApiInterface
 from lib.PodLogs import PodLogs
 from lib.SiteConfig import SiteConfig
 from lib.vars import RLOCK
@@ -55,7 +56,9 @@ ACTIVITY_NEW_STATE = {
     'state': None,
     'sessionid': None,
     'status': None,
-    'comment': None
+    'comment': None,
+    'command': None,
+    "args": None,
 }
 
 ACTIVITY_VALID_STATES = [
@@ -105,6 +108,7 @@ class Activity():
         self.filename = filename
         self.site_conf = None
         self.config = config
+        self._media_dir = None
         if os.path.exists(filename):
             try:
                 self.load_activity_dict(filename)
@@ -205,6 +209,24 @@ class Activity():
 
         return curdict
 
+    @property
+    def media_dir(self):
+        if not self._media_dir:
+            ordered_states = sorted(self.states.keys())
+            last_state = self.states[ordered_states[-1]]
+            sessionid = last_state.get("sessionid", None)
+            if "args" in last_state and "media_dir" in last_state["args"]:
+                self._media_dir = last_state["args"]["media_dir"]
+                self.config.args["media_dir"] = self._media_dir
+            else:
+        return self._media_dir
+
+
+    @media_dir.setter
+    def media_dir(self, val):
+        self._media_dir = val
+        self.config.args["media_dir"] = self._media_dir
+
     def load_activity_dict(self, filename=None, encoding='UTF-8'):
         if not filename or not os.path.exists(filename):
             return
@@ -233,19 +255,20 @@ class Activity():
                                 if state.get("sessionid", None):
                                     state['status'], last_finished = self.get_workflow_status(state["sessionid"])
                             self.states[stime][attr] = state[attr]
-            
+
             # now see if the client was killed before putting the activity into debug or waiting_admin
             ordered_states = sorted(self.states.keys())
             last_state = self.states[ordered_states[-1]]
             sessionid = last_state.get("sessionid", None)
+
             if sessionid:
                 # ok, so the last state has a sessionid so it isn't a debug/waiting
                 last_status, last_finished = self.get_workflow_status(sessionid)
 
                 if last_status == "Succeeded":
-                    self.state(timestamp=last_finished, state='waiting_admin', create=True)
+                    self.state({"timestamp": last_finished, "state": 'waiting_admin', "create": True})
                 elif last_status == "Failed":
-                    self.state(timestamp=last_finished, state='debug', create=True)
+                    self.state({"timestamp": last_finished, "state": 'debug', "create": True})
                 #else it's still running and we don't care for now
 
         self.initialized = True
@@ -283,38 +306,45 @@ class Activity():
         else:
             return self.get_time()
 
-    def state(self, timestamp=None, sessionid=None, state=None, status="n/a", comment=None, create=False):
+    def state(self, kwargs):
+
+        defaults = {
+            "timestamp": None,
+            "sessionid": None,
+            "state": None,
+            "status": "n/a",
+            "comment": None,
+            "create": False,
+            "command": None,
+        }
+
+        timestamp = kwargs["timestamp"] if "timestamp" in kwargs else defaults["timestamp"]
         if timestamp:
             try:
                 stime = self.get_time(timestamp)
             except:
                 raise StateError(f"Unable to parse date string: {timestamp}")
 
-            if stime not in self.states and not create:
+            if stime not in self.states and not kwargs.get("create", False):
                 raise StateError(f"No state exists at {stime}.  If you wish to create a new state back in time, use --create")
         else:
             stime = self.get_time()
-        
+
         nstate = self.states.get(stime, ACTIVITY_NEW_STATE.copy())
 
-        if sessionid:
-            nstate['sessionid'] = sessionid
-        
-        if status:
-            if status in ACTIVITY_VALID_STATUS:
-                nstate['status'] = status
-            else:
-                raise StateError(f"Invalid status: {status}")
-        
-        if comment:
-            nstate['comment'] = comment
-        
-        if state:
-            if state in ACTIVITY_VALID_STATES:
-                nstate['state'] = state
-            else:
-                raise StateError(f"Invalid state: {state}")
-        
+        for key in defaults:
+            if key in kwargs:
+                nstate[key] = kwargs[key]
+
+        if "status" in nstate and nstate["status"] not in ACTIVITY_VALID_STATUS + [None]:
+            raise StateError("Invalid status: {}".format(nstate["status"]))
+
+        if "state" in nstate and nstate["state"] not in ACTIVITY_VALID_STATES + [None]:
+            raise StateError(f"Invalid state: {nstate['state']}")
+
+        nstate["command"] = " ".join(sys.argv)
+        nstate["args"] = copy.deepcopy(self.config.args)
+
         self.states[stime] = nstate
         self.write_activity_dict()
 
@@ -418,7 +448,7 @@ class Activity():
             dpath = []
 
         return dpath
-    
+
     def get_workflow_status(self, workflow):
         rstatus = "Unknown"
         rfinished = None
@@ -539,7 +569,7 @@ class Activity():
         self.config.logger.debug(f"Monitoring session {sessionid} at {stime}")
         completed = False
 
-        self.state(timestamp=stime, status="Running")
+        self.state({"timestamp": stime, "status": "Running"})
 
         while not completed:
             try:
@@ -561,7 +591,7 @@ class Activity():
         else:
             stat = "Failed"
 
-        self.state(timestamp=stime, status=stat)
+        self.state({"timestamp": stime, "status": stat})
 
         self.config.logger.debug(f"Finished monitoring session {sessionid}")
 
@@ -759,6 +789,17 @@ class Activity():
             wf = self.get_workflow(wfid)
             stage = wf['metadata']['labels']['stage']
             self.site_conf.update_dict_stack(stage)
+
+            # Dump the session/workflow information for debugging purposes.
+            sessions_dir = os.path.join(self.config.args["state_dir"], "sessions")
+            if not os.path.exists(sessions_dir):
+                os.mkdir(sessions_dir)
+            cfgmaps = json.loads(self.config.connection.sudo("kubectl get configmaps -n argo  {} -o jsonpath='{{.data.iuf_activity}}'".format(self.name)).stdout)
+            outfile = os.path.join(sessions_dir, f"{wfid}-{stage}.yaml")
+            with open(outfile, "w", encoding='UTF-8') as fhandle:
+                yaml.dump(cfgmaps, fhandle)
+
+            # Run the stage.
             self.config.stages.exec_stage(self.config, wfid, stage)
 
 

@@ -174,19 +174,26 @@ class Config:
             sys.exit(1)
 
     def check_media_dir(self, stages):
-        if self._args.get("media_dir", None) is None:
-            # if `--media-dir` was not specified on the commandline, default
-            # it to self.media_base_dir/self.activity.name
-            self._args["media_dir"] = os.path.join(self.media_base_dir, self.activity.name)
 
-        media_dir_ok = False
-        media_dir = self._args.get("media_dir")
+        # Ensure the activity is initialized.  This will result in the
+        # activity dictionary being read, and possibly getting the last
+        # media_dir used.
+        media_dir = self.activity.media_dir
 
-        for adir in [media_dir, os.path.abspath(media_dir), os.path.join(self.media_base_dir, media_dir)]:
-            if adir.startswith(self.media_base_dir) and os.path.exists(adir):
+        if media_dir is None:
+            # media_dir wasn't found in the activity dictionary.
+            activity_dir = os.path.join(self.media_base_dir, self.activity.name)
+            if os.path.exists(activity_dir):
+                self.activity.media_dir = activity_dir
                 media_dir_ok = True
-                self._args["media_dir"] = adir
-                break
+        else:
+            # media_dir is set.  Ensure  if a relative path was specified,
+            # it expands into an absolute path correctly; i.e, the path exists.
+            for adir in [media_dir, os.path.abspath(media_dir), os.path.join(self.media_base_dir, media_dir)]:
+                if adir.startswith(self.media_base_dir) and os.path.exists(adir):
+                    media_dir_ok = True
+                    self.activity.media_dir = adir
+                    break
 
         if not media_dir_ok:
             func = self._args.get("func", None)
