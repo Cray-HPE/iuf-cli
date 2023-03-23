@@ -215,14 +215,14 @@ def process_activity(config):
     state = config.args.get("state", None)
     if state:
         try:
-            config.activity.state(
-                timestamp=config.args.get("time", None),
-                sessionid=config.args.get("argo_workflow_id", None),
-                status=config.args.get("status", "n/a"),
-                comment=config.args.get("comment", None),
-                state=state,
-                create=config.args.get("create", False)
-            )
+            config.activity.state({
+                "timestamp": config.args.get("time", None),
+                "sessionid": config.args.get("argo_workflow_id", None),
+                "status": config.args.get("status", "n/a"),
+                "comment": config.args.get("comment", None),
+                "state": state,
+                "create": config.args.get("create", False),
+            })
         except Exception as e:
             install_logger.error(f"{e}")
             install_logger.debug(traceback.format_exc())
@@ -237,7 +237,7 @@ def process_install(config):
     config.activity.create_activity()
     config.activity.run_stages(resume=False)
 
-    config.activity.state(state="waiting_admin")
+    config.activity.state({"state": "waiting_admin"})
     install_logger.info("Install completed in {}".format(elapsed_time(config.stages.installer_start)))
     summary = config.stages.get_summary()
     dashes = "----------------"
@@ -259,8 +259,6 @@ def process_list(config): #pylint: disable=unused-argument
         else:
             all_stages = config.stages.get(long=True, status=True, all_stages=True, list_fmt=False)
             summary = config.stages.get_summary(load=True)
-
-
 
     print(all_stages)
     if summary:
@@ -402,7 +400,7 @@ def print_extra_summary(config):
 
 
 def initialization(config, args):
-    """Config/Activity-specific initilization."""
+    """Config/Activity-specific initialization."""
 
     # Convert the args to a dict, and use that rather than the argparse
     # object.  This is so that we have a dictionary of all options, so that
@@ -417,27 +415,24 @@ def initialization(config, args):
 
     process_debug_level(config)
     update_logger_config(config)
-    install_logger.debug(config.args)
+    install_logger.debug("IUF Command: {}".format(" ".join(sys.argv)))
+    install_logger.debug(f"args: {config.args}")
 
-    config_error = False
+    init_errors = []
 
     if not lib.Activity.valid_activity_name(args.activity):
-        install_logger.error(f"Activity {args.activity} invalid. Names must only contain lowercase letters, numbers, periods, and dashes")
-        config_error = True
+        init_errors.append(f"Activity {args.activity} invalid. Names must only contain lowercase letters, numbers, periods, and dashes")
 
     if len(sys.argv) < 2:
-        install_logger.error("{} requires at least 1 argument".format(sys.argv[0]))
-        config_error = True
-
-    if config_error:
-        parser.print_help(sys.stderr)
-        sys.exit(1)
+        init_errors.append("{} requires at least 1 argument".format(sys.argv[0]))
 
     config.stages = lib.stages.Stages(stage_dict=STAGE_DICT, state_dir=config.args["state_dir"])
     validate_stages(config)
 
     atexit.register(log_state_files, config)
     atexit.register(print_extra_summary, config)
+
+    return init_errors
 
 
 def get_answer():
@@ -674,8 +669,14 @@ def main():
 
     # parse the command line for real
     args = parser.parse_args()
-    initialization(config, args)
-    if not args.activity and args.func in [process_install, process_activity]:
+    init_errors = initialization(config, args)
+    if init_errors:
+        for err in init_errors:
+            install_logger.error(err)
+        parser.print_help(sys.stderr)
+        sys.exit(1)
+
+    if not args.activity and hasattr(args, "func") and args.func in [process_install, process_activity]:
         print("ERROR: --activity is required.")
         parser.print_help(sys.stderr)
         sys.exit(1)
