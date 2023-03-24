@@ -211,7 +211,7 @@ class Activity():
 
     @property
     def media_dir(self):
-        if not self._media_dir:
+        if not self._media_dir and self.states:
             ordered_states = sorted(self.states.keys())
             last_state = self.states[ordered_states[-1]]
             sessionid = last_state.get("sessionid", None)
