@@ -178,6 +178,7 @@ class Config:
         # Ensure the activity is initialized.  This will result in the
         # activity dictionary being read, and possibly getting the last
         # media_dir used.
+        media_dir_ok = False
         media_dir = self.activity.media_dir
 
         if media_dir is None:
