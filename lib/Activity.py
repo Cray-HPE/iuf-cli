@@ -211,13 +211,18 @@ class Activity():
 
     @property
     def media_dir(self):
-        if not self._media_dir and self.states:
-            ordered_states = sorted(self.states.keys())
-            last_state = self.states[ordered_states[-1]]
-            sessionid = last_state.get("sessionid", None)
-            if "args" in last_state and "media_dir" in last_state["args"]:
-                self._media_dir = last_state["args"]["media_dir"]
-                self.config.args["media_dir"] = self._media_dir
+        if not self._media_dir:
+            arg_media_dir = self.config.args["media_dir"]
+            if arg_media_dir:
+                self._media_dir = arg_media_dir
+            elif self.states:
+                ordered_states = sorted(self.states.keys())
+                last_state = self.states[ordered_states[-1]]
+                sessionid = last_state.get("sessionid", None)
+                if "args" in last_state and "media_dir" in last_state["args"]:
+                    self._media_dir = last_state["args"]["media_dir"]
+                    self.config.args["media_dir"] = self._media_dir
+
         return self._media_dir
 
 
