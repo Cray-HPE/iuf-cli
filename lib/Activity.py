@@ -41,6 +41,7 @@ import yaml
 import lib.ApiInterface
 from lib.PodLogs import PodLogs
 from lib.SiteConfig import SiteConfig
+from lib.InstallerUtils import formatted
 from lib.vars import RLOCK
 
 class StateError(Exception):
@@ -686,7 +687,11 @@ class Activity():
 
         # API backend wants relative paths only.  We make sure media dir is under base dir
         # in Config, so we can just strip the base dir off the front of the media dir
-        media_dir = self.config.args.get("media_dir")[len(self.config.media_base_dir):]
+        tmp_media_dir = self.media_dir
+        if tmp_media_dir:
+            media_dir = tmp_media_dir[len(self.config.media_base_dir):]
+        else:
+            media_dir = None
 
         media_host = self.config.args.get("media_host", "ncn-m001")
         concurrency = self.config.args.get("concurrency", None)
@@ -749,6 +754,16 @@ class Activity():
         session_vars = {}
 
         if not products:
+
+            if not media_dir:
+                self.config.logger.error(formatted(f"""
+                    Neither a media
+                    directory nor IUF installable products could not be found
+                    for activity {self.name}.  A subdirectory should be
+                    created within {self.config.media_base_dir} and contain
+                    product tarballs.  Was process-media ran?"""))
+                return sessions
+
             full_media_dir = self.config.media_base_dir + media_dir
             if "process-media" in payload["input_parameters"]["stages"]:
                 self.config.logger.error(f"No IUF installable products were found in {full_media_dir}.")
