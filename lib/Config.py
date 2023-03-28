@@ -25,6 +25,7 @@
 import datetime
 import json
 import os
+import shutil
 import sys
 
 from lib.vars import ACTIVITY_DICT, IUF_BASE_DIR, MEDIA_BASE_DIR
@@ -129,6 +130,14 @@ class Config:
 
         return self._media_base_dir
 
+    def rbd_mount_free_space(self):
+        base_dir = self.media_base_dir
+        total_space, used_space, free_space = shutil.disk_usage(base_dir)
+        free_percent = 100 * (free_space / total_space)
+
+        return free_percent
+
+
     @logger.setter
     def logger(self, value):
         self._logger = value
@@ -182,7 +191,8 @@ class Config:
         media_dir = self.activity.media_dir
 
         if media_dir is None:
-            # media_dir wasn't found in the activity dictionary.
+            # media_dir wasn't found in the activity dictionary or specified
+            # via the commandline.
             activity_dir = os.path.join(self.media_base_dir, self.activity.name)
             if os.path.exists(activity_dir):
                 self.activity.media_dir = activity_dir
