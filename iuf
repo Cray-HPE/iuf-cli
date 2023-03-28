@@ -40,7 +40,7 @@ import traceback
 from lib.vars import *
 from lib.InstallLogger import *
 
-from lib.InstallerUtils import elapsed_time
+from lib.InstallerUtils import elapsed_time, formatted
 
 from lib.ConfigFile import ConfigFile
 from lib.ConfigFile import InvertableArgument
@@ -134,11 +134,19 @@ def validate_stages(config):
             # specifying the argument via the input file ('-i/--input-file).
             errors.append(f"-mrp/--mask-recipe-prods requires a list, but the argument was passed as {mrp_type}")
 
+    got_bootprep_error = False
 
     def check_bootprep_arg(arg_name):
         """Ensure that if a `sat bootprep` config was specified (and the
         stage is being run) it exists.
         """
+
+        nonlocal got_bootprep_error, media_dir
+
+        if got_bootprep_error:
+            # If there is already an error, it just results in duplicate
+            # messages printed.
+            return
 
         # activity is required, so it should never be "undefined".
         activity = config.args.get("activity", "undefined")
@@ -148,24 +156,31 @@ def validate_stages(config):
         if not arg_value:
             return
         elif not os.path.exists(arg_value):
+            got_bootprep_error = True
             errors.append(f"{param_name} {arg_value} was specified, but the file could not be found")
             return
         arg_val_basename = os.path.basename(arg_value)
-        if not os.path.exists(media_dir):
+        if not media_dir:
+            if in_bootprep_stage:
+                err_msg = "A media directory was not "
+                "found and was not specified while "
+                "running a bootprep stage.  It must be a subdirectory under "
+                f"{config.media_base_dir}.  Was process-media ran?"
+                errors.append(formatted(err_msg))
+                got_bootprep_error = True
+            return
+
+        elif media_dir and not os.path.exists(media_dir):
             if in_bootprep_stage:
                 # The media directory is necessary during the bootprep stage
                 # because bootprep files are copied to the media directory.
-                err_msg = f"""`{arg_name} {arg_value}` was specified, but
-                `-m/--media-dir` does not exist or was not specified.  The
-                media directory is necessary during the bootprep stages."""
-                install_logger.error(textwrap.dedent(err_msg))
-                sys.exit(1)
-            else:
-                # The media directory is not strictly required for any stages
-                # except process-media and the bootprep stages.  The checks
-                # for process-media are done elsewhere; this function is
-                # specific to bootprep.
-                return
+                err_msg = f"`{arg_name} {arg_value}` was specified, but "
+                "`-m/--media-dir` does not exist.  The "
+                "media directory is necessary during the bootprep stages. "
+                errors.append(formatted(err_msg))
+                got_bootprep_error = True
+            return
+
         new_config_loc = os.path.join(media_dir, f".bootprep-{activity}", arg_val_basename)
         if not os.path.exists(new_config_loc):
             os.makedirs(new_config_loc)
@@ -210,6 +225,13 @@ def validate_stages(config):
         with open(os.path.join(state_dir, "curr_stages.yaml"), "w") as fhandle:
             yaml.dump(local_stages, fhandle)
 
+    # Check the disk usage for the RBD mount.
+    free_percent = config.rbd_mount_free_space()
+    if free_percent < 10.0:
+        warning_msg = f"""Free space on {config.media_base_dir} is
+        only {free_percent}.  If disk space is too low, {sys.argv[0]} will
+        not be able to write logs or other neccessary files"""
+        install_logger.warning(textwrap.dedent(warning_msg))
 
 def process_activity(config):
     state = config.args.get("state", None)
@@ -481,7 +503,7 @@ def main():
         Can also be set via the IUF_ACTIVITY environment variable.""")
 
     concurrency_help = """During stage processing Argo runs workflow steps in parallel.
-        By default up to 10 steps will be executed simultaneously.  Use `--concurrency N` 
+        By default up to 10 steps will be executed simultaneously.  Use `--concurrency N`
         to decrease the limit to N.   Increasing this limit is not recommended."""
     parser.add_argument("-c", "--concurrency", action="store", default=None,
         help=concurrency_help)
