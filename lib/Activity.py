@@ -22,7 +22,6 @@
 # OTHER DEALINGS IN THE SOFTWARE.
 #
 
-from xml.sax.handler import property_declaration_handler
 import base64
 import copy
 import datetime
@@ -35,6 +34,7 @@ import re
 import requests
 import shutil
 import sys
+import tarfile
 import time
 import yaml
 
@@ -212,17 +212,40 @@ class Activity():
 
     @property
     def media_dir(self):
+        arg_media_dir = self.config.args.get("media_dir", None)
         if not self._media_dir:
-            arg_media_dir = self.config.args["media_dir"]
             if arg_media_dir:
-                self._media_dir = arg_media_dir
+                if os.path.exists(arg_media_dir):
+                    self._media_dir = arg_media_dir
+                else:
+                    for path in [os.path.abspath(arg_media_dir), os.path.join(self.config.media_base_dir, arg_media_dir)]:
+                        if os.path.exists(path):
+                            self._media_dir = path
+                            break
             elif self.states:
                 ordered_states = sorted(self.states.keys())
                 last_state = self.states[ordered_states[-1]]
                 sessionid = last_state.get("sessionid", None)
                 if "args" in last_state and "media_dir" in last_state["args"]:
                     self._media_dir = last_state["args"]["media_dir"]
-                    self.config.args["media_dir"] = self._media_dir
+
+            # If self._media_dir still isn't set, check if the activity name
+            # exists under the media base directory.
+            if not self._media_dir and os.path.exists(os.path.join(self.config.media_base_dir, self.name)):
+                self._media_dir  = os.path.join(self.config.media_base_dir, self.name)
+
+        # if _media_dir still isn't set, raise an error.
+        if not self._media_dir:
+            if arg_media_dir:
+                if not os.path.exists(arg_media_dir):
+                    self.config.logger.error(f"Could not determine media dir from argument '--media-dir {arg_media_dir}'.  Does the directory exist?")
+                    sys.exit(1)
+            else:
+                err_msg = f"""
+                    Could not determine the media_dir.  Ensure the directory exists under
+                    {self.config.media_base_dir} and use the '--media-dir <directory>' option."""
+                self.config.logger.error(formatted(err_msg))
+                sys.exit(1)
 
         return self._media_dir
 
@@ -414,7 +437,7 @@ class Activity():
                 count += 1
                 if (count % 600) == 0:
                     # it's been 10 minutes, give up if the admin hasn't
-                    self.config.logger.error(f"Giving up after 10 minutes.  Check to ensure the ARGO backend is functional then try again.")
+                    self.config.logger.error("Giving up after 10 minutes.  Check to ensure the ARGO backend is functional then try again.")
                     sys.exit(1)
                 if (count % 15) == 0:
                     self.config.logger.warning(f"Still waiting for workflow startup after {count} seconds.")
@@ -445,11 +468,11 @@ class Activity():
             else:
                 slist[name] = []
 
-        """ some stages start so slowly we call argo before they've fully started"""
+        # Some stages start so slowly we call argo before they've fully started.
         try:
             dpath = dfs(slist, workflow)
         except:
-            """ if dfs fails it's because the workflow is still starting up, just punt until the next 1 second check"""
+            # If dfs fails it's because the workflow is still starting up, just punt until the next 1 second check.
             dpath = []
 
         return dpath
@@ -471,7 +494,7 @@ class Activity():
         self.config.logger.debug(f"Monitoring workflow {workflow}")
         finished = False
         rstatus = 'Unknown'
-        phases = dict()
+        phases = {}
         newphase = {
             "finishedAt": None,
             "startedAt": None,
@@ -604,7 +627,7 @@ class Activity():
 
     def get_workflow(self, workflow):
         try:
-            wf = self.config.connection.run("kubectl -n argo get Workflow/{workflow} -o yaml".format(workflow=workflow))
+            wf = self.config.connection.run(f"kubectl -n argo get Workflow/{workflow} -o yaml")
         except Exception as e:
             self.config.logger.debug(f"Unable to get workflow {workflow}: {e}")
             sys.exit(1)
@@ -632,7 +655,7 @@ class Activity():
             self.api.abort_activity(self.name, payload)
             self.podlogs.collect_threads()
         except requests.ReadTimeout:
-            self.config.logger.warning(f"Timed out sending an abort request.")
+            self.config.logger.warning("Timed out sending an abort request.")
             self.config.logger.warning(f"Ensure the argo workflow for {self.name} is not running.")
         except Exception as ex:
             self.config.logger.error(f"Unable to abort activity {self.name}: {ex}")
@@ -668,6 +691,7 @@ class Activity():
         self.site_conf.organize_merge()
         self.watch_next_wf(session)
 
+
     def run_stages(self, resume=False):
         if not self.api.activity_exists(self.name):
             raise ActivityError(f"The activity {self.name} does not exist.")
@@ -687,11 +711,7 @@ class Activity():
 
         # API backend wants relative paths only.  We make sure media dir is under base dir
         # in Config, so we can just strip the base dir off the front of the media dir
-        tmp_media_dir = self.media_dir
-        if tmp_media_dir:
-            media_dir = tmp_media_dir[len(self.config.media_base_dir):]
-        else:
-            media_dir = None
+        media_dir = self.media_dir[len(self.config.media_base_dir):]
 
         media_host = self.config.args.get("media_host", "ncn-m001")
         concurrency = self.config.args.get("concurrency", None)
@@ -707,6 +727,7 @@ class Activity():
                 "stages": [],
             }
         }
+
         self.site_conf = SiteConfig(self.config)
         self.site_conf.organize_merge()
 
@@ -754,15 +775,6 @@ class Activity():
         session_vars = {}
 
         if not products:
-
-            if not media_dir:
-                self.config.logger.error(formatted(f"""
-                    Neither a media
-                    directory nor IUF installable products could not be found
-                    for activity {self.name}.  A subdirectory should be
-                    created within {self.config.media_base_dir} and contain
-                    product tarballs.  Was process-media ran?"""))
-                return sessions
 
             full_media_dir = self.config.media_base_dir + media_dir
             if "process-media" in payload["input_parameters"]["stages"]:
@@ -817,7 +829,58 @@ class Activity():
             outfile = os.path.join(sessions_dir, f"{wfid}-{stage}.yaml")
             with open(outfile, "w", encoding='UTF-8') as fhandle:
                 yaml.dump(cfgmaps, fhandle)
+            files = [file for file in os.listdir(self.media_dir) if file.endswith(".tar.gz")]
+            try:
+                cfgmap_products = ["{}-{}".format(p["name"], p["version"]) for p in cfgmaps["products"]]
+            except TypeError:
+                # This happens during a new activity on process-media.
+                cfgmap_products = {}
 
+            # Check the integrity of the tarballs in media_dir.
+            for product in files:
+                prodpath = os.path.join(self.media_dir, product)
+                tar_paths = []
+                try:
+                    with tarfile.open(prodpath, "r:gz") as tarf:
+                        counter = 0
+                        for entry in tarf:
+                            tar_paths.append(entry.name)
+                            counter += 1
+                            if counter > 10:
+                                break
+                except tarfile.ReadError as readerr:
+                    self.config.logger.debug(f"Problems extracting {prodpath}:")
+                    self.config.logger.debug(f"\t{readerr}")
+                    self.config.logger.debug("Ignoring it!")
+                    continue
+                tar_path = None
+                for path in tar_paths:
+                    if path.startswith('.'):
+                        continue
+                    tar_path = os.path.join(self.media_dir, path.split("/")[0])
+                    break
+                if not tar_path:
+                    # This should only be hit with a corrupt or empty tarball.
+                    self.config.logger.debug(f"Couldn't find a directory for the {prodpath} tar file")
+                    continue
+
+                new_tar_msg = formatted(f"""
+                    Tar file {product} found in media directory but is not
+                    present in the list of products IUF is working with, you
+                    will need re-run starting from the process-media stage
+                    to include this product.""")
+                if tar_path and os.path.exists(tar_path):
+                    # The path exists and process_media has been run.  Note
+                    # the directory will not exist before process-media is ran.
+                    dir_contents = os.listdir(tar_path)
+                    if "iuf-product-manifest.yaml" in dir_contents:
+                        matches = [cp for cp in cfgmap_products if cp in product]
+                        if len(matches) < 1 and stage != "process-media":
+                            self.config.logger.warning(new_tar_msg)
+                elif tar_path:
+                    # The tarfile exists within the media directory, but it hasn't been extracted.
+                    if stage != "process-media":
+                        self.config.logger.debug(new_tar_msg)
             # Run the stage.
             self.config.stages.exec_stage(self.config, wfid, stage)
 
@@ -882,7 +945,7 @@ class Activity():
                 last_stages = []
                 stages_file = os.path.join(self.config.args.get("state_dir"), f"{self.name}_stages.yaml")
                 if os.path.exists(stages_file):
-                    with open(stages_file, "r") as fhandle:
+                    with open(stages_file, "r", encoding="UTF-8") as fhandle:
                         last_stages = yaml.load(fhandle, yaml.SafeLoader)
                 if last_stages and last_stages[0] == "process-media":
                     last_stages.pop(0)
@@ -900,13 +963,9 @@ class Activity():
                     sessions = result.json()
                     sess_param = last_sessionid
                     for sess in sessions:
-                        tmpstages = {}
                         if "input_parameters" in sess and "stages" in sess["input_parameters"]:
-                            tmpstages = sess["input_parameters"]["stages"]
                             if sess["name"] in last_sessionid:
                                 sess_param = sess["name"]
-                    result = self.api.get_activity_session(self.name, sess_param)
-                    curr_session = result.json()
 
                     # Watch the running workflow.
                     self.monitor_workflow(last_sessionid)
@@ -916,7 +975,7 @@ class Activity():
                         try:
                             self.watch_next_wf(sess_param)
                             bad_stage = False
-                        except Exception as ex:
+                        except:
                             if len(last_stages) > 1:
                                 last_stages.pop(0)
                                 self.config.stages.set_stages(last_stages)
