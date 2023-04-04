@@ -46,7 +46,7 @@ from lib.ConfigFile import ConfigFile
 from lib.ConfigFile import InvertableArgument
 import lib.Config
 import lib.Activity
-
+from lib.Activity import ACTIVITY_VALID_STATES
 # Import lib.stages without the 'as stages' to prevent namespace collisions.
 import lib.stages
 
@@ -249,7 +249,10 @@ def process_activity(config):
             install_logger.error(f"{e}")
             install_logger.debug(traceback.format_exc())
             sys.exit(1)
-
+    elif config.args.get("create", False) :
+        install_logger.error("The `--create` flag was passed without the <state> positional parameter")
+        install_logger.error("Please include one of the following states: {}".format(", ".join(ACTIVITY_VALID_STATES)))
+        sys.exit(1)
     print(config.activity)
 
 
@@ -385,7 +388,7 @@ def print_extra_summary(config):
             for line in lines:
                 if "ERROR" in line or "INFO" in line:
                     try:
-                        timestamp, level, msg = line.strip().split(" ", 2)
+                        _, level, msg = line.strip().split(" ", 2)
                         message = msg.strip()
                         if level == "ERROR":
                             if message.startswith("FINISHED"):
