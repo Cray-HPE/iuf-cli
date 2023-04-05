@@ -28,8 +28,8 @@ import requests
 import threading
 import time
 
-from urllib3.exceptions import ReadTimeoutError as ReadTimeoutError
-from urllib3.exceptions import MaxRetryError as MaxRetryError
+from urllib3.exceptions import ReadTimeoutError
+from urllib3.exceptions import MaxRetryError
 
 from kubernetes import client, watch
 from kubernetes import config as kubeconfig
@@ -261,7 +261,7 @@ class PodLogs():
                 total_polled_time = datetime.datetime.now() - start_poll
                 polled_seconds = int(total_polled_time.seconds)
                 if polled_seconds >= POLL_LOGS:
-                    install_logger.warning(f"Giving up following the log for pod {pod}!")
+                    install_logger.debug(f"Giving up following the log for pod {pod}!")
                     return
                 last_read = datetime.datetime.now()
                 time.sleep(.5)
@@ -269,7 +269,11 @@ class PodLogs():
                 # Timed out reading in the watcher.stream(...).  The
                 # timeout is low, so just continue.
                 last_read = datetime.datetime.now()
-                continue
+            except Exception as exc:
+                install_logger.debug("Caught unhandled exception in PodLogs:")
+                install_logger.debug(f"\tname={exc.__class__.__name__}")
+                install_logger.debug(f"\tException={exc}")
+                last_read = datetime.datetime.now()
 
             if st_event.is_set():
                 # The threads are being collected.
