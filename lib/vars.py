@@ -151,7 +151,7 @@ RLOCK = threading.RLock()
 RBD_BASE_DIR = "/etc/cray/upgrade/csm"
 IUF_BASE_DIR = os.path.join(RBD_BASE_DIR, "iuf")
 ACTIVITY_BASE_DIR = os.path.join(IUF_BASE_DIR, "activities")
-MEDIA_BASE_DIR = "/opt/cray/iuf"
+MEDIA_BASE_DIR = RBD_BASE_DIR
 
 LOG_DEFAULT_CONSOLE_LEVEL = logging.INFO
 LOG_DEFAULT_FILE_LEVEL = logging.DEBUG
