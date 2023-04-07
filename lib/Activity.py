@@ -74,7 +74,11 @@ ACTIVITY_VALID_STATUS = [
     'Succeeded',
     'Failed',
     'Running',
-    'n/a'
+    'n/a',
+    # Functional statuses.
+    "restart",
+    "resume",
+    "abort",
 ]
 
 def list_activity():
@@ -279,7 +283,7 @@ class Activity():
                     for attr in ACTIVITY_NEW_STATE:
                         if attr in state:
                             # Update any sessions that don't have a finished state
-                            if attr == "status" and state[attr] not in ["Succeeded","Failed"]:
+                            if attr == "status" and state[attr] not in ["Succeeded","Failed", "restart", "resume", "abort"]:
                                 if state.get("sessionid", None):
                                     state['status'], last_finished = self.get_workflow_status(state["sessionid"])
                             self.states[stime][attr] = state[attr]
@@ -644,10 +648,16 @@ class Activity():
                 self.podlogs.collect_threads()
             return
 
+        comment_arg = self.config.args.get("comment", "")
+        if type(comment_arg) is list:
+            comment = " ".join(comment_arg)
+        else:
+            comment = comment_arg
+
         payload = {
             "input_parameters": {},
             "name": self.name,
-            "comment": " ".join(self.config.args.get("comment", "")),
+            "comment": comment,
             "force": self.config.args.get("force"),
         }
         try:
@@ -660,6 +670,9 @@ class Activity():
         except Exception as ex:
             self.config.logger.error(f"Unable to abort activity {self.name}: {ex}")
             raise
+
+        # Add an entry to the activity log.
+        self.state({"comment": comment, "status": "abort"})
 
         return self.name
 

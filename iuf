@@ -541,7 +541,7 @@ def main():
         Messages of this level or higher are displayed.""", choices=levelhelp)
 
     parser.add_argument("-v", "--verbose", action="store_true",
-        help="generate more verbose messages")
+        help=argparse.SUPPRESS)
 
     # TODO: The stage-dir usage could use more verbiage. We might want to add
     # this to the install docs.  Describing it in detail in the help section
@@ -635,14 +635,14 @@ def main():
 
     resume_sp = subparsers.add_parser("resume", description='Resume a previously aborted or failed IUF session for a given activity.')
     resume_sp.set_defaults(func=process_resume)
-    resume_sp.add_argument("comment", action="store", nargs="*", help=argparse.SUPPRESS)
+    resume_sp.add_argument("comment", action="store", nargs="*", help="Add a comment to the activity log")
 
     restart_sp = subparsers.add_parser("restart", description='Restart a previously aborted or failed IUF session for a given activity.')
     restart_sp.set_defaults(func=process_restart)
     restart_sp.add_argument("-f", "--force", action="store_true",
         help="""Force all operations to be re-executed irrespective if they
         have been successful in the past.""")
-    restart_sp.add_argument("comment", action="store", nargs="*", help=argparse.SUPPRESS)
+    restart_sp.add_argument("comment", action="store", nargs="*", help="Add a comment to the activity log")
 
     abort_sp = subparsers.add_parser("abort", description='Abort an IUF session for a given activity after the current stage completes.')
     abort_sp.set_defaults(func=process_abort)
@@ -650,7 +650,7 @@ def main():
     # help for the comment flag should be something like,
     # """Adds a comment to the "Comment" row if the `iuf activity ...` table.
     # The option is hidden because it doesn't seem to be working in the backend.
-    abort_sp.add_argument("comment", action="store", nargs="*", help=argparse.SUPPRESS)
+    abort_sp.add_argument("comment", action="store", nargs="*", help="Add a comment to the activity log")
 
     abort_sp.add_argument("-f", "--force", action="store_true",
         help="""Force the abort immediately.""")
