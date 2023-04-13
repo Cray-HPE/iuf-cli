@@ -42,7 +42,6 @@ import lib.ApiInterface
 from lib.PodLogs import PodLogs
 from lib.SiteConfig import SiteConfig
 from lib.InstallerUtils import formatted
-from lib.vars import RLOCK
 
 class StateError(Exception):
     """A wrapper for raising a StateError exception."""
@@ -402,9 +401,7 @@ class Activity():
 
         while not found:
             try:
-                RLOCK.acquire()
                 rsession = self.api.get_activity_session(self.name, sessionid)
-                RLOCK.release()
             except Exception as e:
                 self.config.logger.error(f"Unable to get session {sessionid}: {e}")
                 sys.exit(1)
@@ -605,9 +602,7 @@ class Activity():
 
         while not completed:
             try:
-                RLOCK.acquire()
                 session = self.api.get_activity_session(self.name, sessionid)
-                RLOCK.release()
             except Exception as e:
                 self.config.logger.error(f"Unable to get session {sessionid}: {e}")
                 sys.exit(1)

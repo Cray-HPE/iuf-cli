@@ -22,10 +22,11 @@
 # OTHER DEALINGS IN THE SOFTWARE.
 #
 import datetime
+import multiprocessing
+from multiprocessing import Process
 import os
 import re
 import requests
-import threading
 import time
 
 from urllib3.exceptions import ReadTimeoutError
@@ -75,7 +76,7 @@ class PodLogs():
         log_dir = config_param.args.get("log_dir")
         self._log_dir = os.path.join(log_dir, config_param.timestamp, "argo_logs")
         os.makedirs(self._log_dir, exist_ok=True)
-        self._running_subthreads = []
+        self._running_subthreads = {}
         self._running_mainthread = None
         self.mt_event = None
         self._logs = []
@@ -211,6 +212,7 @@ class PodLogs():
                     outlines.append((level, f"{line}", f"{line}"))
             return outlines
 
+        os.nice(20)
         log_name = os.path.join(self._log_dir, f"{pod}-{container}.txt")
         fhandle = open(log_name, 'w', encoding='UTF-8')
         start_poll = datetime.datetime.now()
@@ -285,6 +287,28 @@ class PodLogs():
                 return
         fhandle.close()
 
+    def list_namespaced_pod(self):
+        """A wrapper around list_namespaced_pod from the kubernetes api."""
+        ntries = 0
+        maxtries = 100
+        keepgoing = True
+        pods = None
+        while keepgoing:
+            try:
+                # We throw exceptions here when spamming ctrl-c's, so wrap it
+                # in an except and retry if necessary.
+                pods = self.core.list_namespaced_pod('argo')
+                keepgoing = False
+            except Exception:
+                pid = os.getpid()
+                if ntries >= maxtries:
+                    # The ctrl-c has to be held down for a long time to hit
+                    # this.
+                    raise
+                time.sleep(.1)
+            finally:
+                ntries += 1
+        return pods
 
     def is_running(self, pod):
         """Check if a pod is running."""
@@ -299,11 +323,11 @@ class PodLogs():
         # implemented here is because it seemed that pods could go from 'Success' back into
         # 'Running' or 'Pending'.  So we're just doing a list of the pods, and then return
         # true if the pod is in the list.
-
-        pods = self.core.list_namespaced_pod('argo')
-        running_phases = ["pending", "running"]
+        pods = self.list_namespaced_pod()
         job_pod_names = [p for p in pods.items if pod == p.metadata.name]
         if not job_pod_names:
+            if pod in self._running_subthreads:
+                del self._running_subthreads[pod]
             return False
         else:
             return True
@@ -318,11 +342,11 @@ class PodLogs():
         # This job starts when the activity is initialized.
         following_pods = []
         got_pod = False
-        st_event = threading.Event()
+        st_event = multiprocessing.Event()
         while True:
             # FIXME: It might be better to use `--selector=...`.  All the
             # pods have a label on them.
-            pods = self.core.list_namespaced_pod('argo')
+            pods = self.list_namespaced_pod()
             pod_id = re.sub('\W+', '-', self.wfid)
             job_pod_names = [pod.metadata.name for pod in pods.items if pod_id in pod.metadata.name]
 
@@ -338,16 +362,16 @@ class PodLogs():
                 if jpn not in following_pods:
                     following_pods.append(jpn)
                     for container in ["init", "wait", "main"]:
-                        thread = threading.Thread(target=self.follow_pod_log, args=(jpn, st_event, container))
+                        thread = Process(target=self.follow_pod_log, args=(jpn, st_event, container))
                         thread.start()
-                        self._running_subthreads.append(thread)
+                        self._running_subthreads[jpn] = thread
                         got_pod = True
 
             is_set =  self.mt_event.is_set()
             if is_set:
                 st_event.set()
-                for thread in self._running_subthreads:
-                    thread.join()
+                for jpn in self._running_subthreads:
+                    self._running_subthreads[jpn].join()
                 break
 
             time.sleep(1)
@@ -355,8 +379,8 @@ class PodLogs():
 
     def follow_pod_logs(self):
         """Launch a thread to follow the pod logs."""
-        self.mt_event = threading.Event()
-        thread = threading.Thread(target=self.follow_all_pods)
+        self.mt_event = multiprocessing.Event()
+        thread = Process(target=self.follow_all_pods)
         thread.start()
         self._running_mainthread = thread
 
