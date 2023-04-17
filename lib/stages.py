@@ -179,7 +179,7 @@ class Stages():
 
         # Insert a header if there is any history.
         if return_str:
-            return_str.insert(0, "Stage Summary")
+            return_str.insert(0, "Install Summary")
 
         return "\n".join(return_str)
 
@@ -257,8 +257,8 @@ class Stages():
     def exec_stage(self, config, workflow, stage):
         """Run a stage."""
 
-        config.logger.info(f"      IUF STAGE: {stage}")
-        config.logger.info(f"  ARGO WORKFLOW: {workflow}")
+        config.logger.info(f"[STAGE: {stage:50}] BEG Argo workflow: {workflow}")
+
         state_args = {
             "state": "in_progress",
             "status": "Running",
@@ -271,20 +271,21 @@ class Stages():
 
         # Execute the stage.
         failed = True
+        status = "Unknown"
+        duration = "Unknown"
         try:
             self.current_stage = stage
             stage_start = datetime.datetime.now()
             status = config.activity.monitor_workflow(workflow)
-            config.logger.info(f"         RESULT: {status}")
             if status == "Succeeded":
                 failed = False
             duration = elapsed_time(stage_start)
-            config.logger.info(f"       DURATION: {duration}")
+            config.logger.info(f"[STAGE {stage:51}] END {status} in {duration}")
 
         except RunException as err:
             # if this was an unhandled, failed command, print details
             duration = elapsed_time(stage_start)
-            config.logger.info(f"       DURATION: {duration}")
+            config.logger.error(f"[STAGE {stage:51}] END {status} in {duration}")
 
             # update the current state with the failure
             config.activity.state({"timestamp":utime, "status":"Failed"})
@@ -306,7 +307,7 @@ class Stages():
 
         except Exception as err:
             duration = elapsed_time(stage_start)
-            config.logger.info(f"       DURATION: {duration}")
+            config.logger.error(f"[STAGE {stage:51}] END {status} in {duration}")
             # update the current state with the failure
             config.activity.state({"timestamp":utime, "status":"Failed"})
             # put the whole process into debug

@@ -35,6 +35,8 @@ SOURCE_NAME ?= ${NAME}
 DIST_DIR ?= $(PWD)/dist
 BUILD_DIR ?= ${DIST_DIR}/rpmbuild
 SOURCE_PATH := ${BUILD_DIR}/SOURCES/${SOURCE_NAME}-${VERSION}.tar.bz2
+VENV ?= venv
+PYTHON ?= python3
 
 all: prepare rpm
 
@@ -53,6 +55,10 @@ rpm_build_source:
 
 rpm_build:
 	NAME=${NAME} VERSION=${VERSION} rpmbuild -ba $(SPEC_FILE) --define "_topdir $(BUILD_DIR)"
+
+venv:
+	${PYTHON} -m venv ${VENV}
+	. ${VENV}/bin/activate; pip install -r requirements.txt
 
 clean:
 	rm -rf ${DIST_DIR}

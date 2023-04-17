@@ -35,6 +35,7 @@ import re
 import requests
 import shutil
 import sys
+import threading
 import time
 import yaml
 
@@ -101,6 +102,8 @@ class Activity():
     api = None
     workflows = None
     api_initialized = False
+    st_event = None
+    running_threads = None
 
     def __init__(self, filename=None, name=None, dryrun=False, config=None):
         self.states = dict()
@@ -454,6 +457,33 @@ class Activity():
 
         return dpath
 
+    def generate_user_readable(self, stage, name, dname):
+        readable = name
+        try:
+            parts = name.split(".",2)
+            if stage == "process-media":
+                if parts[2].startswith("extract-tar-file"):
+                    readable = parts[2]
+                else:
+                    readable = parts[1]
+            elif stage in ["deliver-product","update-vcs-config","deploy-product","post-install-service-check","post-install-check"]:
+                readable = "-".join(parts[1].split("-")[:-1])
+            elif stage in ["management-nodes-rollout","managed-nodes-rollout"]:
+                readable = parts[2].rstrip("()0123456789")
+            elif stage == "pre-install-check":
+                if parts[1].endswith("]"):
+                    readable = "-".join(parts[1].split("-")[:-1])
+                else:
+                    readable = parts[1].rstrip("[]0123456789")
+            else:
+                readable = parts[1].rstrip("[]0123456789")
+        except:
+            readable = dname
+
+        retval = f"[{readable:57}]"
+
+        return retval
+
     def get_workflow_status(self, workflow):
         rstatus = "Unknown"
         rfinished = None
@@ -466,6 +496,18 @@ class Activity():
             pass
 
         return rstatus, rfinished
+
+    def collect_threads(self):
+        self.st_event.set()
+        
+        if self.running_threads:
+            for thread in self.running_threads:
+                thread.join()
+            self.running_threads = []
+
+    def initialize_threading(self):
+        self.st_event = threading.Event()
+        self.running_threads = []
 
     def monitor_workflow(self, workflow):
         self.config.logger.debug(f"Monitoring workflow {workflow}")
@@ -480,11 +522,11 @@ class Activity():
             "log": None
             }
 
-
         # Launch threads for the pod logs and continue on.  Gather the
         # threads after the while loop.
-        self.podlogs.follow_pod_logs() # threaded at top-level, no waiting.
         printed_s3 = {}
+        followed_pods = list()
+        self.initialize_threading()
         while not finished:
             try:
                 wflow = self.get_workflow(workflow)
@@ -499,6 +541,12 @@ class Activity():
                 if completed and completed == 'true':
                     rstatus = wflow['metadata']['labels']['workflows.argoproj.io/phase']
                     finished = True
+            except:
+                pass
+
+            stage = "unknown"
+            try:
+                stage = wflow['metadata']['labels']['stage']
             except:
                 pass
 
@@ -524,18 +572,39 @@ class Activity():
                 if name not in nodes:
                     continue
                 node = nodes[name]
+
+                dname = node.get("displayName", "unknown")
+                step_name = node.get("name", "unknown")
+
+                log_prefix = "unknown"
+                if "name" in node:
+                    try:
+                        log_prefix = self.generate_user_readable(stage, step_name, dname)
+                    except:
+                        pass
+
+                if "type" in node and node["type"] == "Pod":
+                    podname = node["id"]
+                    if podname not in followed_pods:
+                        followed_pods.append(podname)
+                        for container in ["init", "wait", "main"]:
+                            thread = threading.Thread(target=self.podlogs.follow_pod_log, args=(podname, container, log_prefix, self.st_event))
+                            thread.start()
+                            self.running_threads.append(thread)
+
                 if "displayName" in node:
-                    dname = node["displayName"]
                     if name not in phases:
                         phases[name] = newphase.copy()
                     display = True
                     if dname == workflow:
                         display = False
+                    if "type" in node and node["type"] == "StepGroup":
+                        display = False
 
                     if "startedAt" in node:
                         if not phases[name]["startedAt"]:
                             if display:
-                                self.config.logger.info(f"             BEGIN: {dname}")
+                                self.config.logger.info(f"{log_prefix} BEG {dname}")
                         phases[name]["startedAt"] = node["startedAt"]
 
                     if "phase" in node:
@@ -546,11 +615,11 @@ class Activity():
                             if display:
                                 status = phases[name]["status"]
                                 if status == "Failed" or status == "Error":
-                                    self.config.logger.error(f"         FINISHED: {dname} [{status}]")
+                                    self.config.logger.error(f"{log_prefix} END {dname} [{status}]")
                                 if status == "Omitted":
-                                    self.config.logger.warning(f"       FINISHED: {dname} [{status}]")
+                                    self.config.logger.warning(f"{log_prefix} END {dname} [{status}]")
                                 else:
-                                    self.config.logger.info(f"          FINISHED: {dname} [{status}]")
+                                    self.config.logger.info(f"{log_prefix} END {dname} [{status}]")
                         phases[name]["finishedAt"] = node["finishedAt"]
                         try:
                             for artifact in node["outputs"]["artifacts"]:
@@ -559,7 +628,7 @@ class Activity():
                                     phases[name]["log"] = s3
                                     dname_s3 = f"{dname}: {s3}"
                                     if dname_s3 not in printed_s3:
-                                        self.config.logger.debug(f"           LOG FILE FOR {dname_s3}")
+                                        self.config.logger.debug(f"{log_prefix} LOG FILE FOR {dname_s3}")
                                         printed_s3[dname_s3] = True
                         except:
                             pass
@@ -567,7 +636,9 @@ class Activity():
             if not finished:
                 time.sleep(1)
 
-        self.podlogs.collect_threads()
+        # now we're finished
+        self.collect_threads()
+
         return rstatus
 
     def monitor_session(self, sessionid, stime):
@@ -618,7 +689,7 @@ class Activity():
             # If podlogs aren't initialized yet, skip collecting threads,
             # since there will not be any.
             if self.podlogs:
-                self.podlogs.collect_threads()
+                self.collect_threads()
             return
 
         payload = {
@@ -630,7 +701,7 @@ class Activity():
         try:
             self.config.logger.debug(f"sending an abort, background_only={background_only}, payload={payload}")
             self.api.abort_activity(self.name, payload)
-            self.podlogs.collect_threads()
+            self.collect_threads()
         except requests.ReadTimeout:
             self.config.logger.warning(f"Timed out sending an abort request.")
             self.config.logger.warning(f"Ensure the argo workflow for {self.name} is not running.")
@@ -709,6 +780,7 @@ class Activity():
         }
         self.site_conf = SiteConfig(self.config)
         self.site_conf.organize_merge()
+        self.config.stages.set_summary("site_vars", self.site_conf.sv_path)
 
         bp_config_management = self.config.args.get("relative_bootprep_config_management", None)
         if bp_config_management:
@@ -831,9 +903,11 @@ class Activity():
 
         session = api_result.json()
         sessionid = session['name']
-        self.config.logger.info("IUF SESSION: {}".format(sessionid))
+        self.config.logger.info(f"[IUF SESSION: {sessionid:44}] BEG Started at {datetime.datetime.now()}")
 
         self.watch_next_wf(sessionid)
+
+        self.config.logger.info(f"[IUF SESSION: {sessionid:44}] END Completed at {datetime.datetime.now()}")
 
         return sessionid
 

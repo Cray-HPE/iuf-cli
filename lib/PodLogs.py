@@ -123,7 +123,7 @@ class PodLogs():
         fhandle.close()
 
 
-    def follow_pod_log(self, pod, st_event, container):
+    def follow_pod_log(self, pod, container, log_prefix, st_event):
         """Follow the log for a particular pod."""
         def parse_str(instr):
             """Parse a block of text which is at least one line from the
@@ -240,13 +240,13 @@ class PodLogs():
                         # at some point we need to revisit this, INFO should map to DEBUG but
                         # not everyone has updated their logging for that distinction
                         if level == 'NOTICE' or level == 'INFO':
-                            install_logger.info(f"            {stdoutline}")
+                            install_logger.info(f"{log_prefix}       {stdoutline}")
                         elif level == 'WARNING':
-                            install_logger.warning(f"            {stdoutline}")
+                            install_logger.warning(f"{log_prefix}       {stdoutline}")
                         elif level == 'ERROR':
-                            install_logger.error(f"            {stdoutline}")
+                            install_logger.error(f"{log_prefix}       {stdoutline}")
                         else:
-                            install_logger.debug(stdoutline)
+                            install_logger.debug(f"{log_prefix}       {stdoutline}")
                         if st_event.is_set():
                             watcher.stop()
                             fhandle.close()
@@ -297,72 +297,8 @@ class PodLogs():
         # true if the pod is in the list.
 
         pods = self.core.list_namespaced_pod('argo')
-        running_phases = ["pending", "running"]
         job_pod_names = [p for p in pods.items if pod == p.metadata.name]
         if not job_pod_names:
             return False
         else:
             return True
-
-
-    def follow_all_pods(self):
-        """Watch for pods that match self.wfid.  The matching pods
-        correspond to a pod launched this run.  A thread is launched
-        to watch each pod to prevent the overall process from stalling
-        while watching the pods."""
-
-        # This job starts when the activity is initialized.
-        following_pods = []
-        got_pod = False
-        st_event = threading.Event()
-        while True:
-            # FIXME: It might be better to use `--selector=...`.  All the
-            # pods have a label on them.
-            pods = self.core.list_namespaced_pod('argo')
-            pod_id = re.sub('\W+', '-', self.wfid)
-            job_pod_names = [pod.metadata.name for pod in pods.items if pod_id in pod.metadata.name]
-
-            # Check that we've got a pod in addition to job_pod_names.
-            # It's possible that pods aren't being spun up when this thread
-            # is initially started.
-            if not job_pod_names and got_pod:
-                break
-            elif job_pod_names:
-                got_pod = True
-
-            for jpn in job_pod_names:
-                if jpn not in following_pods:
-                    following_pods.append(jpn)
-                    for container in ["init", "wait", "main"]:
-                        thread = threading.Thread(target=self.follow_pod_log, args=(jpn, st_event, container))
-                        thread.start()
-                        self._running_subthreads.append(thread)
-                        got_pod = True
-
-            is_set =  self.mt_event.is_set()
-            if is_set:
-                st_event.set()
-                for thread in self._running_subthreads:
-                    thread.join()
-                break
-
-            time.sleep(1)
-
-
-    def follow_pod_logs(self):
-        """Launch a thread to follow the pod logs."""
-        self.mt_event = threading.Event()
-        thread = threading.Thread(target=self.follow_all_pods)
-        thread.start()
-        self._running_mainthread = thread
-
-    def collect_threads(self):
-        """Collect the threads once the stages are completed."""
-        try:
-            self.mt_event.set()
-        except AttributeError:
-            # The threads haven't been launched yet.
-            pass
-
-        if self._running_mainthread:
-            self._running_mainthread.join()
