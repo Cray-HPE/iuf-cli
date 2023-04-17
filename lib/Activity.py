@@ -839,10 +839,11 @@ class Activity():
                 yaml.dump(cfgmaps, fhandle)
             files = [file for file in os.listdir(self.media_dir) if file.endswith(".tar.gz")]
             try:
-                cfgmap_products = ["{}-{}".format(p["name"], p["version"]) for p in cfgmaps["products"]]
+                products = cfgmaps["operation_outputs"]["stage_params"]["process-media"]["products"]
+                cfgmap_locs = [products[prod]["parent_directory"] for prod in products]
             except TypeError:
                 # This happens during a new activity on process-media.
-                cfgmap_products = {}
+                cfgmap_locs = {}
 
             # Check the integrity of the tarballs in media_dir.
             for product in files:
@@ -872,22 +873,31 @@ class Activity():
                     self.config.logger.debug(f"Couldn't find a directory for the {prodpath} tar file")
                     continue
 
-                new_tar_msg = formatted(f"""
-                    Tar file {product} found in media directory but is not
-                    present in the list of products IUF is working with, you
-                    will need re-run starting from the process-media stage
-                    to include this product.""")
+
                 if tar_path and os.path.exists(tar_path):
                     # The path exists and process_media has been run.  Note
                     # the directory will not exist before process-media is ran.
                     dir_contents = os.listdir(tar_path)
                     if "iuf-product-manifest.yaml" in dir_contents:
-                        matches = [cp for cp in cfgmap_products if cp in product]
+                        matches = [cp for cp in cfgmap_locs if cp == tar_path]
                         if len(matches) < 1 and stage != "process-media":
+                            # iuf-product-manifrest.yaml exists, so this
+                            # product should appear in in the cfgmap.
+                            # It is NOT in the cfgmap, so send a warning.
+                            new_tar_msg = formatted(f"""
+                                Tar file {product} found in media directory
+                                but is not present in the list of products
+                                IUF is working with, you will need re-run
+                                starting from the process-media stage to
+                                include this product.""")
                             self.config.logger.warning(new_tar_msg)
                 elif tar_path:
                     # The tarfile exists within the media directory, but it hasn't been extracted.
                     if stage != "process-media":
+                        new_tar_msg = formatted(f"""
+                            {product} was found in the media directory, but it
+                            hasn't been extracted.  Does process-media need
+                            to be re-ran?""")
                         self.config.logger.debug(new_tar_msg)
             # Run the stage.
             self.config.stages.exec_stage(self.config, wfid, stage)
