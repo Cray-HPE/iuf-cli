@@ -713,8 +713,8 @@ def main():
 
         thispid = os.getpid()
         if thispid != mypid:
-            # The interrupt is sent to all threads, so return
-            # if this is not the main thread.
+            # The interrupt is sent to all processes, so return
+            # if this is not the parent process.
             return
 
         if already_answered and answer_text:

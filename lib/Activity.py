@@ -505,9 +505,9 @@ class Activity():
             }
 
 
-        # Launch threads for the pod logs and continue on.  Gather the
-        # threads after the while loop.
-        self.podlogs.follow_pod_logs() # threaded at top-level, no waiting.
+        # Launch processs for the pod logs and continue on.  Gather the
+        # processses after the while loop.
+        self.podlogs.follow_pod_logs() # forked at top-level, no waiting.
         printed_s3 = {}
         while not finished:
             try:
@@ -591,7 +591,7 @@ class Activity():
             if not finished:
                 time.sleep(1)
 
-        self.podlogs.collect_threads()
+        self.podlogs.collect_procs()
         return rstatus
 
     def monitor_session(self, sessionid, stime):
@@ -637,10 +637,10 @@ class Activity():
         """Abort an activity."""
 
         if background_only:
-            # If podlogs aren't initialized yet, skip collecting threads,
+            # If podlogs aren't initialized yet, skip collecting processes,
             # since there will not be any.
             if self.podlogs:
-                self.podlogs.collect_threads()
+                self.podlogs.collect_procs()
             return
 
         comment_arg = self.config.args.get("comment", "")
@@ -658,7 +658,7 @@ class Activity():
         try:
             self.config.logger.debug(f"sending an abort, background_only={background_only}, payload={payload}")
             self.api.abort_activity(self.name, payload)
-            self.podlogs.collect_threads()
+            self.podlogs.collect_procs()
         except requests.ReadTimeout:
             self.config.logger.warning("Timed out sending an abort request.")
             self.config.logger.warning(f"Ensure the argo workflow for {self.name} is not running.")

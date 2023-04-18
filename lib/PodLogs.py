@@ -76,8 +76,8 @@ class PodLogs():
         log_dir = config_param.args.get("log_dir")
         self._log_dir = os.path.join(log_dir, config_param.timestamp, "argo_logs")
         os.makedirs(self._log_dir, exist_ok=True)
-        self._running_subthreads = {}
-        self._running_mainthread = None
+        self._running_subprocs = {}
+        self._running_mainproc = None
         self.mt_event = None
         self._logs = []
         self.wfid = wfid
@@ -278,7 +278,7 @@ class PodLogs():
                 last_read = datetime.datetime.now()
 
             if st_event.is_set():
-                # The threads are being collected.
+                # The processes are being collected.
                 fhandle.close()
                 return
             elif not self.is_running(pod):
@@ -326,8 +326,8 @@ class PodLogs():
         pods = self.list_namespaced_pod()
         job_pod_names = [p for p in pods.items if pod == p.metadata.name]
         if not job_pod_names:
-            if pod in self._running_subthreads:
-                del self._running_subthreads[pod]
+            if pod in self._running_subprocs:
+                del self._running_subprocs[pod]
             return False
         else:
             return True
@@ -335,7 +335,7 @@ class PodLogs():
 
     def follow_all_pods(self):
         """Watch for pods that match self.wfid.  The matching pods
-        correspond to a pod launched this run.  A thread is launched
+        correspond to a pod launched this run.  A process is launched
         to watch each pod to prevent the overall process from stalling
         while watching the pods."""
 
@@ -351,7 +351,7 @@ class PodLogs():
             job_pod_names = [pod.metadata.name for pod in pods.items if pod_id in pod.metadata.name]
 
             # Check that we've got a pod in addition to job_pod_names.
-            # It's possible that pods aren't being spun up when this thread
+            # It's possible that pods aren't being spun up when this process
             # is initially started.
             if not job_pod_names and got_pod:
                 break
@@ -362,35 +362,35 @@ class PodLogs():
                 if jpn not in following_pods:
                     following_pods.append(jpn)
                     for container in ["init", "wait", "main"]:
-                        thread = Process(target=self.follow_pod_log, args=(jpn, st_event, container))
-                        thread.start()
-                        self._running_subthreads[jpn] = thread
+                        proc = Process(target=self.follow_pod_log, args=(jpn, st_event, container))
+                        proc.start()
+                        self._running_subprocs[jpn] = proc
                         got_pod = True
 
             is_set =  self.mt_event.is_set()
             if is_set:
                 st_event.set()
-                for jpn in self._running_subthreads:
-                    self._running_subthreads[jpn].join()
+                for jpn in self._running_subprocs:
+                    self._running_subprocs[jpn].join()
                 break
 
             time.sleep(1)
 
 
     def follow_pod_logs(self):
-        """Launch a thread to follow the pod logs."""
+        """Launch a proc to follow the pod logs."""
         self.mt_event = multiprocessing.Event()
-        thread = Process(target=self.follow_all_pods)
-        thread.start()
-        self._running_mainthread = thread
+        proc = Process(target=self.follow_all_pods)
+        proc.start()
+        self._running_mainproc = proc
 
-    def collect_threads(self):
-        """Collect the threads once the stages are completed."""
+    def collect_procs(self):
+        """Collect the procs once the stages are completed."""
         try:
             self.mt_event.set()
         except AttributeError:
-            # The threads haven't been launched yet.
+            # The procs haven't been launched yet.
             pass
 
-        if self._running_mainthread:
-            self._running_mainthread.join()
+        if self._running_mainproc:
+            self._running_mainproc.join()
