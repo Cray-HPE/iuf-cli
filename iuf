@@ -493,9 +493,12 @@ def main():
         Can also be set via the IUF_INPUT_FILE environment variable.""")
 
     parser.add_argument("-w", "--write-input-file", action="store_true",
-        help="""Create a new input file populated with default values overridden by any other command
-        line options also specified. The file is named via the `-i` argument. The command exits once
-        the file has been created.""")
+        help="""Create an input file for iuf populated with the command line
+        options specified and exit.  This input file can be specified with
+        the `-i` option on subsequent runs.  Using an input file simplifies
+        iuf commands with many options.  Note that the general iuf command
+        does not change; so for a long iuf command, add this flag to the
+        command to write the input file.""")
 
     ### TODO, make default value product_vars.yaml 'recipe', fallback to pwd
     parser.add_argument("-a", "--activity", action="store",
