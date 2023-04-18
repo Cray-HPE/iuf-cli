@@ -182,32 +182,14 @@ class Config:
         if not validated:
             sys.exit(1)
 
+
     def check_media_dir(self, stages):
-
-        # Ensure the activity is initialized.  This will result in the
-        # activity dictionary being read, and possibly getting the last
-        # media_dir used.
-        media_dir_ok = False
         media_dir = self.activity.media_dir
-
-        if media_dir is None:
-            # media_dir wasn't found in the activity dictionary or specified
-            # via the commandline.
-            activity_dir = os.path.join(self.media_base_dir, self.activity.name)
-            if os.path.exists(activity_dir):
-                self.activity.media_dir = activity_dir
-                media_dir_ok = True
-        else:
-            # media_dir is set.  Ensure  if a relative path was specified,
-            # it expands into an absolute path correctly; i.e, the path exists.
-            for adir in [media_dir, os.path.abspath(media_dir), os.path.join(self.media_base_dir, media_dir)]:
-                if adir.startswith(self.media_base_dir) and os.path.exists(adir):
-                    media_dir_ok = True
-                    self.activity.media_dir = adir
-                    break
-
-        if not media_dir_ok:
+        if not media_dir.startswith(self.media_base_dir):
             func = self._args.get("func", None)
-            if func.__name__ ==  "process_install" and "process-media" in stages:
+            if func and func.__name__ == "process_install" and "process-media" in stages:
                 self._error(f"Media directory must exist and reside in {self.media_base_dir}")
                 sys.exit(1)
+        self._args["media_dir"] = media_dir
+
+
