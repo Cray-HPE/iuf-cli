@@ -22,10 +22,11 @@
 # OTHER DEALINGS IN THE SOFTWARE.
 #
 import datetime
+import multiprocessing
+from multiprocessing import Process
 import os
 import re
 import requests
-import threading
 import time
 
 from urllib3.exceptions import ReadTimeoutError
@@ -75,8 +76,8 @@ class PodLogs():
         log_dir = config_param.args.get("log_dir")
         self._log_dir = os.path.join(log_dir, config_param.timestamp, "argo_logs")
         os.makedirs(self._log_dir, exist_ok=True)
-        self._running_subthreads = []
-        self._running_mainthread = None
+        self._running_subprocs = {}
+        self._running_mainproc = None
         self.mt_event = None
         self._logs = []
         self.wfid = wfid
@@ -211,6 +212,7 @@ class PodLogs():
                     outlines.append((level, f"{line}", f"{line}"))
             return outlines
 
+        os.nice(20)
         log_name = os.path.join(self._log_dir, f"{pod}-{container}.txt")
         fhandle = open(log_name, 'w', encoding='UTF-8')
         start_poll = datetime.datetime.now()
@@ -276,7 +278,7 @@ class PodLogs():
                 last_read = datetime.datetime.now()
 
             if st_event.is_set():
-                # The threads are being collected.
+                # The processes are being collected.
                 fhandle.close()
                 return
             elif not self.is_running(pod):
@@ -285,6 +287,28 @@ class PodLogs():
                 return
         fhandle.close()
 
+    def list_namespaced_pod(self):
+        """A wrapper around list_namespaced_pod from the kubernetes api."""
+        ntries = 0
+        maxtries = 100
+        keepgoing = True
+        pods = None
+        while keepgoing:
+            try:
+                # We throw exceptions here when spamming ctrl-c's, so wrap it
+                # in an except and retry if necessary.
+                pods = self.core.list_namespaced_pod('argo')
+                keepgoing = False
+            except Exception:
+                pid = os.getpid()
+                if ntries >= maxtries:
+                    # The ctrl-c has to be held down for a long time to hit
+                    # this.
+                    raise
+                time.sleep(.1)
+            finally:
+                ntries += 1
+        return pods
 
     def is_running(self, pod):
         """Check if a pod is running."""
@@ -299,10 +323,11 @@ class PodLogs():
         # implemented here is because it seemed that pods could go from 'Success' back into
         # 'Running' or 'Pending'.  So we're just doing a list of the pods, and then return
         # true if the pod is in the list.
-
-        pods = self.core.list_namespaced_pod('argo')
+        pods = self.list_namespaced_pod()
         job_pod_names = [p for p in pods.items if pod == p.metadata.name]
         if not job_pod_names:
+            if pod in self._running_subprocs:
+                del self._running_subprocs[pod]
             return False
         else:
             return True

@@ -34,7 +34,7 @@ import re
 import requests
 import shutil
 import sys
-import threading
+import multiprocessing
 import tarfile
 import time
 import yaml
@@ -43,7 +43,6 @@ import lib.ApiInterface
 from lib.PodLogs import PodLogs
 from lib.SiteConfig import SiteConfig
 from lib.InstallerUtils import formatted
-from lib.vars import RLOCK
 
 class StateError(Exception):
     """A wrapper for raising a StateError exception."""
@@ -107,7 +106,7 @@ class Activity():
     workflows = None
     api_initialized = False
     st_event = None
-    running_threads = None
+    running_procs = None
 
     def __init__(self, filename=None, name=None, dryrun=False, config=None):
         self.states = dict()
@@ -405,9 +404,7 @@ class Activity():
 
         while not found:
             try:
-                RLOCK.acquire()
                 rsession = self.api.get_activity_session(self.name, sessionid)
-                RLOCK.release()
             except Exception as e:
                 self.config.logger.error(f"Unable to get session {sessionid}: {e}")
                 sys.exit(1)
@@ -524,17 +521,17 @@ class Activity():
 
         return rstatus, rfinished
 
-    def collect_threads(self):
+    def collect_procs(self):
         self.st_event.set()
         
-        if self.running_threads:
-            for thread in self.running_threads:
-                thread.join()
-            self.running_threads = []
+        if self.running_procs:
+            for proc in self.running_procs:
+                proc.join()
+            self.running_procs = []
 
-    def initialize_threading(self):
-        self.st_event = threading.Event()
-        self.running_threads = []
+    def initialize_multiprocessing(self):
+        self.st_event = multiprocessing.Event()
+        self.running_procs = []
 
     def monitor_workflow(self, workflow):
         self.config.logger.debug(f"Monitoring workflow {workflow}")
@@ -549,11 +546,11 @@ class Activity():
             "log": None
             }
 
-        # Launch threads for the pod logs and continue on.  Gather the
-        # threads after the while loop.
+        # Launch subprocesses for the pod logs and continue on.  Gather the
+        # processes after the while loop.
         printed_s3 = {}
         followed_pods = list()
-        self.initialize_threading()
+        self.initialize_multiprocessing()
         while not finished:
             try:
                 wflow = self.get_workflow(workflow)
@@ -615,9 +612,9 @@ class Activity():
                     if podname not in followed_pods:
                         followed_pods.append(podname)
                         for container in ["init", "wait", "main"]:
-                            thread = threading.Thread(target=self.podlogs.follow_pod_log, args=(podname, container, log_prefix, self.st_event))
-                            thread.start()
-                            self.running_threads.append(thread)
+                            proc = multiprocessing.Process(target=self.podlogs.follow_pod_log, args=(podname, container, log_prefix, self.st_event))
+                            proc.start()
+                            self.running_procs.append(proc)
 
                 if "displayName" in node:
                     if name not in phases:
@@ -664,7 +661,7 @@ class Activity():
                 time.sleep(1)
 
         # now we're finished
-        self.collect_threads()
+        self.collect_procs()
 
         return rstatus
 
@@ -676,9 +673,7 @@ class Activity():
 
         while not completed:
             try:
-                RLOCK.acquire()
                 session = self.api.get_activity_session(self.name, sessionid)
-                RLOCK.release()
             except Exception as e:
                 self.config.logger.error(f"Unable to get session {sessionid}: {e}")
                 sys.exit(1)
@@ -713,10 +708,10 @@ class Activity():
         """Abort an activity."""
 
         if background_only:
-            # If podlogs aren't initialized yet, skip collecting threads,
+            # If podlogs aren't initialized yet, skip collecting processes,
             # since there will not be any.
             if self.podlogs:
-                self.collect_threads()
+                self.collect_procs()
             return
 
         comment_arg = self.config.args.get("comment", "")
@@ -734,7 +729,7 @@ class Activity():
         try:
             self.config.logger.debug(f"sending an abort, background_only={background_only}, payload={payload}")
             self.api.abort_activity(self.name, payload)
-            self.collect_threads()
+            self.collect_procs()
         except requests.ReadTimeout:
             self.config.logger.warning("Timed out sending an abort request.")
             self.config.logger.warning(f"Ensure the argo workflow for {self.name} is not running.")
@@ -916,10 +911,11 @@ class Activity():
                 yaml.dump(cfgmaps, fhandle)
             files = [file for file in os.listdir(self.media_dir) if file.endswith(".tar.gz")]
             try:
-                cfgmap_products = ["{}-{}".format(p["name"], p["version"]) for p in cfgmaps["products"]]
+                products = cfgmaps["operation_outputs"]["stage_params"]["process-media"]["products"]
+                cfgmap_locs = [products[prod]["parent_directory"] for prod in products]
             except TypeError:
                 # This happens during a new activity on process-media.
-                cfgmap_products = {}
+                cfgmap_locs = {}
 
             # Check the integrity of the tarballs in media_dir.
             for product in files:
@@ -949,22 +945,31 @@ class Activity():
                     self.config.logger.debug(f"Couldn't find a directory for the {prodpath} tar file")
                     continue
 
-                new_tar_msg = formatted(f"""
-                    Tar file {product} found in media directory but is not
-                    present in the list of products IUF is working with, you
-                    will need re-run starting from the process-media stage
-                    to include this product.""")
+
                 if tar_path and os.path.exists(tar_path):
                     # The path exists and process_media has been run.  Note
                     # the directory will not exist before process-media is ran.
                     dir_contents = os.listdir(tar_path)
                     if "iuf-product-manifest.yaml" in dir_contents:
-                        matches = [cp for cp in cfgmap_products if cp in product]
+                        matches = [cp for cp in cfgmap_locs if cp == tar_path]
                         if len(matches) < 1 and stage != "process-media":
+                            # iuf-product-manifrest.yaml exists, so this
+                            # product should appear in in the cfgmap.
+                            # It is NOT in the cfgmap, so send a warning.
+                            new_tar_msg = formatted(f"""
+                                Tar file {product} found in media directory
+                                but is not present in the list of products
+                                IUF is working with, you will need re-run
+                                starting from the process-media stage to
+                                include this product.""")
                             self.config.logger.warning(new_tar_msg)
                 elif tar_path:
                     # The tarfile exists within the media directory, but it hasn't been extracted.
                     if stage != "process-media":
+                        new_tar_msg = formatted(f"""
+                            {product} was found in the media directory, but it
+                            hasn't been extracted.  Does process-media need
+                            to be re-ran?""")
                         self.config.logger.debug(new_tar_msg)
             # Run the stage.
             self.config.stages.exec_stage(self.config, wfid, stage)
