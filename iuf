@@ -575,11 +575,15 @@ def main():
     run_sp.add_argument("-bc", "--bootprep-config-managed", action="store",
         help="""`sat bootprep` config file for managed (compute and
         application) nodes.  Note the path is relative to $PWD, unless an
-        absolute path is specified.""")
+        absolute path is specified.  Omit this argument to skip building the
+        managed images (and ensure the `--bootprep-config-dir` option is not
+        specified).""")
 
     run_sp.add_argument("-bm", "--bootprep-config-management", action="store",
         help="""`sat bootprep` config file for management NCNs.  Note the
-        path is relative to $PWD, unless an absolute path is specified.""")
+        path is relative to $PWD, unless an absolute path is specified. Omit
+        this argument to skip building the management images (and ensure the
+        `--bootprep-config-dir` option is not specified).""")
 
     run_sp.add_argument("-bpcd", "--bootprep-config-dir", action="store",
         help="""Directory containing HPE `product_vars.yaml` and
