@@ -267,7 +267,6 @@ def process_install(config):
     duration = elapsed_time(config.stages.installer_start)
     install_logger.info(f"[ACTIVITY: {config.activity.name:47}] END Completed in {duration}")
 
-    #install_logger.info("Install completed in {}".format(elapsed_time(config.stages.installer_start)))
     summary = config.stages.get_summary()
     dashes = "----------------"
     print("{}\n{}\n{}".format(dashes, summary, dashes))
