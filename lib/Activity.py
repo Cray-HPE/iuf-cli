@@ -42,7 +42,6 @@ import lib.ApiInterface
 from lib.PodLogs import PodLogs
 from lib.SiteConfig import SiteConfig
 from lib.InstallerUtils import formatted
-from lib.vars import RLOCK
 
 class StateError(Exception):
     """A wrapper for raising a StateError exception."""
@@ -402,9 +401,7 @@ class Activity():
 
         while not found:
             try:
-                RLOCK.acquire()
                 rsession = self.api.get_activity_session(self.name, sessionid)
-                RLOCK.release()
             except Exception as e:
                 self.config.logger.error(f"Unable to get session {sessionid}: {e}")
                 sys.exit(1)
@@ -508,9 +505,9 @@ class Activity():
             }
 
 
-        # Launch threads for the pod logs and continue on.  Gather the
-        # threads after the while loop.
-        self.podlogs.follow_pod_logs() # threaded at top-level, no waiting.
+        # Launch processs for the pod logs and continue on.  Gather the
+        # processses after the while loop.
+        self.podlogs.follow_pod_logs() # forked at top-level, no waiting.
         printed_s3 = {}
         while not finished:
             try:
@@ -594,7 +591,7 @@ class Activity():
             if not finished:
                 time.sleep(1)
 
-        self.podlogs.collect_threads()
+        self.podlogs.collect_procs()
         return rstatus
 
     def monitor_session(self, sessionid, stime):
@@ -605,9 +602,7 @@ class Activity():
 
         while not completed:
             try:
-                RLOCK.acquire()
                 session = self.api.get_activity_session(self.name, sessionid)
-                RLOCK.release()
             except Exception as e:
                 self.config.logger.error(f"Unable to get session {sessionid}: {e}")
                 sys.exit(1)
@@ -642,10 +637,10 @@ class Activity():
         """Abort an activity."""
 
         if background_only:
-            # If podlogs aren't initialized yet, skip collecting threads,
+            # If podlogs aren't initialized yet, skip collecting processes,
             # since there will not be any.
             if self.podlogs:
-                self.podlogs.collect_threads()
+                self.podlogs.collect_procs()
             return
 
         comment_arg = self.config.args.get("comment", "")
@@ -663,7 +658,7 @@ class Activity():
         try:
             self.config.logger.debug(f"sending an abort, background_only={background_only}, payload={payload}")
             self.api.abort_activity(self.name, payload)
-            self.podlogs.collect_threads()
+            self.podlogs.collect_procs()
         except requests.ReadTimeout:
             self.config.logger.warning("Timed out sending an abort request.")
             self.config.logger.warning(f"Ensure the argo workflow for {self.name} is not running.")
@@ -844,10 +839,11 @@ class Activity():
                 yaml.dump(cfgmaps, fhandle)
             files = [file for file in os.listdir(self.media_dir) if file.endswith(".tar.gz")]
             try:
-                cfgmap_products = ["{}-{}".format(p["name"], p["version"]) for p in cfgmaps["products"]]
+                products = cfgmaps["operation_outputs"]["stage_params"]["process-media"]["products"]
+                cfgmap_locs = [products[prod]["parent_directory"] for prod in products]
             except TypeError:
                 # This happens during a new activity on process-media.
-                cfgmap_products = {}
+                cfgmap_locs = {}
 
             # Check the integrity of the tarballs in media_dir.
             for product in files:
@@ -877,22 +873,31 @@ class Activity():
                     self.config.logger.debug(f"Couldn't find a directory for the {prodpath} tar file")
                     continue
 
-                new_tar_msg = formatted(f"""
-                    Tar file {product} found in media directory but is not
-                    present in the list of products IUF is working with, you
-                    will need re-run starting from the process-media stage
-                    to include this product.""")
+
                 if tar_path and os.path.exists(tar_path):
                     # The path exists and process_media has been run.  Note
                     # the directory will not exist before process-media is ran.
                     dir_contents = os.listdir(tar_path)
                     if "iuf-product-manifest.yaml" in dir_contents:
-                        matches = [cp for cp in cfgmap_products if cp in product]
+                        matches = [cp for cp in cfgmap_locs if cp == tar_path]
                         if len(matches) < 1 and stage != "process-media":
+                            # iuf-product-manifrest.yaml exists, so this
+                            # product should appear in in the cfgmap.
+                            # It is NOT in the cfgmap, so send a warning.
+                            new_tar_msg = formatted(f"""
+                                Tar file {product} found in media directory
+                                but is not present in the list of products
+                                IUF is working with, you will need re-run
+                                starting from the process-media stage to
+                                include this product.""")
                             self.config.logger.warning(new_tar_msg)
                 elif tar_path:
                     # The tarfile exists within the media directory, but it hasn't been extracted.
                     if stage != "process-media":
+                        new_tar_msg = formatted(f"""
+                            {product} was found in the media directory, but it
+                            hasn't been extracted.  Does process-media need
+                            to be re-ran?""")
                         self.config.logger.debug(new_tar_msg)
             # Run the stage.
             self.config.stages.exec_stage(self.config, wfid, stage)

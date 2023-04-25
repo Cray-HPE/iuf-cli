@@ -30,6 +30,7 @@ import argparse
 import atexit
 import logging
 import os
+import re
 import shutil
 import signal
 import sys
@@ -383,6 +384,7 @@ def print_extra_summary(config):
     artifacts = []
 
     if os.path.exists(install_log):
+        skip_re = re.compile(r"FINISHED: \[\d+\] \[Failed\]")
         with open(install_log, "r") as fhandle:
             lines = fhandle.readlines()
             for line in lines:
@@ -391,7 +393,7 @@ def print_extra_summary(config):
                         _, level, msg = line.strip().split(" ", 2)
                         message = msg.strip()
                         if level == "ERROR":
-                            if message.startswith("FINISHED"):
+                            if message.startswith("FINISHED: call-hook-script") or re.match(skip_re, message):
                                 continue
                             error_messages.append(message)
                         if level == "INFO":
@@ -464,19 +466,17 @@ def get_answer():
     """Read input and handle related exceptions."""
     answer = ""
     try:
-        RLOCK.acquire()
         answer = input()
     except (RuntimeError, EOFError):
         # ctrl-c is being pressed repeatedly. Return anything except the
         # allowed answers.
         answer = "Invalid"
-    finally:
-        RLOCK.release()
     return answer
 
 # Interrupt variables
 already_answered = False
 answer_text = None
+mypid = os.getpid()
 
 def main():
     """Main entry point."""
@@ -495,9 +495,12 @@ def main():
         Can also be set via the IUF_INPUT_FILE environment variable.""")
 
     parser.add_argument("-w", "--write-input-file", action="store_true",
-        help="""Create a new input file populated with default values overridden by any other command
-        line options also specified. The file is named via the `-i` argument. The command exits once
-        the file has been created.""")
+        help="""Create an input file for iuf populated with the command line
+        options specified and exit.  This input file can be specified with
+        the `-i` option on subsequent runs.  Using an input file simplifies
+        iuf commands with many options.  Note that the general iuf command
+        does not change; so for a long iuf command, add this flag to the
+        command to write the input file.""")
 
     ### TODO, make default value product_vars.yaml 'recipe', fallback to pwd
     parser.add_argument("-a", "--activity", action="store",
@@ -574,11 +577,15 @@ def main():
     run_sp.add_argument("-bc", "--bootprep-config-managed", action="store",
         help="""`sat bootprep` config file for managed (compute and
         application) nodes.  Note the path is relative to $PWD, unless an
-        absolute path is specified.""")
+        absolute path is specified.  Omit this argument to skip building the
+        managed images (and ensure the `--bootprep-config-dir` option is not
+        specified).""")
 
     run_sp.add_argument("-bm", "--bootprep-config-management", action="store",
         help="""`sat bootprep` config file for management NCNs.  Note the
-        path is relative to $PWD, unless an absolute path is specified.""")
+        path is relative to $PWD, unless an absolute path is specified. Omit
+        this argument to skip building the management images (and ensure the
+        `--bootprep-config-dir` option is not specified).""")
 
     run_sp.add_argument("-bpcd", "--bootprep-config-dir", action="store",
         help="""Directory containing HPE `product_vars.yaml` and
@@ -706,33 +713,34 @@ def main():
         parser.print_help(sys.stderr)
         sys.exit(1)
 
-    def try_print(txt):
-        RLOCK.acquire()
-        print(txt)
-        sys.stdout.flush()
-        RLOCK.release()
 
 
     def process_ctrl_c(sig, frameg):
         """Override a ctrl-c interrupt."""
-        global already_answered, answer_text
+        global already_answered, answer_text, mypid
 
-        if already_answered and answer_text:
-            try_print(answer_text)
+
+        thispid = os.getpid()
+        if thispid != mypid:
+            # The interrupt is sent to all processes, so return
+            # if this is not the parent process.
             return
 
-        proccessing_interrupt = True
+        if already_answered and answer_text:
+            print(answer_text)
+            return
+
         activity = config.args.get("activity", None)
         script_name = sys.argv[0]
 
-        try_print("Would you like to abort this run?")
-        try_print("    Enter Y, y, or yes to abort after the current stage completes.")
-        try_print("    Enter F, f, or force to abort the current stage immediately.")
-        try_print("    Enter D, d, or disconnect to exit the IUF CLI.  The install will continue in the background, however no logs will be collected.")
-        try_print("")
-        try_print("    Enter <return> to resume monitoring.")
-        try_print("    NOTE: The IUF CLI will remain connected until Argo completes the abort process.  Use the disconnect option to exit the IUF CLI immediately.")
-        try_print("    NOTE: All logging will be suspended when disconnected.")
+        print("Would you like to abort this run?")
+        print("    Enter Y, y, or yes to abort after the current stage completes.")
+        print("    Enter F, f, or force to abort the current stage immediately.")
+        print("    Enter D, d, or disconnect to exit the IUF CLI.  The install will continue in the background, however no logs will be collected.")
+        print("")
+        print("    Enter <return> to resume monitoring.")
+        print("    NOTE: The IUF CLI will remain connected until Argo completes the abort process.  Use the disconnect option to exit the IUF CLI immediately.")
+        print("    NOTE: All logging will be suspended when disconnected.")
 
         literal_answer = get_answer()
         answer = literal_answer.lower()
@@ -740,30 +748,30 @@ def main():
         if answer in ["y", "yes"]:
             answer_text = "Aborting after the current stage completes."
             if not already_answered:
-                try_print(answer_text)
+                print(answer_text)
                 already_answered = True
                 process_abort(config)
 
         elif answer in ["d", "disconnect"]:
             answer_text = "Attempting to exit the CLI cleanly."
-            try_print(answer_text)
+            print(answer_text)
             if not already_answered:
                 already_answered = True
                 config.activity.abort_activity(background_only=True)
-                try_print(f"Use `{script_name} -a {activity} resume` to re-connect")
-                try_print("Bye!")
-                sys.exit(0)
+                print(f"Use `{script_name} -a {activity} resume` to re-connect")
+                print("Bye!")
 
         elif answer in ["f", "force"]:
             answer_text = "Forcing an immediate abort."
             already_answered = True
             config.args["force"] = True
             config.activity.abort_activity()
-            try_print("Bye!")
-            sys.exit(0)
-
+            print("Bye!")
         else:
-            try_print("Continuing...")
+            print("Continuing...")
+
+        #  Save cycles if if ctrl-c is being held down.
+        time.sleep(.25)
 
     signal.signal(signal.SIGINT, process_ctrl_c)
 
