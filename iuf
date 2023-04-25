@@ -30,6 +30,7 @@ import argparse
 import atexit
 import logging
 import os
+import re
 import shutil
 import signal
 import sys
@@ -383,6 +384,7 @@ def print_extra_summary(config):
     artifacts = []
 
     if os.path.exists(install_log):
+        skip_re = re.compile(r"FINISHED: \[\d+\] \[Failed\]")
         with open(install_log, "r") as fhandle:
             lines = fhandle.readlines()
             for line in lines:
@@ -391,7 +393,7 @@ def print_extra_summary(config):
                         _, level, msg = line.strip().split(" ", 2)
                         message = msg.strip()
                         if level == "ERROR":
-                            if message.startswith("FINISHED"):
+                            if message.startswith("FINISHED: call-hook-script") or re.match(skip_re, message):
                                 continue
                             error_messages.append(message)
                         if level == "INFO":
