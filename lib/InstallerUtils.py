@@ -61,6 +61,12 @@ def formatted(text):
     msg = wrapper.fill(text=raw)
     return msg
 
+def format_column(message):
+    # pad the mssage to 57 characters then return the first 57 characters to truncate longer values
+    padded = f"{message:57}"[0:57]
+
+    return(f"[{padded}]")
+
 def get_product_catalog(config, all_products=False):
     """
     update product dictionary with gitea urls

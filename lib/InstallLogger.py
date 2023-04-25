@@ -167,10 +167,3 @@ def shorten_log_status():
     logging.addLevelName(logging.WARNING, 'WARN')
     logging.addLevelName(logging.ERROR, 'ERR ')
     logging.addLevelName(logging.CRITICAL, 'CRIT')
-
-def restore_log_status():
-    logging.addLevelName(logging.DEBUG, 'DEBUG')
-    logging.addLevelName(logging.INFO, 'INFO')
-    logging.addLevelName(logging.WARNING, 'WARNING')
-    logging.addLevelName(logging.ERROR, 'ERROR')
-    logging.addLevelName(logging.CRITICAL, 'CRITICAL')

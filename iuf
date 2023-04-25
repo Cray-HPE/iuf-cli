@@ -393,7 +393,7 @@ def print_extra_summary(config):
             for line in lines:
                 if any(llevel in line for llevel in parse_lines):
                     try:
-                        _, level, msg = line.strip().split(" ", 2)
+                        _, level, msg = line.strip().split(None, 2)
                         message = msg.strip()
                         if level == "ERR" or level == "CRIT":
                             if " END " in message:
@@ -713,8 +713,6 @@ def main():
         print("ERROR: --activity is required.")
         parser.print_help(sys.stderr)
         sys.exit(1)
-
-
 
     def process_ctrl_c(sig, frameg):
         """Override a ctrl-c interrupt."""

@@ -42,7 +42,7 @@ import yaml
 import lib.ApiInterface
 from lib.PodLogs import PodLogs
 from lib.SiteConfig import SiteConfig
-from lib.InstallerUtils import formatted
+from lib.InstallerUtils import formatted, format_column
 
 class StateError(Exception):
     """A wrapper for raising a StateError exception."""
@@ -504,7 +504,7 @@ class Activity():
         except:
             readable = dname
 
-        retval = f"[{readable:57}]"
+        retval = format_column(readable)
 
         return retval
 
@@ -770,7 +770,6 @@ class Activity():
         self.site_conf.organize_merge()
         self.watch_next_wf(session)
 
-
     def run_stages(self, resume=False):
         if not self.api.activity_exists(self.name):
             raise ActivityError(f"The activity {self.name} does not exist.")
@@ -945,7 +944,6 @@ class Activity():
                     self.config.logger.debug(f"Couldn't find a directory for the {prodpath} tar file")
                     continue
 
-
                 if tar_path and os.path.exists(tar_path):
                     # The path exists and process_media has been run.  Note
                     # the directory will not exist before process-media is ran.
@@ -974,7 +972,6 @@ class Activity():
             # Run the stage.
             self.config.stages.exec_stage(self.config, wfid, stage)
 
-
     def run_stage(self, payload):
         try:
             api_result = self.api.post_activity_history_run(self.name, payload)
@@ -984,11 +981,12 @@ class Activity():
 
         session = api_result.json()
         sessionid = session['name']
-        self.config.logger.info(f"[IUF SESSION: {sessionid:44}] BEG Started at {datetime.datetime.now()}")
+        prefix = format_column(f"IUF SESSION: {sessionid}")
+        self.config.logger.info(f"{prefix} BEG Started at {datetime.datetime.now()}")
 
         self.watch_next_wf(sessionid)
 
-        self.config.logger.info(f"[IUF SESSION: {sessionid:44}] END Completed at {datetime.datetime.now()}")
+        self.config.logger.info(f"{prefix} END Completed at {datetime.datetime.now()}")
 
         return sessionid
 
@@ -1095,7 +1093,6 @@ class Activity():
                 return
 
             self.watch_next_wf(sess_name)
-
 
 def valid_activity_name(aname):
     if re.match('^[0-9a-z\.-]+$', aname):

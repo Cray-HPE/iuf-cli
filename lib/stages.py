@@ -34,7 +34,7 @@ from prettytable import PrettyTable
 import time
 import yaml
 from lib.InstallLogger import get_install_logger
-from lib.InstallerUtils import elapsed_time
+from lib.InstallerUtils import elapsed_time, format_column
 
 from lib.vars import RunException, STAGE_HIST_FILENAME, STAGE_DICT, NOABORT_STAGES
 
@@ -258,7 +258,8 @@ class Stages():
     def exec_stage(self, config, workflow, stage):
         """Run a stage."""
 
-        config.logger.info(f"[STAGE: {stage:50}] BEG Argo workflow: {workflow}")
+        prefix=format_column(f"STAGE: {stage}")
+        config.logger.info(f"{prefix} BEG Argo workflow: {workflow}")
 
         arg_comment = config.args.get("comment", None)
         if type(arg_comment) is list:
@@ -292,12 +293,12 @@ class Stages():
             if status == "Succeeded":
                 failed = False
             duration = elapsed_time(stage_start)
-            config.logger.info(f"[STAGE {stage:51}] END {status} in {duration}")
+            config.logger.info(f"{prefix} END {status} in {duration}")
 
         except RunException as err:
             # if this was an unhandled, failed command, print details
             duration = elapsed_time(stage_start)
-            config.logger.error(f"[STAGE {stage:51}] END {status} in {duration}")
+            config.logger.error(f"{prefix} END {status} in {duration}")
 
             # update the current state with the failure
             config.activity.state({"timestamp":utime, "status":"Failed"})
@@ -319,7 +320,7 @@ class Stages():
 
         except Exception as err:
             duration = elapsed_time(stage_start)
-            config.logger.error(f"[STAGE {stage:51}] END {status} in {duration}")
+            config.logger.error(f"{prefix} END {status} in {duration}")
             # update the current state with the failure
             config.activity.state({"timestamp":utime, "status":"Failed"})
             # put the whole process into debug
