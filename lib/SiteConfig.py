@@ -88,7 +88,6 @@ class SiteConfig():
         self.bpcd = config.args.get("bootprep_config_dir", None)
         self.git = git.Git(config)
         self.stage_enum = config.stages.stage_enum
-        self.printed_sv_msg = False
 
         errors = []
 
@@ -284,11 +283,7 @@ class SiteConfig():
                 yaml.dump(self.session_vars, fhandle)
 
         with open(self.sv_path, "w") as fhandle:
-            if not self.printed_sv_msg:
-                install_logger.info("Dumping rendered site variables to {}".format(self.sv_path))
-                self.printed_sv_msg = True
-            else:
-                install_logger.debug("Dumping rendered site variables to {}".format(self.sv_path))
+            install_logger.debug("Dumping rendered site variables to {}".format(self.sv_path))
             yaml.dump(self.rendered, fhandle)
 
     def update_dict_stack(self, stage):

@@ -260,11 +260,14 @@ def process_activity(config):
 def process_install(config):
     """Run the install"""
 
+    install_logger.info(f"[ACTIVITY: {config.activity.name:47}] BEG Install started at {config.stages.installer_start}")
     config.activity.create_activity()
     config.activity.run_stages(resume=False)
 
     config.activity.state({"state": "waiting_admin"})
-    install_logger.info("Install completed in {}".format(elapsed_time(config.stages.installer_start)))
+    duration = elapsed_time(config.stages.installer_start)
+    install_logger.info(f"[ACTIVITY: {config.activity.name:47}] END Completed in {duration}")
+
     summary = config.stages.get_summary()
     dashes = "----------------"
     print("{}\n{}\n{}".format(dashes, summary, dashes))
@@ -382,18 +385,19 @@ def print_extra_summary(config):
     log_hints = []
     error_messages = []
     artifacts = []
+    parse_lines = ["INFO","ERR","CRIT"]
 
     if os.path.exists(install_log):
-        skip_re = re.compile(r"FINISHED: \[\d+\] \[Failed\]")
+        skip_re = re.compile(r" END \[\d+\] \[Failed\]")
         with open(install_log, "r") as fhandle:
             lines = fhandle.readlines()
             for line in lines:
-                if "ERROR" in line or "INFO" in line:
+                if any(llevel in line for llevel in parse_lines):
                     try:
-                        _, level, msg = line.strip().split(" ", 2)
+                        _, level, msg = line.strip().split(None, 2)
                         message = msg.strip()
-                        if level == "ERROR":
-                            if message.startswith("FINISHED: call-hook-script") or re.match(skip_re, message):
+                        if level == "ERR" or level == "CRIT":
+                            if " END call-hook-script" in message or re.match(skip_re, message):
                                 continue
                             error_messages.append(message)
                         if level == "INFO":
@@ -442,6 +446,8 @@ def initialization(config, args):
 
     process_debug_level(config)
     update_logger_config(config)
+    shorten_log_status()
+    
     install_logger.debug("IUF Command: {}".format(" ".join(sys.argv)))
     install_logger.debug(f"args: {config.args}")
 
@@ -713,8 +719,6 @@ def main():
         parser.print_help(sys.stderr)
         sys.exit(1)
 
-
-
     def process_ctrl_c(sig, frameg):
         """Override a ctrl-c interrupt."""
         global already_answered, answer_text, mypid
@@ -777,8 +781,11 @@ def main():
 
     try:
         args.func(config)
-    except AttributeError:
-        install_logger.error("A subcommand was not specified.")
+    except AttributeError as e:
+        if args and not "func" in args:
+            install_logger.error("A subcommand was not specified.")
+        else:
+            install_logger.error("An unexpected error occurred: {}".format(e))
         sys.exit(1)
     except Exception as e:
         install_logger.error("An unexpected error occurred: {}".format(e))

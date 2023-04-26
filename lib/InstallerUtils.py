@@ -26,14 +26,12 @@ Common utility and helper functions used by the CI.
 """
 
 import datetime
-import jinja2
 import json
 import textwrap
 import yaml
 import prettytable
 
 from lib.InstallLogger import get_install_logger
-from lib.vars import UnexpectedState
 
 install_logger = get_install_logger(__name__)
 # pylint: disable=consider-using-f-string
@@ -56,13 +54,18 @@ def print_table(rows, header=None, sort=None, alignments=None):
 
     print(table)
 
-
 def formatted(text):
     """Format a text string for a standard 80-line terminal."""
     wrapper = textwrap.TextWrapper(width=78)
     raw = textwrap.dedent(text).strip()
     msg = wrapper.fill(text=raw)
     return msg
+
+def format_column(message):
+    # pad the mssage to 57 characters then return the first 57 characters to truncate longer values
+    padded = f"{message:57}"[0:57]
+
+    return(f"[{padded}]")
 
 def get_product_catalog(config, all_products=False):
     """
@@ -137,9 +140,6 @@ def get_product_catalog(config, all_products=False):
 
         except Exception:
             install_logger.debug('unable to get all config-management data for %s', product)
-
-
-
 
 def elapsed_time(start_time, to_str=True):
     """
