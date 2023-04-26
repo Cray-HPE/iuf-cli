@@ -55,7 +55,7 @@ class ActivityError(Exception):
 
 ACTIVITY_NEW_STATE = {
     'state': None,
-    'sessionid': None,
+    'workflow_id': None,
     'status': None,
     'comment': None,
     'command': None,
@@ -166,7 +166,7 @@ class Activity():
             table.add_row([
                 start,
                 state['state'],
-                state['sessionid'],
+                state['workflow_id'],
                 state['status'],
                 duration,
                 state['comment']
@@ -231,7 +231,6 @@ class Activity():
             elif self.states:
                 ordered_states = sorted(self.states.keys())
                 last_state = self.states[ordered_states[-1]]
-                sessionid = last_state.get("sessionid", None)
                 if "args" in last_state and "media_dir" in last_state["args"]:
                     self._media_dir = last_state["args"]["media_dir"]
 
@@ -286,18 +285,18 @@ class Activity():
                         if attr in state:
                             # Update any sessions that don't have a finished state
                             if attr == "status" and state[attr] not in ["Succeeded","Failed", "restart", "resume", "abort"]:
-                                if state.get("sessionid", None):
-                                    state['status'], last_finished = self.get_workflow_status(state["sessionid"])
+                                if state.get("workflow_id", None):
+                                    state['status'], last_finished = self.get_workflow_status(state["workflow_id"])
                             self.states[stime][attr] = state[attr]
 
             # now see if the client was killed before putting the activity into debug or waiting_admin
             ordered_states = sorted(self.states.keys())
             last_state = self.states[ordered_states[-1]]
-            sessionid = last_state.get("sessionid", None)
+            workflow_id = last_state.get("workflow_id", None)
 
-            if sessionid:
-                # ok, so the last state has a sessionid so it isn't a debug/waiting
-                last_status, last_finished = self.get_workflow_status(sessionid)
+            if workflow_id:
+                # ok, so the last state has a workflow_id so it isn't a debug/waiting
+                last_status, last_finished = self.get_workflow_status(workflow_id)
 
                 if last_status == "Succeeded":
                     self.state({"timestamp": last_finished, "state": 'waiting_admin', "create": True})
@@ -344,7 +343,7 @@ class Activity():
 
         defaults = {
             "timestamp": None,
-            "sessionid": None,
+            "workflow_id": None,
             "state": None,
             "status": "n/a",
             "comment": None,
@@ -397,16 +396,16 @@ class Activity():
                 self.config.logger.error(f"Unable to create activity: {e}")
                 sys.exit(1)
 
-    def get_next_workflow(self, sessionid):
+    def get_next_workflow(self, workflow_id):
         retflow = None
         found = False
         count = 0
 
         while not found:
             try:
-                rsession = self.api.get_activity_session(self.name, sessionid)
+                rsession = self.api.get_activity_session(self.name, workflow_id)
             except Exception as e:
-                self.config.logger.error(f"Unable to get session {sessionid}: {e}")
+                self.config.logger.error(f"Unable to get session {workflow_id}: {e}")
                 sys.exit(1)
 
 
@@ -423,7 +422,7 @@ class Activity():
 
             status = session['current_state']
             if status and status not in ["in_progress", "transitioning"]:
-                self.config.logger.debug(f"Session {sessionid} is not in progress.  Status: {status}")
+                self.config.logger.debug(f"Session {workflow_id} is not in progress.  Status: {status}")
                 found = True
                 break
 
@@ -665,17 +664,17 @@ class Activity():
 
         return rstatus
 
-    def monitor_session(self, sessionid, stime):
-        self.config.logger.debug(f"Monitoring session {sessionid} at {stime}")
+    def monitor_session(self, workflow_id, stime):
+        self.config.logger.debug(f"Monitoring workflow {workflow_id} at {stime}")
         completed = False
 
         self.state({"timestamp": stime, "status": "Running"})
 
         while not completed:
             try:
-                session = self.api.get_activity_session(self.name, sessionid)
+                session = self.api.get_activity_session(self.name, workflow_id)
             except Exception as e:
-                self.config.logger.error(f"Unable to get session {sessionid}: {e}")
+                self.config.logger.error(f"Unable to get session {workflow_id}: {e}")
                 sys.exit(1)
 
             status = session.json()['current_state']
@@ -691,7 +690,7 @@ class Activity():
 
         self.state({"timestamp": stime, "status": stat})
 
-        self.config.logger.debug(f"Finished monitoring session {sessionid}")
+        self.config.logger.debug(f"Finished monitoring workflow {workflow_id}")
 
         return stat
 
@@ -761,14 +760,14 @@ class Activity():
             raise
 
         api_json = api_results.json()
-        session = api_json["name"]
+        workflow = api_json["name"]
         if "input_parameters" in api_json and "stages" in api_json["input_parameters"]:
             stages = api_json["input_parameters"]["stages"]
             self.config.stages.set_stages(stages)
 
         self.site_conf = SiteConfig(self.config)
         self.site_conf.organize_merge()
-        self.watch_next_wf(session)
+        self.watch_next_wf(workflow)
 
     def run_stages(self, resume=False):
         if not self.api.activity_exists(self.name):
@@ -998,15 +997,15 @@ class Activity():
             return
 
         last_activity = {}
-        last_sessionid = None
+        last_workflow_id = None
         self.site_conf = SiteConfig(self.config)
         self.site_conf.organize_merge()
 
         skeys = sorted(self.states.keys(), reverse=True)
         for key in skeys:
-            if "sessionid" in self.states[key] and self.states[key]["sessionid"]:
+            if "workflow_id" in self.states[key] and self.states[key]["workflow_id"]:
                 last_activity = self.states[key]
-                last_sessionid = last_activity["sessionid"]
+                last_workflow_id = last_activity["workflow_id"]
                 break
 
         # process-media is a unique stage, because it is sent separately to
@@ -1041,7 +1040,7 @@ class Activity():
                     last_stages.pop(0)
                 if backend_stages[0] == "process-media":
                     # 1a -- disconnected in process media.  -- will stop after.
-                    self.monitor_workflow(last_sessionid)
+                    self.monitor_workflow(last_workflow_id)
                     if last_stages:
                         self.config.stages.set_stages(last_stages)
                         self.run_stages(resume=True)
@@ -1051,14 +1050,14 @@ class Activity():
 
                     result = self.api.get_activity_sessions(self.name)
                     sessions = result.json()
-                    sess_param = last_sessionid
+                    sess_param = last_workflow_id
                     for sess in sessions:
                         if "input_parameters" in sess and "stages" in sess["input_parameters"]:
-                            if sess["name"] in last_sessionid:
+                            if sess["name"] in last_workflow_id:
                                 sess_param = sess["name"]
 
                     # Watch the running workflow.
-                    self.monitor_workflow(last_sessionid)
+                    self.monitor_workflow(last_workflow_id)
 
                     bad_stage = True
                     while bad_stage:

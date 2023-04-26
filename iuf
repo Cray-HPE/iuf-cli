@@ -240,7 +240,7 @@ def process_activity(config):
         try:
             config.activity.state({
                 "timestamp": config.args.get("time", None),
-                "sessionid": config.args.get("argo_workflow_id", None),
+                "workflow_id": config.args.get("argo_workflow_id", None),
                 "status": config.args.get("status", "n/a"),
                 "comment": config.args.get("comment", None),
                 "state": state,
