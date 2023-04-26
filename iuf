@@ -30,6 +30,7 @@ import argparse
 import atexit
 import logging
 import os
+import re
 import shutil
 import signal
 import sys
@@ -387,6 +388,7 @@ def print_extra_summary(config):
     parse_lines = ["INFO","ERR","CRIT"]
 
     if os.path.exists(install_log):
+        skip_re = re.compile(r" END \[\d+\] \[Failed\]")
         with open(install_log, "r") as fhandle:
             lines = fhandle.readlines()
             for line in lines:
@@ -395,7 +397,7 @@ def print_extra_summary(config):
                         _, level, msg = line.strip().split(None, 2)
                         message = msg.strip()
                         if level == "ERR" or level == "CRIT":
-                            if " END " in message:
+                            if " END call-hook-script" in message or re.match(skip_re, message):
                                 continue
                             error_messages.append(message)
                         if level == "INFO":
@@ -581,11 +583,15 @@ def main():
     run_sp.add_argument("-bc", "--bootprep-config-managed", action="store",
         help="""`sat bootprep` config file for managed (compute and
         application) nodes.  Note the path is relative to $PWD, unless an
-        absolute path is specified.""")
+        absolute path is specified.  Omit this argument to skip building the
+        managed images (and ensure the `--bootprep-config-dir` option is not
+        specified).""")
 
     run_sp.add_argument("-bm", "--bootprep-config-management", action="store",
         help="""`sat bootprep` config file for management NCNs.  Note the
-        path is relative to $PWD, unless an absolute path is specified.""")
+        path is relative to $PWD, unless an absolute path is specified. Omit
+        this argument to skip building the management images (and ensure the
+        `--bootprep-config-dir` option is not specified).""")
 
     run_sp.add_argument("-bpcd", "--bootprep-config-dir", action="store",
         help="""Directory containing HPE `product_vars.yaml` and
