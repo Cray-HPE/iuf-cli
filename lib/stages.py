@@ -265,7 +265,7 @@ class Stages():
         if type(arg_comment) is list:
             arg_comment = " ".join(arg_comment)
         if arg_comment:
-            state_args = {"comment": arg_comment, "sessionid": workflow,
+            state_args = {"comment": arg_comment, "workflow_id": workflow,
                           "status": config.args["func"].__name__.replace("process_", "")}
             config.activity.state(state_args)
             # Sleep 1, so that the next entry is not over-written if less than a second has elapsed.
@@ -275,7 +275,7 @@ class Stages():
         state_args = {
             "state": "in_progress",
             "status": "Running",
-            "sessionid": workflow,
+            "workflow_id": workflow,
             "comment": comment,
             "command": " ".join(sys.argv),
             "media_dir": config.args.get("media_dir")
