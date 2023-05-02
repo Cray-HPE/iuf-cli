@@ -888,6 +888,13 @@ class Activity():
 
         return sessions
 
+    @property
+    def bootprep_commands(self):
+        if self.site_conf and self.site_conf.bootprep_commands:
+            return "\n".join(self.site_conf.bootprep_commands)
+        else:
+            return ""
+
     def watch_next_wf(self, sessionid):
         while True:
             wfid = self.get_next_workflow(sessionid)

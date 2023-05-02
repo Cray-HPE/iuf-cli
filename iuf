@@ -418,6 +418,10 @@ def print_extra_summary(config):
             for artifact in list(dict.fromkeys(artifacts)):
                 print("  ", artifact)
 
+        if config.activity.bootprep_commands:
+            print("sat can be run manually with the following commands:")
+            print(config.activity.bootprep_commands)
+
         if len(error_messages) > 0:
             print("")
             print("Error Summary:")
@@ -447,7 +451,7 @@ def initialization(config, args):
     process_debug_level(config)
     update_logger_config(config)
     shorten_log_status()
-    
+
     install_logger.debug("IUF Command: {}".format(" ".join(sys.argv)))
     install_logger.debug(f"args: {config.args}")
 
