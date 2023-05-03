@@ -31,8 +31,10 @@ import yaml
 import lib.git as git
 import jinja2
 from semver import VersionInfo
+import shutil
+import textwrap
 
-from lib.vars import RECIPE_VARS, BP_CONFIG_MANAGED, BP_CONFIG_MANAGEMENT, MEDIA_VERSIONS, UnexpectedState
+from lib.vars import RECIPE_VARS, BP_CONFIG_MANAGED, BP_CONFIG_MANAGEMENT, SESSION_VARS, MEDIA_VERSIONS, UnexpectedState
 
 from lib.InstallerUtils import get_product_catalog, formatted
 
@@ -46,9 +48,17 @@ def read_yaml(file_loc):
     return_dict = {}
     if os.path.exists(file_loc):
         with open(file_loc, "r", encoding='UTF-8') as fhandle:
-            return_dict = yaml.load(fhandle, yaml.SafeLoader)
+            try:
+                return_dict = yaml.load(fhandle, yaml.SafeLoader)
+            except yaml.parser.ParserError as ex:
+                # We could raise a SyntaxProblem from lib.vars as here well,
+                # but this looks more user-friendly.
+                install_logger.error(f"Parser error while reading {file_loc}:")
+                install_logger.error(ex)
+                sys.exit(1)
     else:
-       raise FileNotFoundError(f"Could not find file {file_loc}")
+        install_logger.error(f"Could not find file {file_loc}")
+        sys.exit(1)
 
     return return_dict
 
@@ -78,13 +88,21 @@ class SiteConfig():
         self.session_vars = {}
         self.pre_rendered = {}
         self.rendered = {}
+
         self.bp_managed = config.args.get("bootprep_config_managed")
         self.bp_management = config.args.get("bootprep_config_management")
+        self.relative_bpc_dir = config.args.get("relative_bootprep_config_dir", None)
+        self.relative_bpc_managed = config.args.get("relative_bootprep_config_managed", None)
+        self.relative_bpc_management = config.args.get("relative_bootprep_config_management", None)
+        self.media_dir = config.activity.media_dir
+
         self.product_catalog = {}
         self.mask_recipe_prods = []
+        self.sat_commands = []
         self.state_dir = config.args.get("state_dir")
-        self.sv_path = os.path.join(self.state_dir, "session_vars.yaml")
+        self.sv_path = os.path.join(self.state_dir, SESSION_VARS)
         self.media_versions_path = os.path.join(self.state_dir, MEDIA_VERSIONS)
+
         self.bpcd = config.args.get("bootprep_config_dir", None)
         self.git = git.Git(config)
         self.stage_enum = config.stages.stage_enum
@@ -104,6 +122,9 @@ class SiteConfig():
         tmp_mask = config.args.get("mask_recipe_prods", [])
         if tmp_mask:
             self.mask_recipe_prods = tmp_mask
+
+        #if self.bp_managed:
+        #    myyaml = read_yaml(self.bp_managed)
 
         if any([var for var in [recipe_vars_file, site_vars_file,
                 self.bpcd]]):
@@ -285,6 +306,38 @@ class SiteConfig():
         with open(self.sv_path, "w") as fhandle:
             install_logger.debug("Dumping rendered site variables to {}".format(self.sv_path))
             yaml.dump(self.rendered, fhandle)
+        shutil.copy(self.sv_path, self.media_dir)
+
+
+    @property
+    def bootprep_commands(self):
+        return self.sat_commands
+
+    def update_bootprep_commands(self, stage):
+        """Add the bootprep commands ran for a particular stage to a list,
+        which will be printed in the summary at the end of a run."""
+
+        if stage not in["update-cfs-config", "prepare-images"]:
+            return
+        elif stage == "update-cfs-config":
+            limit = "configurations"
+        else:
+            # The stage is prepare-images
+            limit = "session_templates"
+
+        if self.relative_bpc_management:
+            self.sat_commands.append(textwrap.indent(textwrap.dedent(f"""
+                cd {self.media_dir}
+                sat bootprep run --limit {limit} --overwrite-configs \\
+                --vars-file "{SESSION_VARS}" --format json --bos-version v2 \\
+                {self.relative_bpc_management}"""), "    "))
+
+        if self.relative_bpc_managed:
+            self.sat_commands.append(textwrap.indent(textwrap.dedent(f"""
+                cd {self.media_dir}
+                sat bootprep run --limit {limit} --overwrite-configs \\
+                --vars-file "{SESSION_VARS}" --format json --bos-version v2 \\
+                {self.relative_bpc_managed}"""), "    "))
 
     def update_dict_stack(self, stage):
         vcs_stage = self.stage_enum["update-vcs-config"]
@@ -299,6 +352,7 @@ class SiteConfig():
         if stage_index >= vcs_stage:
             self.organize_merge()
             self.manage_session_vars(self.session_vars)
+            self.update_bootprep_commands(stage)
 
     @property
     def site_params(self):
