@@ -36,6 +36,7 @@ import shutil
 import sys
 import multiprocessing
 import tarfile
+import inspect
 import time
 import yaml
 
@@ -154,6 +155,7 @@ class Activity():
         ordered_states = sorted(states.keys())
         length = range(len(ordered_states))
         summary = dict()
+        key_error = False
         for x in length:
             start = ordered_states[x]
             state = states[start]
@@ -163,14 +165,17 @@ class Activity():
                 end = start
 
             duration = self.get_duration(start, end)
-            table.add_row([
-                start,
-                state['state'],
-                state['workflow_id'],
-                state['status'],
-                duration,
-                state['comment']
-            ])
+            try:
+                table.add_row([
+                    start,
+                    state['state'],
+                    state['workflow_id'],
+                    state['status'],
+                    duration,
+                    state['comment']
+                ])
+            except KeyError:
+                key_error = True
             if state['state'] not in summary:
                 summary[state['state']] = duration
             else:
@@ -184,6 +189,11 @@ class Activity():
         activity_name = self.name
         if not self.api.activity_exists(activity_name):
             activity_name += " [local only]"
+
+        if key_error:
+            self.config.logger.warning(inspect.cleandoc("""Some activity entries have been omitted
+            due to an incompatibility with older software versions.
+            """))
 
         retstring = "+" + "-" * (table_width - 2) + "+\n"
         retstring += f"| Activity: {activity_name:<{table_width - 14}} |\n"
@@ -202,7 +212,6 @@ class Activity():
             if "paused" in summary:
                 active_time = total_time - summary['paused']
                 retstring += f"Unpaused time: {active_time}\n"
-
         return retstring
 
     def yaml(self):
