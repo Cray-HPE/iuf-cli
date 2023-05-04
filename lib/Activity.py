@@ -36,7 +36,6 @@ import shutil
 import sys
 import multiprocessing
 import tarfile
-import inspect
 import time
 import yaml
 
@@ -155,7 +154,6 @@ class Activity():
         ordered_states = sorted(states.keys())
         length = range(len(ordered_states))
         summary = dict()
-        key_error = False
         for x in length:
             start = ordered_states[x]
             state = states[start]
@@ -163,19 +161,21 @@ class Activity():
                 end = ordered_states[x+1]
             else:
                 end = start
-
             duration = self.get_duration(start, end)
-            try:
-                table.add_row([
-                    start,
-                    state['state'],
-                    state['workflow_id'],
-                    state['status'],
-                    duration,
-                    state['comment']
-                ])
-            except KeyError:
-                key_error = True
+
+            for key in ACTIVITY_NEW_STATE:
+                if key not in state:
+                    state[key] = ACTIVITY_NEW_STATE[key]
+
+            table.add_row([
+                start,
+                state['state'],
+                state['workflow_id'],
+                state['status'],
+                duration,
+                state['comment']
+            ])
+
             if state['state'] not in summary:
                 summary[state['state']] = duration
             else:
@@ -189,11 +189,6 @@ class Activity():
         activity_name = self.name
         if not self.api.activity_exists(activity_name):
             activity_name += " [local only]"
-
-        if key_error:
-            self.config.logger.warning(inspect.cleandoc("""Some activity entries have been omitted
-            due to an incompatibility with older software versions.
-            """))
 
         retstring = "+" + "-" * (table_width - 2) + "+\n"
         retstring += f"| Activity: {activity_name:<{table_width - 14}} |\n"
@@ -287,6 +282,13 @@ class Activity():
             if "states" in activity:
                 for rtime in sorted(activity["states"].keys()):
                     state = activity["states"][rtime]
+
+                    # "sessionid" was renamed "workflow_id" between the 1.4 and 1.5
+                    # IUF/CSM releases. The "sessionid" check could probably be
+                    # removed in some later release.
+                    if "sessionid" in state.keys():
+                        state["workflow_id"] = state.pop("sessionid")
+
                     # reprocess the time in case the formats changed or something
                     stime = self.get_time(rtime)
                     self.states[stime] = dict()
