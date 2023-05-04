@@ -161,8 +161,12 @@ class Activity():
                 end = ordered_states[x+1]
             else:
                 end = start
-
             duration = self.get_duration(start, end)
+
+            for key in ACTIVITY_NEW_STATE:
+                if key not in state:
+                    state[key] = ACTIVITY_NEW_STATE[key]
+
             table.add_row([
                 start,
                 state['state'],
@@ -171,6 +175,7 @@ class Activity():
                 duration,
                 state['comment']
             ])
+
             if state['state'] not in summary:
                 summary[state['state']] = duration
             else:
@@ -202,7 +207,6 @@ class Activity():
             if "paused" in summary:
                 active_time = total_time - summary['paused']
                 retstring += f"Unpaused time: {active_time}\n"
-
         return retstring
 
     def yaml(self):
@@ -278,6 +282,13 @@ class Activity():
             if "states" in activity:
                 for rtime in sorted(activity["states"].keys()):
                     state = activity["states"][rtime]
+
+                    # "sessionid" was renamed "workflow_id" between the 1.4 and 1.5
+                    # IUF/CSM releases. The "sessionid" check could probably be
+                    # removed in some later release.
+                    if "sessionid" in state.keys():
+                        state["workflow_id"] = state.pop("sessionid")
+
                     # reprocess the time in case the formats changed or something
                     stime = self.get_time(rtime)
                     self.states[stime] = dict()
