@@ -81,7 +81,7 @@ class StageHist:
             "summary": self.summary
         }
         with open(self._stage_hist_file, "w", encoding='UTF-8') as fhandle:
-            yaml.dump(dump_dict, fhandle)
+            yaml.dump(dump_dict, fhandle, sort_keys=False)
 
 
     def update(self, stage, ran=False, succeeded=False, duration=None):
@@ -255,7 +255,7 @@ class Stages():
         table.align = "l"
         return table.get_string()
 
-    def exec_stage(self, config, workflow, stage):
+    def exec_stage(self, config, workflow, sessionid, stage):
         """Run a stage."""
 
         prefix=format_column(f"STAGE: {stage}")
@@ -275,6 +275,7 @@ class Stages():
         state_args = {
             "state": "in_progress",
             "status": "Running",
+            "session": sessionid,
             "workflow_id": workflow,
             "comment": comment,
             "command": " ".join(sys.argv),

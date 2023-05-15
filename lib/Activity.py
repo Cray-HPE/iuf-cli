@@ -36,6 +36,7 @@ import shutil
 import sys
 import multiprocessing
 import tarfile
+import textwrap
 import time
 import yaml
 
@@ -43,6 +44,7 @@ import lib.ApiInterface
 from lib.PodLogs import PodLogs
 from lib.SiteConfig import SiteConfig
 from lib.InstallerUtils import formatted, format_column
+from lib.vars import ARG_DEFAULTS
 
 class StateError(Exception):
     """A wrapper for raising a StateError exception."""
@@ -55,6 +57,7 @@ class ActivityError(Exception):
 
 ACTIVITY_NEW_STATE = {
     'state': None,
+    'session': None,
     'workflow_id': None,
     'status': None,
     'comment': None,
@@ -116,6 +119,7 @@ class Activity():
         self.site_conf = None
         self.config = config
         self._media_dir = None
+        self.sessions_dir = os.path.join(self.config.args["state_dir"], "sessions")
         if os.path.exists(filename):
             try:
                 self.load_activity_dict(filename)
@@ -149,11 +153,13 @@ class Activity():
     def __str__(self):
         """Print the activity in a nice table."""
         table = PrettyTable()
-        table.field_names = ["Start", "Category", "Argo Workflow", "Status", "Duration", "Comment"]
+        table.field_names = ["Start", "Category", "Command / Argo Workflow", "Status", "Duration", "Comment"]
         states = self.states
         ordered_states = sorted(states.keys())
         length = range(len(ordered_states))
         summary = dict()
+        session = None
+        session_times = {}
         for x in length:
             start = ordered_states[x]
             state = states[start]
@@ -166,6 +172,19 @@ class Activity():
             for key in ACTIVITY_NEW_STATE:
                 if key not in state:
                     state[key] = ACTIVITY_NEW_STATE[key]
+            if session != state['session'] and state['session'] != None:
+                # This is a new session.
+                session = state['session']
+                session_times[session] = {"timestamp": start, "duration": duration}
+                if x != 0:
+                    table.add_row(["-------------------", "-----", "-----", "-----", "-----", "-----"])
+                command = "command: {}".format(state["command"]) if "command" in state else ""
+                command = " \\ \n".join(textwrap.wrap(command, width=45, break_long_words=False, break_on_hyphens=False))
+                table.add_row([f"session: {session}","", command, "", "", ""])
+            elif session:
+                # This is the current session.  session_times[session]["duration"] will be
+                # over-written until the session changes.
+                session_times[session]["duration"] = self.get_duration(session_times[session]["timestamp"], start)
 
             table.add_row([
                 start,
@@ -189,25 +208,48 @@ class Activity():
         activity_name = self.name
         if not self.api.activity_exists(activity_name):
             activity_name += " [local only]"
-
-        retstring = "+" + "-" * (table_width - 2) + "+\n"
-        retstring += f"| Activity: {activity_name:<{table_width - 14}} |\n"
-        retstring += tstring
+        retstring = []
+        retstring.append("+" + "-" * (table_width - 2) + "+")
+        retstring.append(f"| Activity: {activity_name:<{table_width - 14}} |")
+        retstring.append(tstring)
 
         if summary:
-            retstring += "\n\nSummary:\n"
-            retstring += "   Start time: " + self.start + "\n"
-            retstring += "     End time: " + ordered_states[-1] + "\n\n"
+            retstring.append("Summary:")
+            retstring.append("  Start time: " + self.start)
+            retstring.append("  End time: " + ordered_states[-1] + "\n")
+            retstring.append("  Time spent in sessions:")
+            for sess in session_times:
+                retstring.append("    {}: {}".format(sess, session_times[sess]["duration"]))
+            retstring.append("")
+            stage_durations = {}
+            longest_stagename = 0
+            for stage in self.config.stages.get_stage_status(self.name):
+                if stage["duration"]:
+                    stage_durations[stage["stage"]] = stage["duration"]
+                    stagename_len = len(stage["stage"])
+                    if stagename_len > longest_stagename:
+                        longest_stagename = stagename_len
+
+            if stage_durations:
+                retstring.append("  Stage Durations:")
+                for stage in stage_durations:
+                    retstring.append("    {0:>{longest_stagename}}: {1}".format(stage, stage_durations[stage], longest_stagename=longest_stagename))
+            retstring.append("")
+
+            retstring.append("  Time spent in states:")
+            longest_state = max(ACTIVITY_VALID_STATES, key=len)
+            state_len = max(map(len, ACTIVITY_VALID_STATES))
             for astate in ACTIVITY_VALID_STATES:
                 if astate in summary:
-                    retstring += f"{astate:>14}: {summary[astate]}\n"
-            retstring += "\n"
+                    retstring.append("{0:>{state_len}}: {1}".format(astate, summary[astate], state_len=state_len))
+
+            retstring.append("")
             total_time = self.get_duration(self.start, ordered_states[-1])
-            retstring += f"   Total time: {total_time}\n"
+            retstring.append(f"  Total time: {total_time}")
             if "paused" in summary:
                 active_time = total_time - summary['paused']
-                retstring += f"Unpaused time: {active_time}\n"
-        return retstring
+                retstring.append(f"  Unpaused time: {active_time}")
+        return "\n".join(retstring)
 
     def yaml(self):
         return yaml.dump(self.get_dict())
@@ -355,6 +397,7 @@ class Activity():
         defaults = {
             "timestamp": None,
             "workflow_id": None,
+            "session": None,
             "state": None,
             "status": "n/a",
             "comment": None,
@@ -533,7 +576,7 @@ class Activity():
 
     def collect_procs(self):
         self.st_event.set()
-        
+
         if self.running_procs:
             for proc in self.running_procs:
                 proc.join()
@@ -906,6 +949,62 @@ class Activity():
         else:
             return ""
 
+    def get_wf_dict(self, workflow_arg=None):
+        filenames = os.listdir(self.sessions_dir)
+        workflows = {}
+        stages = self.config.stages.get(list_fmt=True)
+        for fname in filenames:
+            for stage in stages:
+                stage_str = f"-{stage}.yaml"
+                if fname.endswith(stage_str):
+                    if not workflow_arg:
+                        workflows[fname .replace(stage_str, "")] = os.path.join(self.sessions_dir, fname)
+                    else:
+                        for workflow in workflow_arg:
+                            if fname.startswith(workflow):
+                                workflows[fname .replace(stage_str, "")] = os.path.join(self.sessions_dir, fname)
+
+        return workflows
+
+    def workflow_info(self, arg_defaults):
+        return_text = []
+        return_states = []
+        workflows = self.config.args["workflows"]
+        wf_dict = self.get_wf_dict(workflows)
+        debug_mode = self.config.args.get("debug", False)
+        if not workflows:
+            return_text = list(wf_dict.keys())
+            return "\n".join(return_text)
+
+        #### We're still here.   There are workflows to process.
+        for workflow in wf_dict:
+            with open(wf_dict[workflow], "r") as fh:
+                wf_info = yaml.load(fh, yaml.SafeLoader)
+
+            all_states = [self.states[s] for s in self.states if self.states[s]["workflow_id"] == workflow]
+            nstates = len(all_states)
+            for state in all_states:
+                state_dict = {}
+                for arg in  [ "workflow_id", "session", "command", "media_dir", "status"]:
+                    if arg in state:
+                        state_dict[arg] = state[arg]
+                state_dict["args"] = {}
+                if "args" in state:
+                    for arg in state["args"]:
+                        if (arg in arg_defaults and state["args"][arg] != arg_defaults[arg]) or state["args"][arg]:
+                            if arg in ARG_DEFAULTS and ARG_DEFAULTS[arg] == state["args"][arg]:
+                                pass
+                            else:
+                                state_dict["args"][arg] = state["args"][arg]
+                        elif debug_mode:
+                            state_dict["args"][arg] = state["args"][arg]
+            return_states.append(state_dict)
+
+            # Convert return_states to text.
+            for state in return_states:
+                return_text.append(yaml.dump(state, default_flow_style=False, sort_keys=False))
+        return "\n".join(return_text)
+
     def watch_next_wf(self, sessionid):
         while True:
             wfid = self.get_next_workflow(sessionid)
@@ -918,10 +1017,11 @@ class Activity():
             self.site_conf.update_dict_stack(stage)
 
             # Dump the session/workflow information for debugging purposes.
-            sessions_dir = os.path.join(self.config.args["state_dir"], "sessions")
+            sessions_dir = self.sessions_dir
             if not os.path.exists(sessions_dir):
                 os.mkdir(sessions_dir)
             cfgmaps = json.loads(self.config.connection.sudo("kubectl get configmaps -n argo  {} -o jsonpath='{{.data.iuf_activity}}'".format(self.name)).stdout)
+            cfgmaps["sessionid"] = sessionid
             outfile = os.path.join(sessions_dir, f"{wfid}-{stage}.yaml")
             with open(outfile, "w", encoding='UTF-8') as fhandle:
                 yaml.dump(cfgmaps, fhandle)
@@ -987,7 +1087,7 @@ class Activity():
                             to be re-ran?""")
                         self.config.logger.debug(new_tar_msg)
             # Run the stage.
-            self.config.stages.exec_stage(self.config, wfid, stage)
+            self.config.stages.exec_stage(self.config, wfid, sessionid, stage)
 
     def run_stage(self, payload):
         try:

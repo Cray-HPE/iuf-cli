@@ -168,3 +168,13 @@ LOG_LEVELS = {
         "DEBUG": logging.DEBUG,
         "TRACE": logging.DEBUG - 1
 }
+
+ARG_DEFAULTS = {
+    "concurrent_management_rollout_percentage": 20,
+    "func": "!!python/name:__main__.process_install ''!!python/name:__main__.process_install ''",
+    "level": "INFO",
+    "limit_managed_rollout": ["Compute"],
+    "limit_management_rollout": ["Management_Worker"],
+    "managed_rollout_strategy": "stage",
+    "media_host": "ncn-m001",
+}
