@@ -966,7 +966,7 @@ class Activity():
 
         return workflows
 
-    def workflow_info(self, arg_defaults):
+    def workflow_info(self):
         return_text = []
         return_states = []
         workflows = self.config.args["workflows"]
@@ -991,12 +991,11 @@ class Activity():
                 state_dict["args"] = {}
                 if "args" in state:
                     for arg in state["args"]:
-                        if (arg in arg_defaults and state["args"][arg] != arg_defaults[arg]) or state["args"][arg]:
-                            if arg in ARG_DEFAULTS and ARG_DEFAULTS[arg] == state["args"][arg]:
-                                pass
-                            else:
-                                state_dict["args"][arg] = state["args"][arg]
+                        if arg in ARG_DEFAULTS and ARG_DEFAULTS[arg] == state["args"][arg] and not debug_mode:
+                            pass
                         elif debug_mode:
+                            state_dict["args"][arg] = state["args"][arg]
+                        elif state["args"][arg]:
                             state_dict["args"][arg] = state["args"][arg]
             return_states.append(state_dict)
 

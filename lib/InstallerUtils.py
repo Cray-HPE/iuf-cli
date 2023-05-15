@@ -56,7 +56,7 @@ def print_table(rows, header=None, sort=None, alignments=None):
 
 def formatted(text):
     """Format a text string for a standard 80-line terminal."""
-    wrapper = textwrap.TextWrapper(width=78)
+    wrapper = textwrap.TextWrapper(width=78, break_on_hyphens=False, break_long_words=False)
     raw = textwrap.dedent(text).strip()
     msg = wrapper.fill(text=raw)
     return msg

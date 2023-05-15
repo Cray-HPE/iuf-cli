@@ -106,27 +106,92 @@ def validate_stages(config):
                           "--site-vars/-sv, --bootprep-config-dir/-bpcd, nor --recipe-vars/-rv "
                           "were specified. At least one of them needs to be specified")
 
+    def warn_or_error(msg, non_bp_suppress=False):
+        if in_bootprep_stage:
+            errors.append(msg)
+        elif not non_bp_suppress:
+            install_logger.warning(msg)
+
     # Allow `--bootprep-config-dir` to override some commandline flags if
     # they were not specified.
     if bpcd:
+        found_managed = False
+        found_management = False
+        managed_path = os.path.join(bpcd, "bootprep", BP_CONFIG_MANAGED)
+        management_path = os.path.join(bpcd, "bootprep", BP_CONFIG_MANAGEMENT)
         if not rvars:
             # `--recipe-vars` was not specified on the commandline.  Allow
             # The corresponding `bootprep-config-dir` file to override it.
             rv_path = os.path.join(bpcd, RECIPE_VARS)
             if os.path.exists(rv_path):
                 config.args["recipe_vars"] = rv_path
-        if not bpc_managed:
+            else:
+               warn_or_error(f"{RECIPE_VARS} could not be found in {bpcd}")
+        if bpc_managed:
+            if not os.path.exists(bpc_managed):
+                warn_or_error(f"--bootprep-config-managed {bpc_managed} was specified, but could not be found")
+            else:
+                found_managed = True
+        else:
             # `--bootprep-config-managed` was not specified via the
             # commandline but `bootprep-config-dir` was.  Allow the
             # `--bootprep-config-dir` option to override it.
-            managed_path = os.path.join(bpcd, "bootprep", BP_CONFIG_MANAGED)
             if os.path.exists(managed_path):
                 config.args["bootprep_config_managed"] = managed_path
-        if not bpc_management:
+                found_managed = True
+
+        if bpc_management:
+            if not os.path.exists(bpc_management):
+                warn_or_error(f"--bootprep-config-management {bpc_management} was specified, but could not be found")
+            else:
+                found_management = True
+        else:
             # Ditto for `bootprep-config-management`.
-            management_path = os.path.join(bpcd, "bootprep", BP_CONFIG_MANAGEMENT)
             if os.path.exists(management_path):
                 config.args["bootprep_config_management"] = management_path
+                found_management = True
+            #else:
+                # Issue a warning that the path doesn't exist
+                # warn_or_error(f"{BP_CONFIG_MANAGEMENT} was not found in {os.path.join(bpcd, "bootprep")}")
+        if not (found_managed or found_management):
+            msg = f"""
+            --bootprep-config-dir was specified, but neither {BP_CONFIG_MANAGED}
+            nor {BP_CONFIG_MANAGEMENT} could be found.  Add at least one of them
+            to the following directory: {os.path.join(bpcd, "bootprep")}, or specify them
+            with the `--bootprep-config-managed` and/or
+            `--bootprep-config-management` argument(s)."""
+            warn_or_error(formatted(msg))
+        elif found_managed and found_management:
+            # The optimal case.
+            pass
+        elif not found_managed:
+            warn_msg = f"""
+            The managed images will not be built because the
+            input file could not be found.  If this was not intended, add {BP_CONFIG_MANAGED}
+            to the {os.path.join(bpcd, "bootprep")} directory, or specify it with the `--bootprep-config-managed`
+            argument.
+            """
+            install_logger.warning(formatted(warn_msg))
+        elif not found_management:
+            warn_msg = f"""
+            The management images will not be built because the
+            input file could not be found.  If this was not intended, add {BP_CONFIG_MANAGEMENT}
+            to the {os.path.join(bpcd, "bootprep")} directory, or specify it with the `--bootprep-config-management`
+            argument.
+            """
+            install_logger.warning(formatted(warn_msg))
+    else:
+        if (bpc_managed or bpc_management) and in_bootprep_stage:
+            if not bpc_managed:
+                install_logger.warning("--bootprep-config-managed was specified without --bootprep-config-management.  "
+                "The management images will not be built.")
+            elif not bpc_management:
+                install_logger.warning("--bootprep-config-management was specified without "
+                                       "--bootprep-config-managed.  The managed images will not be built.")
+        elif not (bpc_managed or bpc_management) and in_bootprep_stage:
+            err_msg = formatted("""A bootprep stage was specified, but neither --bootprep-config-management
+            nor --bootprep-config-managed were specified.""")
+            errors.append(err_msg)
 
     if "mask_recipe_prods" in config.args and config.args["mask_recipe_prods"]:
         mrp_type = type(config.args["mask_recipe_prods"]).__name__
@@ -162,24 +227,22 @@ def validate_stages(config):
             return
         arg_val_basename = os.path.basename(arg_value)
         if not media_dir:
-            if in_bootprep_stage:
-                err_msg = "A media directory was not "
-                "found and was not specified while "
-                "running a bootprep stage.  It must be a subdirectory under "
-                f"{config.media_base_dir}.  Was process-media ran?"
-                errors.append(formatted(err_msg))
-                got_bootprep_error = True
+            err_msg = "A media directory was not "
+            "found and was not specified while "
+            "running a bootprep stage.  It must be a subdirectory under "
+            f"{config.media_base_dir}.  Was process-media ran?"
+            warn_or_error(err_msg, non_bp_suppress=True)
+            got_bootprep_error = True
             return
 
         elif media_dir and not os.path.exists(media_dir):
-            if in_bootprep_stage:
-                # The media directory is necessary during the bootprep stage
-                # because bootprep files are copied to the media directory.
-                err_msg = f"`{arg_name} {arg_value}` was specified, but "
-                "`-m/--media-dir` does not exist.  The "
-                "media directory is necessary during the bootprep stages. "
-                errors.append(formatted(err_msg))
-                got_bootprep_error = True
+            # The media directory is necessary during the bootprep stage
+            # because bootprep files are copied to the media directory.
+            err_msg = f"`{arg_name} {arg_value}` was specified, but "
+            "`-m/--media-dir` does not exist.  The "
+            "media directory is necessary during the bootprep stages. "
+            warn_or_error(err_msg, non_bp_suppress=True)
+            got_bootprep_error = True
             return
 
         new_config_loc = os.path.join(media_dir, f".bootprep-{activity}", arg_val_basename)
@@ -344,9 +407,10 @@ def process_list_activity(config):
     activities = lib.Activity.list_activity()
     print(activities)
 
+
 def process_workflow(config):
 
-    text = config.activity.workflow_info(arg_defaults)
+    text = config.activity.workflow_info()
     print(text)
 
 def update_logger_config(config):
