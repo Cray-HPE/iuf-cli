@@ -153,7 +153,7 @@ class Activity():
     def __str__(self):
         """Print the activity in a nice table."""
         table = PrettyTable()
-        table.field_names = ["Start", "Category", "Command / Argo Workflow", "Status", "Duration", "Comment"]
+        table.field_names = ["Start / Session", "Category", "Command / Argo Workflow", "Status", "Duration", "Comment"]
         states = self.states
         ordered_states = sorted(states.keys())
         length = range(len(ordered_states))
@@ -216,7 +216,7 @@ class Activity():
         if summary:
             retstring.append("Summary:")
             retstring.append("  Start time: " + self.start)
-            retstring.append("  End time: " + ordered_states[-1] + "\n")
+            retstring.append("  End time:   " + ordered_states[-1] + "\n")
             retstring.append("  Time spent in sessions:")
             for sess in session_times:
                 retstring.append("    {}: {}".format(sess, session_times[sess]["duration"]))
@@ -575,7 +575,11 @@ class Activity():
         return rstatus, rfinished
 
     def collect_procs(self):
-        self.st_event.set()
+        if self.st_event:
+            # self.st_event may not be set if (for example) abort is called
+            # from a different terminal than the `run` command was called
+            # from.
+            self.st_event.set()
 
         if self.running_procs:
             for proc in self.running_procs:
@@ -782,7 +786,8 @@ class Activity():
         try:
             self.config.logger.debug(f"sending an abort, background_only={background_only}, payload={payload}")
             self.api.abort_activity(self.name, payload)
-            self.collect_procs()
+            if self.podlogs:
+                self.collect_procs()
         except requests.ReadTimeout:
             self.config.logger.warning("Timed out sending an abort request.")
             self.config.logger.warning(f"Ensure the argo workflow for {self.name} is not running.")
