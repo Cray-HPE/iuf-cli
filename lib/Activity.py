@@ -981,19 +981,37 @@ class Activity():
             return_text = list(wf_dict.keys())
             return "\n".join(return_text)
 
+        script_stdout = None
+        def get_nested_dict(dictarg, keyname):
+            """Get a value for a particular key in a nested dictionary"""
+            nonlocal script_stdout
+            for key in dictarg:
+                if type(dictarg[key]) is dict:
+                    get_nested_dict(dictarg[key], keyname)
+                elif key == keyname:
+                    # The eval below is to remove a quoting issue.
+                    script_stdout = dictarg[key]
+
         #### We're still here.   There are workflows to process.
+        state_dict = {}
         for workflow in wf_dict:
+            wf_info = None
             with open(wf_dict[workflow], "r") as fh:
                 wf_info = yaml.load(fh, yaml.SafeLoader)
 
-            all_states = [self.states[s] for s in self.states if self.states[s]["workflow_id"] == workflow]
-            nstates = len(all_states)
+            all_states = [self.states[s] for s in self.states if "workflow_id" in self.states[s] and self.states[s]["workflow_id"] == workflow]
+            if wf_info:
+                get_nested_dict(wf_info, "script_stdout")
+
             for state in all_states:
                 state_dict = {}
                 for arg in  [ "workflow_id", "session", "command", "media_dir", "status"]:
                     if arg in state:
                         state_dict[arg] = state[arg]
                 state_dict["args"] = {}
+                if script_stdout:
+                    # Remove the double-quotes.
+                    state_dict["script_stdout"] = eval(str(script_stdout))
                 if "args" in state:
                     for arg in state["args"]:
                         if arg in ARG_DEFAULTS and ARG_DEFAULTS[arg] == state["args"][arg] and not debug_mode:
@@ -1002,11 +1020,17 @@ class Activity():
                             state_dict["args"][arg] = state["args"][arg]
                         elif state["args"][arg]:
                             state_dict["args"][arg] = state["args"][arg]
-            return_states.append(state_dict)
+            if state_dict:
+                return_states.append(state_dict)
 
             # Convert return_states to text.
             for state in return_states:
                 return_text.append(yaml.dump(state, default_flow_style=False, sort_keys=False))
+        if not wf_dict:
+            self.config.logger.warning("Could not find a sessions for workflows: {}.  Was the right workflow entered?".format(", ".join(workflows)))
+        elif not return_states:
+            self.config.logger.warning("Could not parse the activity dict.  Was it generated in a previous incompatible release?")
+
         return "\n".join(return_text)
 
     def watch_next_wf(self, sessionid):
