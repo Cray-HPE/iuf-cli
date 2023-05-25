@@ -174,7 +174,7 @@ ARG_DEFAULTS = {
     "func": "!!python/name:__main__.process_install ''!!python/name:__main__.process_install ''",
     "level": "INFO",
     "limit_managed_rollout": ["Compute"],
-    "limit_management_rollout": ["Management_Worker"],
+    "limit_management_rollout": [],
     "managed_rollout_strategy": "stage",
     "media_host": "ncn-m001",
 }

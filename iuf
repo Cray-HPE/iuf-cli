@@ -707,9 +707,11 @@ def main():
        Defaults to the Compute role.""")
 
     run_sp.add_argument("--limit-management-rollout", action="store", nargs='+',
-        default=["Management_Worker"],
-        help="""Override list used to target specific role_subrole(s) only when rolling out management nodes.
-        Defaults to the Management_Worker role.""")
+        default=[],
+        help="""List used to target specific hostnames or HSM management role_subrole only when rolling 
+        out management nodes. Hostname arguments can only belong to a single node type. For example, 
+        both master and worker hostnames can not be provided at the same time. Defaults to an empty list
+        which means no nodes will be rolled out.""")
 
     run_sp.add_argument("-mrp", "--mask-recipe-prods", action="store", nargs='+',
         help="""If `--recipe-vars` is specified, mask the versions found within the recipe variables YAML
