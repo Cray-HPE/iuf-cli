@@ -153,7 +153,7 @@ class Activity():
     def __str__(self):
         """Print the activity in a nice table."""
         table = PrettyTable()
-        table.field_names = ["Start", "Category", "Command / Argo Workflow", "Status", "Duration", "Comment"]
+        table.field_names = ["Start / Session", "Category", "Command / Argo Workflow", "Status", "Duration", "Comment"]
         states = self.states
         ordered_states = sorted(states.keys())
         length = range(len(ordered_states))
@@ -216,7 +216,7 @@ class Activity():
         if summary:
             retstring.append("Summary:")
             retstring.append("  Start time: " + self.start)
-            retstring.append("  End time: " + ordered_states[-1] + "\n")
+            retstring.append("  End time:   " + ordered_states[-1] + "\n")
             retstring.append("  Time spent in sessions:")
             for sess in session_times:
                 retstring.append("    {}: {}".format(sess, session_times[sess]["duration"]))
@@ -575,7 +575,11 @@ class Activity():
         return rstatus, rfinished
 
     def collect_procs(self):
-        self.st_event.set()
+        if self.st_event:
+            # self.st_event may not be set if (for example) abort is called
+            # from a different terminal than the `run` command was called
+            # from.
+            self.st_event.set()
 
         if self.running_procs:
             for proc in self.running_procs:
@@ -782,7 +786,8 @@ class Activity():
         try:
             self.config.logger.debug(f"sending an abort, background_only={background_only}, payload={payload}")
             self.api.abort_activity(self.name, payload)
-            self.collect_procs()
+            if self.podlogs:
+                self.collect_procs()
         except requests.ReadTimeout:
             self.config.logger.warning("Timed out sending an abort request.")
             self.config.logger.warning(f"Ensure the argo workflow for {self.name} is not running.")
@@ -966,7 +971,7 @@ class Activity():
 
         return workflows
 
-    def workflow_info(self, arg_defaults):
+    def workflow_info(self):
         return_text = []
         return_states = []
         workflows = self.config.args["workflows"]
@@ -976,33 +981,56 @@ class Activity():
             return_text = list(wf_dict.keys())
             return "\n".join(return_text)
 
+        script_stdout = None
+        def get_nested_dict(dictarg, keyname):
+            """Get a value for a particular key in a nested dictionary"""
+            nonlocal script_stdout
+            for key in dictarg:
+                if type(dictarg[key]) is dict:
+                    get_nested_dict(dictarg[key], keyname)
+                elif key == keyname:
+                    # The eval below is to remove a quoting issue.
+                    script_stdout = dictarg[key]
+
         #### We're still here.   There are workflows to process.
+        state_dict = {}
         for workflow in wf_dict:
+            wf_info = None
             with open(wf_dict[workflow], "r") as fh:
                 wf_info = yaml.load(fh, yaml.SafeLoader)
 
-            all_states = [self.states[s] for s in self.states if self.states[s]["workflow_id"] == workflow]
-            nstates = len(all_states)
+            all_states = [self.states[s] for s in self.states if "workflow_id" in self.states[s] and self.states[s]["workflow_id"] == workflow]
+            if wf_info:
+                get_nested_dict(wf_info, "script_stdout")
+
             for state in all_states:
                 state_dict = {}
                 for arg in  [ "workflow_id", "session", "command", "media_dir", "status"]:
                     if arg in state:
                         state_dict[arg] = state[arg]
                 state_dict["args"] = {}
+                if script_stdout:
+                    # Remove the double-quotes.
+                    state_dict["script_stdout"] = eval(str(script_stdout))
                 if "args" in state:
                     for arg in state["args"]:
-                        if (arg in arg_defaults and state["args"][arg] != arg_defaults[arg]) or state["args"][arg]:
-                            if arg in ARG_DEFAULTS and ARG_DEFAULTS[arg] == state["args"][arg]:
-                                pass
-                            else:
-                                state_dict["args"][arg] = state["args"][arg]
+                        if arg in ARG_DEFAULTS and ARG_DEFAULTS[arg] == state["args"][arg] and not debug_mode:
+                            pass
                         elif debug_mode:
                             state_dict["args"][arg] = state["args"][arg]
-            return_states.append(state_dict)
+                        elif state["args"][arg]:
+                            state_dict["args"][arg] = state["args"][arg]
+            if state_dict:
+                return_states.append(state_dict)
 
             # Convert return_states to text.
             for state in return_states:
                 return_text.append(yaml.dump(state, default_flow_style=False, sort_keys=False))
+        if not wf_dict:
+            self.config.logger.warning("Could not find a sessions for workflows: {}.  Was the right workflow entered?".format(", ".join(workflows)))
+        elif not return_states:
+            self.config.logger.warning("Could not parse the activity dict.  Was it generated in a previous incompatible release?")
+
         return "\n".join(return_text)
 
     def watch_next_wf(self, sessionid):
