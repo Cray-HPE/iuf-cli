@@ -409,7 +409,10 @@ def process_abort(config):
 
 def process_list_activity(config):
     activities = lib.Activity.list_activity()
-    print(activities)
+    if len(activities) > 0:
+        print(activities)
+    else:
+        print("No Activities found")
 
 
 def process_workflow(config):

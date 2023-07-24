@@ -89,10 +89,13 @@ def list_activity():
     List an activity.  This is done outside the activity class so
     a user can list activities without having to specify an activity.
     """
+    act_list = []
     api = lib.ApiInterface.ApiInterface()
-    activities = api.get_activities().json()
-    act_list = sorted([act["name"] for act in activities])
-
+    if api is not None:
+        activities = api.get_activities().json()
+        if activities is not None:
+            act_list = sorted([act["name"] for act in activities])
+   
     return "\n".join(act_list)
 
 
