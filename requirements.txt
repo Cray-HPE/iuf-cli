@@ -2,6 +2,6 @@ pyinstaller
 Jinja2==3.0.3
 kubernetes==26.1.0
 prettytable==3.7.0
-PyYAML==6.0
+PyYAML==6.0.1
 python-keycloak==2.15.3
 semver
