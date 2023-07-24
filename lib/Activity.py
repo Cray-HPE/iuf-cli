@@ -46,9 +46,11 @@ from lib.SiteConfig import SiteConfig
 from lib.InstallerUtils import formatted, format_column
 from lib.vars import ARG_DEFAULTS
 
+
 class StateError(Exception):
     """A wrapper for raising a StateError exception."""
     pass
+
 
 class ActivityError(Exception):
     """A wrapper for raising an ActivityError exception."""
@@ -84,14 +86,18 @@ ACTIVITY_VALID_STATUS = [
     "abort",
 ]
 
+
 def list_activity():
     """
     List an activity.  This is done outside the activity class so
     a user can list activities without having to specify an activity.
     """
+    act_list = []
     api = lib.ApiInterface.ApiInterface()
-    activities = api.get_activities().json()
-    act_list = sorted([act["name"] for act in activities])
+    if api is not None:
+        activities = api.get_activities().json()
+        if activities is not None:
+            act_list = sorted([act["name"] for act in activities])
 
     return "\n".join(act_list)
 
@@ -119,7 +125,8 @@ class Activity():
         self.site_conf = None
         self.config = config
         self._media_dir = None
-        self.sessions_dir = os.path.join(self.config.args["state_dir"], "sessions")
+        self.sessions_dir = os.path.join(
+            self.config.args["state_dir"], "sessions")
         if os.path.exists(filename):
             try:
                 self.load_activity_dict(filename)
@@ -135,7 +142,8 @@ class Activity():
                 self.write_activity_dict()
 
             if self.name != name:
-                raise ActivityError(f"{filename} contains the activity {self.name}, but {name} was specified.")
+                raise ActivityError(
+                    f"{filename} contains the activity {self.name}, but {name} was specified.")
         else:
             self.name = name
 
@@ -153,7 +161,8 @@ class Activity():
     def __str__(self):
         """Print the activity in a nice table."""
         table = PrettyTable()
-        table.field_names = ["Start / Session", "Category", "Command / Argo Workflow", "Status", "Duration", "Comment"]
+        table.field_names = ["Start / Session", "Category",
+                             "Command / Argo Workflow", "Status", "Duration", "Comment"]
         states = self.states
         ordered_states = sorted(states.keys())
         length = range(len(ordered_states))
@@ -175,16 +184,21 @@ class Activity():
             if session != state['session'] and state['session'] != None:
                 # This is a new session.
                 session = state['session']
-                session_times[session] = {"timestamp": start, "duration": duration}
+                session_times[session] = {
+                    "timestamp": start, "duration": duration}
                 if x != 0:
-                    table.add_row(["-------------------", "-----", "-----", "-----", "-----", "-----"])
-                command = "command: {}".format(state["command"]) if "command" in state else ""
-                command = " \\ \n".join(textwrap.wrap(command, width=45, break_long_words=False, break_on_hyphens=False))
-                table.add_row([f"session: {session}","", command, "", "", ""])
+                    table.add_row(["-------------------", "-----",
+                                  "-----", "-----", "-----", "-----"])
+                command = "command: {}".format(
+                    state["command"]) if "command" in state else ""
+                command = " \\ \n".join(textwrap.wrap(
+                    command, width=45, break_long_words=False, break_on_hyphens=False))
+                table.add_row([f"session: {session}", "", command, "", "", ""])
             elif session:
                 # This is the current session.  session_times[session]["duration"] will be
                 # over-written until the session changes.
-                session_times[session]["duration"] = self.get_duration(session_times[session]["timestamp"], start)
+                session_times[session]["duration"] = self.get_duration(
+                    session_times[session]["timestamp"], start)
 
             table.add_row([
                 start,
@@ -219,7 +233,8 @@ class Activity():
             retstring.append("  End time:   " + ordered_states[-1] + "\n")
             retstring.append("  Time spent in sessions:")
             for sess in session_times:
-                retstring.append("    {}: {}".format(sess, session_times[sess]["duration"]))
+                retstring.append("    {}: {}".format(
+                    sess, session_times[sess]["duration"]))
             retstring.append("")
             stage_durations = {}
             longest_stagename = 0
@@ -233,7 +248,8 @@ class Activity():
             if stage_durations:
                 retstring.append("  Stage Durations:")
                 for stage in stage_durations:
-                    retstring.append("    {0:>{longest_stagename}}: {1}".format(stage, stage_durations[stage], longest_stagename=longest_stagename))
+                    retstring.append("    {0:>{longest_stagename}}: {1}".format(
+                        stage, stage_durations[stage], longest_stagename=longest_stagename))
             retstring.append("")
 
             retstring.append("  Time spent in states:")
@@ -241,7 +257,8 @@ class Activity():
             state_len = max(map(len, ACTIVITY_VALID_STATES))
             for astate in ACTIVITY_VALID_STATES:
                 if astate in summary:
-                    retstring.append("{0:>{state_len}}: {1}".format(astate, summary[astate], state_len=state_len))
+                    retstring.append("{0:>{state_len}}: {1}".format(
+                        astate, summary[astate], state_len=state_len))
 
             retstring.append("")
             total_time = self.get_duration(self.start, ordered_states[-1])
@@ -283,13 +300,15 @@ class Activity():
             # If self._media_dir still isn't set, check if the activity name
             # exists under the media base directory.
             if not self._media_dir and os.path.exists(os.path.join(self.config.media_base_dir, self.name)):
-                self._media_dir  = os.path.join(self.config.media_base_dir, self.name)
+                self._media_dir = os.path.join(
+                    self.config.media_base_dir, self.name)
 
         # if _media_dir still isn't set, raise an error.
         if not self._media_dir:
             if arg_media_dir:
                 if not os.path.exists(arg_media_dir):
-                    self.config.logger.error(f"Could not determine media dir from argument '--media-dir {arg_media_dir}'.  Does the directory exist?")
+                    self.config.logger.error(
+                        f"Could not determine media dir from argument '--media-dir {arg_media_dir}'.  Does the directory exist?")
                     sys.exit(1)
             else:
                 err_msg = f"""
@@ -299,7 +318,6 @@ class Activity():
                 sys.exit(1)
 
         return self._media_dir
-
 
     @media_dir.setter
     def media_dir(self, val):
@@ -312,7 +330,8 @@ class Activity():
         with open(filename, "r", encoding=encoding) as f:
             masterdict = yaml.full_load(f)
             if len(masterdict) > 1:
-                raise ActivityError(f"{filename} contains multiple activities.  Remove any manual modifications, or remove the file, and try again.")
+                raise ActivityError(
+                    f"{filename} contains multiple activities.  Remove any manual modifications, or remove the file, and try again.")
 
             aname = list(masterdict)[0]
             activity = masterdict[aname]
@@ -337,9 +356,10 @@ class Activity():
                     for attr in ACTIVITY_NEW_STATE:
                         if attr in state:
                             # Update any sessions that don't have a finished state
-                            if attr == "status" and state[attr] not in ["Succeeded","Failed", "restart", "resume", "abort"]:
+                            if attr == "status" and state[attr] not in ["Succeeded", "Failed", "restart", "resume", "abort"]:
                                 if state.get("workflow_id", None):
-                                    state['status'], last_finished = self.get_workflow_status(state["workflow_id"])
+                                    state['status'], last_finished = self.get_workflow_status(
+                                        state["workflow_id"])
                             self.states[stime][attr] = state[attr]
 
             # now see if the client was killed before putting the activity into debug or waiting_admin
@@ -349,16 +369,18 @@ class Activity():
 
             if workflow_id:
                 # ok, so the last state has a workflow_id so it isn't a debug/waiting
-                last_status, last_finished = self.get_workflow_status(workflow_id)
+                last_status, last_finished = self.get_workflow_status(
+                    workflow_id)
 
                 if last_status == "Succeeded":
-                    self.state({"timestamp": last_finished, "state": 'waiting_admin', "create": True})
+                    self.state({"timestamp": last_finished,
+                               "state": 'waiting_admin', "create": True})
                 elif last_status == "Failed":
-                    self.state({"timestamp": last_finished, "state": 'debug', "create": True})
-                #else it's still running and we don't care for now
+                    self.state({"timestamp": last_finished,
+                               "state": 'debug', "create": True})
+                # else it's still running and we don't care for now
 
         self.initialized = True
-
 
     def get_time(self, time=None):
         if time:
@@ -413,7 +435,8 @@ class Activity():
                 raise StateError(f"Unable to parse date string: {timestamp}")
 
             if stime not in self.states and not kwargs.get("create", False):
-                raise StateError(f"No state exists at {stime}.  If you wish to create a new state back in time, use --create")
+                raise StateError(
+                    f"No state exists at {stime}.  If you wish to create a new state back in time, use --create")
         else:
             stime = self.get_time()
 
@@ -457,11 +480,12 @@ class Activity():
 
         while not found:
             try:
-                rsession = self.api.get_activity_session(self.name, workflow_id)
+                rsession = self.api.get_activity_session(
+                    self.name, workflow_id)
             except Exception as e:
-                self.config.logger.error(f"Unable to get session {workflow_id}: {e}")
+                self.config.logger.error(
+                    f"Unable to get session {workflow_id}: {e}")
                 sys.exit(1)
-
 
             # FIXME:
             # We sometimes abort on this line because rsession returns a list of
@@ -469,14 +493,16 @@ class Activity():
             tmp_session = rsession.json()
             if type(tmp_session) is list:
                 if len(tmp_session) > 1:
-                    self.config.logger.warning("multiple sessions found.  Taking the first one...")
+                    self.config.logger.warning(
+                        "multiple sessions found.  Taking the first one...")
                 session = tmp_session[0]
             else:
                 session = tmp_session
 
             status = session['current_state']
             if status and status not in ["in_progress", "transitioning"]:
-                self.config.logger.debug(f"Session {workflow_id} is not in progress.  Status: {status}")
+                self.config.logger.debug(
+                    f"Session {workflow_id} is not in progress.  Status: {status}")
                 found = True
                 break
 
@@ -494,10 +520,12 @@ class Activity():
                 count += 1
                 if (count % 600) == 0:
                     # it's been 10 minutes, give up if the admin hasn't
-                    self.config.logger.error("Giving up after 10 minutes.  Check to ensure the ARGO backend is functional then try again.")
+                    self.config.logger.error(
+                        "Giving up after 10 minutes.  Check to ensure the ARGO backend is functional then try again.")
                     sys.exit(1)
                 if (count % 15) == 0:
-                    self.config.logger.warning(f"Still waiting for workflow startup after {count} seconds.")
+                    self.config.logger.warning(
+                        f"Still waiting for workflow startup after {count} seconds.")
                 time.sleep(1)
 
         return retflow
@@ -537,15 +565,15 @@ class Activity():
     def generate_user_readable(self, stage, name, dname):
         readable = name
         try:
-            parts = name.split(".",2)
+            parts = name.split(".", 2)
             if stage == "process-media":
                 if parts[2].startswith("extract-tar-file"):
                     readable = parts[2]
                 else:
                     readable = parts[1]
-            elif stage in ["deliver-product","update-vcs-config","deploy-product","post-install-service-check","post-install-check"]:
+            elif stage in ["deliver-product", "update-vcs-config", "deploy-product", "post-install-service-check", "post-install-check"]:
                 readable = "-".join(parts[1].split("-")[:-1])
-            elif stage in ["management-nodes-rollout","managed-nodes-rollout"]:
+            elif stage in ["management-nodes-rollout", "managed-nodes-rollout"]:
                 readable = parts[2].rstrip("()0123456789")
             elif stage == "pre-install-check":
                 if parts[1].endswith("]"):
@@ -601,7 +629,7 @@ class Activity():
             "status": None,
             "id": None,
             "log": None
-            }
+        }
 
         # Launch subprocesses for the pod logs and continue on.  Gather the
         # processes after the while loop.
@@ -612,7 +640,8 @@ class Activity():
             try:
                 wflow = self.get_workflow(workflow)
             except Exception as e:
-                self.config.logger.debug(f"Unable to get workflow {workflow}: {e}")
+                self.config.logger.debug(
+                    f"Unable to get workflow {workflow}: {e}")
                 sys.exit(1)
 
             """ TODO: Need to figure out how to tell if the workflow has failed in some bad way """
@@ -660,7 +689,8 @@ class Activity():
                 log_prefix = "unknown"
                 if "name" in node:
                     try:
-                        log_prefix = self.generate_user_readable(stage, step_name, dname)
+                        log_prefix = self.generate_user_readable(
+                            stage, step_name, dname)
                     except:
                         pass
 
@@ -669,7 +699,8 @@ class Activity():
                     if podname not in followed_pods:
                         followed_pods.append(podname)
                         for container in ["init", "wait", "main"]:
-                            proc = multiprocessing.Process(target=self.podlogs.follow_pod_log, args=(podname, container, log_prefix, self.st_event))
+                            proc = multiprocessing.Process(target=self.podlogs.follow_pod_log, args=(
+                                podname, container, log_prefix, self.st_event))
                             proc.start()
                             self.running_procs.append(proc)
 
@@ -685,7 +716,8 @@ class Activity():
                     if "startedAt" in node:
                         if not phases[name]["startedAt"]:
                             if display:
-                                self.config.logger.info(f"{log_prefix} BEG {dname}")
+                                self.config.logger.info(
+                                    f"{log_prefix} BEG {dname}")
                         phases[name]["startedAt"] = node["startedAt"]
 
                     if "phase" in node:
@@ -696,11 +728,14 @@ class Activity():
                             if display:
                                 status = phases[name]["status"]
                                 if status == "Failed" or status == "Error":
-                                    self.config.logger.error(f"{log_prefix} END {dname} [{status}]")
+                                    self.config.logger.error(
+                                        f"{log_prefix} END {dname} [{status}]")
                                 if status == "Omitted":
-                                    self.config.logger.warning(f"{log_prefix} END {dname} [{status}]")
+                                    self.config.logger.warning(
+                                        f"{log_prefix} END {dname} [{status}]")
                                 else:
-                                    self.config.logger.info(f"{log_prefix} END {dname} [{status}]")
+                                    self.config.logger.info(
+                                        f"{log_prefix} END {dname} [{status}]")
                         phases[name]["finishedAt"] = node["finishedAt"]
                         try:
                             for artifact in node["outputs"]["artifacts"]:
@@ -709,7 +744,8 @@ class Activity():
                                     phases[name]["log"] = s3
                                     dname_s3 = f"{dname}: {s3}"
                                     if dname_s3 not in printed_s3:
-                                        self.config.logger.debug(f"{log_prefix} LOG FILE FOR {dname_s3}")
+                                        self.config.logger.debug(
+                                            f"{log_prefix} LOG FILE FOR {dname_s3}")
                                         printed_s3[dname_s3] = True
                         except:
                             pass
@@ -723,7 +759,8 @@ class Activity():
         return rstatus
 
     def monitor_session(self, workflow_id, stime):
-        self.config.logger.debug(f"Monitoring workflow {workflow_id} at {stime}")
+        self.config.logger.debug(
+            f"Monitoring workflow {workflow_id} at {stime}")
         completed = False
 
         self.state({"timestamp": stime, "status": "Running"})
@@ -732,7 +769,8 @@ class Activity():
             try:
                 session = self.api.get_activity_session(self.name, workflow_id)
             except Exception as e:
-                self.config.logger.error(f"Unable to get session {workflow_id}: {e}")
+                self.config.logger.error(
+                    f"Unable to get session {workflow_id}: {e}")
                 sys.exit(1)
 
             status = session.json()['current_state']
@@ -754,7 +792,8 @@ class Activity():
 
     def get_workflow(self, workflow):
         try:
-            wf = self.config.connection.run(f"kubectl -n argo get Workflow/{workflow} -o yaml")
+            wf = self.config.connection.run(
+                f"kubectl -n argo get Workflow/{workflow} -o yaml")
         except Exception as e:
             self.config.logger.debug(f"Unable to get workflow {workflow}: {e}")
             sys.exit(1)
@@ -784,15 +823,18 @@ class Activity():
             "force": self.config.args.get("force"),
         }
         try:
-            self.config.logger.debug(f"sending an abort, background_only={background_only}, payload={payload}")
+            self.config.logger.debug(
+                f"sending an abort, background_only={background_only}, payload={payload}")
             self.api.abort_activity(self.name, payload)
             if self.podlogs:
                 self.collect_procs()
         except requests.ReadTimeout:
             self.config.logger.warning("Timed out sending an abort request.")
-            self.config.logger.warning(f"Ensure the argo workflow for {self.name} is not running.")
+            self.config.logger.warning(
+                f"Ensure the argo workflow for {self.name} is not running.")
         except Exception as ex:
-            self.config.logger.error(f"Unable to abort activity {self.name}: {ex}")
+            self.config.logger.error(
+                f"Unable to abort activity {self.name}: {ex}")
             raise
 
         # Add an entry to the activity log.
@@ -815,7 +857,8 @@ class Activity():
         try:
             api_results = self.api.post_restart(self.name, payload)
         except Exception as ex:
-            self.config.logger.error(f"Unable to restart activity {self.name}: {ex}")
+            self.config.logger.error(
+                f"Unable to restart activity {self.name}: {ex}")
             raise
 
         api_json = api_results.json()
@@ -832,10 +875,14 @@ class Activity():
         if not self.api.activity_exists(self.name):
             raise ActivityError(f"The activity {self.name} does not exist.")
 
-        self.config.stages.set_summary("activity", self.config.args.get("activity"))
-        self.config.stages.set_summary("media_dir", self.config.args.get("media_dir"))
-        self.config.stages.set_summary("state_dir", self.config.args.get("state_dir"))
-        logdir = os.path.join(self.config.args.get("log_dir"), self.config.timestamp)
+        self.config.stages.set_summary(
+            "activity", self.config.args.get("activity"))
+        self.config.stages.set_summary(
+            "media_dir", self.config.args.get("media_dir"))
+        self.config.stages.set_summary(
+            "state_dir", self.config.args.get("state_dir"))
+        logdir = os.path.join(self.config.args.get(
+            "log_dir"), self.config.timestamp)
         self.config.stages.set_summary("log_dir", logdir)
 
         force = self.config.args.get("force", False)
@@ -868,19 +915,23 @@ class Activity():
         self.site_conf.organize_merge()
         self.config.stages.set_summary("site_vars", self.site_conf.sv_path)
 
-        bp_config_management = self.config.args.get("relative_bootprep_config_management", None)
+        bp_config_management = self.config.args.get(
+            "relative_bootprep_config_management", None)
         if bp_config_management:
             payload["input_parameters"]["bootprep_config_management"] = bp_config_management
 
-        bp_config_managed = self.config.args.get("relative_bootprep_config_managed", None)
+        bp_config_managed = self.config.args.get(
+            "relative_bootprep_config_managed", None)
         if bp_config_managed:
             payload["input_parameters"]["bootprep_config_managed"] = bp_config_managed
 
-        bp_config_dir = self.config.args.get("relative_bootprep_config_dir", None)
+        bp_config_dir = self.config.args.get(
+            "relative_bootprep_config_dir", None)
         if bp_config_dir:
             payload["input_parameters"]["bootprep_config_dir"] = bp_config_dir
 
-        limit_management = self.config.args.get("limit_management_rollout", None)
+        limit_management = self.config.args.get(
+            "limit_management_rollout", None)
         if limit_management:
             payload["input_parameters"]["limit_management_nodes"] = limit_management
 
@@ -888,13 +939,15 @@ class Activity():
         if limit_managed:
             payload["input_parameters"]["limit_managed_nodes"] = limit_managed
 
-        managed_rollout_strat = self.config.args.get("managed_rollout_strategy", None)
+        managed_rollout_strat = self.config.args.get(
+            "managed_rollout_strategy", None)
         if managed_rollout_strat:
             payload["input_parameters"]["managed_rollout_strategy"] = managed_rollout_strat
 
-        rollout_percentage = self.config.args.get("concurrent_management_rollout_percentage")
+        rollout_percentage = self.config.args.get(
+            "concurrent_management_rollout_percentage")
         if rollout_percentage:
-           payload["input_parameters"]["concurrent_management_rollout_percentage"] = rollout_percentage
+            payload["input_parameters"]["concurrent_management_rollout_percentage"] = rollout_percentage
 
         sessions = []
 
@@ -915,15 +968,17 @@ class Activity():
 
             full_media_dir = self.config.media_base_dir + media_dir
             if "process-media" in payload["input_parameters"]["stages"]:
-                self.config.logger.error(f"No IUF installable products were found in {full_media_dir}.")
+                self.config.logger.error(
+                    f"No IUF installable products were found in {full_media_dir}.")
             else:
-                self.config.logger.error(f"No products were found in {self.name}.  Either the process-media stage has never been executed, or no IUF installable products were found in {full_media_dir}")
+                self.config.logger.error(
+                    f"No products were found in {self.name}.  Either the process-media stage has never been executed, or no IUF installable products were found in {full_media_dir}")
             return sessions
 
         for product in products:
             name = product.get('name', None)
             version = product.get('version', None)
-            session_vars[name] = {'version': version }
+            session_vars[name] = {'version': version}
 
         if session_vars:
             # session_vars should always exist if products exist; i.e, any
@@ -963,11 +1018,13 @@ class Activity():
                 stage_str = f"-{stage}.yaml"
                 if fname.endswith(stage_str):
                     if not workflow_arg:
-                        workflows[fname .replace(stage_str, "")] = os.path.join(self.sessions_dir, fname)
+                        workflows[fname .replace(stage_str, "")] = os.path.join(
+                            self.sessions_dir, fname)
                     else:
                         for workflow in workflow_arg:
                             if fname.startswith(workflow):
-                                workflows[fname .replace(stage_str, "")] = os.path.join(self.sessions_dir, fname)
+                                workflows[fname .replace(stage_str, "")] = os.path.join(
+                                    self.sessions_dir, fname)
 
         return workflows
 
@@ -982,6 +1039,7 @@ class Activity():
             return "\n".join(return_text)
 
         script_stdout = None
+
         def get_nested_dict(dictarg, keyname):
             """Get a value for a particular key in a nested dictionary"""
             nonlocal script_stdout
@@ -992,20 +1050,21 @@ class Activity():
                     # The eval below is to remove a quoting issue.
                     script_stdout = dictarg[key]
 
-        #### We're still here.   There are workflows to process.
+        # We're still here.   There are workflows to process.
         state_dict = {}
         for workflow in wf_dict:
             wf_info = None
             with open(wf_dict[workflow], "r") as fh:
                 wf_info = yaml.load(fh, yaml.SafeLoader)
 
-            all_states = [self.states[s] for s in self.states if "workflow_id" in self.states[s] and self.states[s]["workflow_id"] == workflow]
+            all_states = [self.states[s] for s in self.states if "workflow_id" in self.states[s]
+                          and self.states[s]["workflow_id"] == workflow]
             if wf_info:
                 get_nested_dict(wf_info, "script_stdout")
 
             for state in all_states:
                 state_dict = {}
-                for arg in  [ "workflow_id", "session", "command", "media_dir", "status"]:
+                for arg in ["workflow_id", "session", "command", "media_dir", "status"]:
                     if arg in state:
                         state_dict[arg] = state[arg]
                 state_dict["args"] = {}
@@ -1025,11 +1084,14 @@ class Activity():
 
             # Convert return_states to text.
             for state in return_states:
-                return_text.append(yaml.dump(state, default_flow_style=False, sort_keys=False))
+                return_text.append(
+                    yaml.dump(state, default_flow_style=False, sort_keys=False))
         if not wf_dict:
-            self.config.logger.warning("Could not find a sessions for workflows: {}.  Was the right workflow entered?".format(", ".join(workflows)))
+            self.config.logger.warning(
+                "Could not find a sessions for workflows: {}.  Was the right workflow entered?".format(", ".join(workflows)))
         elif not return_states:
-            self.config.logger.warning("Could not parse the activity dict.  Was it generated in a previous incompatible release?")
+            self.config.logger.warning(
+                "Could not parse the activity dict.  Was it generated in a previous incompatible release?")
 
         return "\n".join(return_text)
 
@@ -1037,7 +1099,8 @@ class Activity():
         while True:
             wfid = self.get_next_workflow(sessionid)
             if not wfid:
-                self.config.logger.debug(f"No more workflows found for session {sessionid}.")
+                self.config.logger.debug(
+                    f"No more workflows found for session {sessionid}.")
                 break
             self.config.logger.debug("Next workflow {}".format(wfid))
             wf = self.get_workflow(wfid)
@@ -1048,15 +1111,18 @@ class Activity():
             sessions_dir = self.sessions_dir
             if not os.path.exists(sessions_dir):
                 os.mkdir(sessions_dir)
-            cfgmaps = json.loads(self.config.connection.sudo("kubectl get configmaps -n argo  {} -o jsonpath='{{.data.iuf_activity}}'".format(self.name)).stdout)
+            cfgmaps = json.loads(self.config.connection.sudo(
+                "kubectl get configmaps -n argo  {} -o jsonpath='{{.data.iuf_activity}}'".format(self.name)).stdout)
             cfgmaps["sessionid"] = sessionid
             outfile = os.path.join(sessions_dir, f"{wfid}-{stage}.yaml")
             with open(outfile, "w", encoding='UTF-8') as fhandle:
                 yaml.dump(cfgmaps, fhandle)
-            files = [file for file in os.listdir(self.media_dir) if file.endswith(".tar.gz")]
+            files = [file for file in os.listdir(
+                self.media_dir) if file.endswith(".tar.gz")]
             try:
                 products = cfgmaps["operation_outputs"]["stage_params"]["process-media"]["products"]
-                cfgmap_locs = [products[prod]["parent_directory"] for prod in products]
+                cfgmap_locs = [products[prod]["parent_directory"]
+                               for prod in products]
             except TypeError:
                 # This happens during a new activity on process-media.
                 cfgmap_locs = {}
@@ -1074,7 +1140,8 @@ class Activity():
                             if counter > 10:
                                 break
                 except tarfile.ReadError as readerr:
-                    self.config.logger.debug(f"Problems extracting {prodpath}:")
+                    self.config.logger.debug(
+                        f"Problems extracting {prodpath}:")
                     self.config.logger.debug(f"\t{readerr}")
                     self.config.logger.debug("Ignoring it!")
                     continue
@@ -1086,7 +1153,8 @@ class Activity():
                     break
                 if not tar_path:
                     # This should only be hit with a corrupt or empty tarball.
-                    self.config.logger.debug(f"Couldn't find a directory for the {prodpath} tar file")
+                    self.config.logger.debug(
+                        f"Couldn't find a directory for the {prodpath} tar file")
                     continue
 
                 if tar_path and os.path.exists(tar_path):
@@ -1127,11 +1195,13 @@ class Activity():
         session = api_result.json()
         sessionid = session['name']
         prefix = format_column(f"IUF SESSION: {sessionid}")
-        self.config.logger.info(f"{prefix} BEG Started at {datetime.datetime.now()}")
+        self.config.logger.info(
+            f"{prefix} BEG Started at {datetime.datetime.now()}")
 
         self.watch_next_wf(sessionid)
 
-        self.config.logger.info(f"{prefix} END Completed at {datetime.datetime.now()}")
+        self.config.logger.info(
+            f"{prefix} END Completed at {datetime.datetime.now()}")
 
         return sessionid
 
@@ -1170,7 +1240,8 @@ class Activity():
             result = self.api.get_activity(self.name)
             backend_data = result.json()
         except:
-            self.config.logger.error(f"Unable to get activity {self.name} from backend.")
+            self.config.logger.error(
+                f"Unable to get activity {self.name} from backend.")
             return
 
         if last_activity["state"] == 'in_progress' and last_activity["status"].lower() not in ["succeeded", "failed"]:
@@ -1178,7 +1249,8 @@ class Activity():
             if 'input_parameters' in backend_data and 'stages' in backend_data['input_parameters']:
                 backend_stages = backend_data['input_parameters']['stages']
                 last_stages = []
-                stages_file = os.path.join(self.config.args.get("state_dir"), f"{self.name}_stages.yaml")
+                stages_file = os.path.join(self.config.args.get(
+                    "state_dir"), f"{self.name}_stages.yaml")
                 if os.path.exists(stages_file):
                     with open(stages_file, "r", encoding="UTF-8") as fhandle:
                         last_stages = yaml.load(fhandle, yaml.SafeLoader)
@@ -1215,7 +1287,8 @@ class Activity():
                                 last_stages.pop(0)
                                 self.config.stages.set_stages(last_stages)
                             else:
-                                self.config.logger.warning("Giving up on executing stages.")
+                                self.config.logger.warning(
+                                    "Giving up on executing stages.")
                                 bad_stage = False
         else:
             # The session is no longer running.  Call resume on the backend.
@@ -1232,12 +1305,14 @@ class Activity():
                 # ok, so we got an error.   the server just tosses a 500 if the activity is not
                 # resumable withou any additional info.  Try to invent some context.
                 if backend_data.get("activity_state", "") == "wait_for_admin":
-                    self.config.logger.warning(f"{self.name} cannot be resumed because it is either Completed or Aborted.")
+                    self.config.logger.warning(
+                        f"{self.name} cannot be resumed because it is either Completed or Aborted.")
                 else:
                     self.config.logger.error(f"Unable to resume activity: {e}")
                 return
 
             self.watch_next_wf(sess_name)
+
 
 def valid_activity_name(aname):
     if re.match('^[0-9a-z\.-]+$', aname):
