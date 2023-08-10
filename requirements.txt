@@ -3,5 +3,5 @@ Jinja2==3.0.3
 kubernetes==26.1.0
 prettytable==3.7.0
 PyYAML==6.0
-python-keycloak==2.15.3
+python-keycloak==2.16.1
 semver
