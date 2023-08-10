@@ -255,7 +255,8 @@ def validate_stages(config):
             else:
                 os.remove(new_config_loc)
         if os.path.isdir(arg_value):
-            shutil.copytree(src=arg_value, dst=new_config_loc) # copytree
+            # copytree, ignore statement is to stop possible recurssion error
+            shutil.copytree(src=arg_value, dst=new_config_loc, ignore=shutil.ignore_patterns(f".bootprep-{activity}"))
         else:
             shutil.copy(arg_value, new_config_loc)
 
