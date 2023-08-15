@@ -30,7 +30,7 @@ import yaml
 
 import lib.git as git
 import jinja2
-from semver import VersionInfo
+from semver import Version
 import shutil
 import textwrap
 
@@ -66,7 +66,7 @@ def highestVersion(versions_list):
     parsed_versions = []
     for version in versions_list:
         try:
-            parsed_versions.append(VersionInfo.parse(version))
+            parsed_versions.append(Version.parse(version))
         except ValueError:
             install_logger.debug("Found invalid version: %s", version)
     sorted_vs = sorted(parsed_versions)
