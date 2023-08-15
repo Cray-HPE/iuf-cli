@@ -86,6 +86,22 @@ pipeline {
                         }
                     }
 
+                    stage('Prepare: Run unit tests') {
+                        agent {
+                            docker {
+                                label "${PRIMARY_NODE}"
+                                reuseNode true
+                                args "--platform linux/${DOCKER_ARCH}"
+                                image "${pythonImage}-${DOCKER_ARCH}"
+                            }
+                        }
+                        steps {
+                            sh "pip install --user -r requirements.txt"
+                            sh "pip install --user -r requirements-dev.txt"
+                            sh "PATH=$HOME/.local/bin:$PATH nose2"
+                        }
+                    }
+
                     stage('Prepare: RPMs') {
                         agent {
                             docker {
