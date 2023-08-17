@@ -88,16 +88,6 @@ else
 	export RELEASE=1
 endif
 
-# After the VERSION has been normalized, make the image version.
-# Image versions should never have the Python post version included if they're stable, it's confusing to image users.
-# Image users simply pull the image and fetch the new layers, whereas RPM users have to pragmatically know when an RPM
-# is newer (e.g. YUM/Zypper/apt needs a way to convey the repackaging).
-# - Undo the RPM tilde, sanitize the version; image tags do not like tildes and are okay with dashes, unlike RPMs
-# - Replace any '+' with '_' because image tags don't like the '+' character
-ifeq ($(IMAGE_VERSION),)
-export IMAGE_VERSION := $(shell echo $(VERSION) | tr -s '~' '-' | tr -s '+' '_' | sed 's/^v//')
-endif
-
 #############################################################################
 # General targets
 #############################################################################
@@ -123,7 +113,6 @@ help:
 	@echo '    help               	Show this help screen.'
 	@echo '    clean               	Remove build files.'
 	@echo
-	@echo '    image                Build and publish the Swagger testing image.'
 	@echo '    rpm                	Build a YUM/SUSE RPM.'
 	@echo '    all 					Build all production artifacts.'
 	@echo
@@ -132,9 +121,6 @@ help:
 	@echo '    rpm_build_source		Builds the SRPM.'
 	@echo '    rpm_package_source   Creates the RPM source tarball.'
 	@echo
-	@echo '    image_login   		Logs into the Docker registry for pulling and publishing images.'
-	@echo '    image_build   		Builds the Swagger testing image.'
-	@echo '    image_publish   		Builds and publishes the testing image.'
 	@echo ''
 
 clean:
@@ -168,18 +154,3 @@ rpm_build_source:
 
 rpm_build:
 	rpmbuild -ba $(BUILD_DIR)/SPECS/$(SPEC_FILE) --target ${ARCH} --define "_topdir $(BUILD_DIR)"
-
-#############################################################################
-# RPM targets
-#############################################################################
-
-image_login:
-	docker login artifactory.algol60.net
-
-image_build:
-	docker build -t artifactory.algol60.net/csm-docker/stable/craycli/swagger2openapi:latest utils/
-
-image_publish: image_build
-	docker push artifactory.algol60.net/csm-docker/stable/craycli/swagger2openapi:latest
-
-image: image_publish
