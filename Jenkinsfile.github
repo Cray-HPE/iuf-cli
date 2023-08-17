@@ -25,16 +25,24 @@
  */
 @Library('csm-shared-library') _
 
-def pythonImage = 'artifactory.algol60.net/csm-docker/stable/csm-docker-sle-python'
-def pythonVersion = '3.10'
-def major
-def minor
-def patch
-def isStable = env.TAG_NAME != null ? true : false
-if ( isStable ) {
-    (major, minor, patch) = env.TAG_NAME.tokenize('.')
-    major = major.replaceAll("^v","")
+def pythonImage = 'artifactory.algol60.net/csm-docker/stable/csm-docker-sle-python:3.10'
+
+// Disable pr-merge builds; not used.
+if (env.BRANCH_NAME ==~ ~"^PR-\\d+") {
+    currentBuild.result = 'SUCCESS'
+    echo "Pull-Request builds are skipped."
+    return
+} else if (env.BRANCH_NAME ==~ ~"^dependabot/github_actions") {
+    currentBuild.result = 'SUCCESS'
+    echo "Dependabot GitHub action builds are skipped."
+    return
 }
+
+// Only consider X.Y.Z and X.Y.Z.postN tags as stable.
+// Never consider X.Y.Z{[a|b|rc} or X.Y.Z.* tags (that are not post-releases) as stable.
+// The ==~ operator performs an exact match.
+def stableToken = ~/v?\d+\.\d+\.\d+(\.post\d+)?/
+def isStable = (env.TAG_NAME != null & env.TAG_NAME ==~ stableToken) ? true : false
 pipeline {
     agent {
         label "metal-gcp-builder"
@@ -42,100 +50,114 @@ pipeline {
 
     options {
         buildDiscarder(logRotator(numToKeepStr: "10"))
-        disableConcurrentBuilds()
         timeout(time: 20, unit: 'MINUTES')
+        disableConcurrentBuilds()
         timestamps()
     }
 
     environment {
         NAME = getRepoName()
-        VERSION = sh(returnStdout: true, script: "git describe --tags | tr -s '-' '~' | tr -d '^v'").trim()
-        TAG_POINTS_AT_HEAD = sh(returnStdout: true, script: "git tag --points-at HEAD | tr -d '^v'").trim()
+        VERSION = ''
+        PRIMARY_NODE = "${env.NODE_NAME}"
     }
 
     stages {
-
-        stage('Build & Publish') {
-
+        stage('Build') {
             matrix {
-
-                agent {
-                    node {
-                        label "metal-gcp-builder"
-                        customWorkspace "${env.WORKSPACE}/${sleVersion}/${pythonVersion}"
+                axes {
+                    axis {
+                        name 'ARCH'
+                        values 'x86_64'
                     }
                 }
 
-                axes {
-                    axis {
-                        name 'sleVersion'
-                        values 15.4
-                    }
+                environment {
+                    DOCKER_ARCH = sh(returnStdout: true, script: "[ ${ARCH} == 'x86_64' ] && echo -n 'amd64' || echo -n 'arm64'")
+                    BUILD_DIR = "${env.WORKSPACE}/dist/rpmbuild/${ARCH}/"
                 }
 
                 stages {
+                    stage('Build: setup') {
+                        steps {
+                            lock('docker-image-pull') {
+                                sh "docker pull --platform linux/${DOCKER_ARCH} ${pythonImage}"
+                                sh "docker tag ${pythonImage} ${pythonImage}-${DOCKER_ARCH}"
+                            }
+                        }
+                    }
 
                     stage('Prepare: RPMs') {
                         agent {
                             docker {
-                                label 'docker'
+                                label "${PRIMARY_NODE}"
                                 reuseNode true
-                                image "${pythonImage}:${pythonVersion}"
+                                args "--platform linux/${DOCKER_ARCH}"
+                                image "${pythonImage}-${DOCKER_ARCH}"
                             }
                         }
+
+                        environment {
+                            VERSION = sh(returnStdout: true, script: "python3 -m setuptools_scm | tr -s '-' '~' | sed 's/^v//'").trim()
+                        }
+
                         steps {
-                            withCredentials([gitUsernamePassword(credentialsId: 'jenkins-algol60-cray-hpe-github-integration')]) {
-                                runLibraryScript("addRpmMetaData.sh", "${env.NAME}.spec")
-                                sh "git update-index --assume-unchanged ${env.NAME}.spec"
-                                sh "echo ${env.BRANCH_NAME}"
-                                sh "env"
+                            script {
                                 sh "make prepare"
+                                // Inject distro-specific metadata (e.g. which distro and service pack).
+                                dir("${env.BUILD_DIR}/SPECS/") {
+                                    runLibraryScript("addRpmMetaData.sh", "${env.NAME}.spec")
+                                }
+
                             }
                         }
                     }
 
                     stage('Build: RPMs') {
-                        environment {
-                            PYTHON_VERSION = "${pythonVersion}"
-                        }
                         agent {
                             docker {
-                                label 'docker'
+                                label "${PRIMARY_NODE}"
                                 reuseNode true
-                                image "${pythonImage}:${pythonVersion}"
+                                args "--platform linux/${DOCKER_ARCH}"
+                                image "${pythonImage}-${DOCKER_ARCH}"
                             }
                         }
+
+                        environment {
+                            VERSION = sh(returnStdout: true, script: "python3 -m setuptools_scm | tr -s '-' '~' | sed 's/^v//'").trim()
+                        }
+
                         steps {
-                            withCredentials([gitUsernamePassword(credentialsId: 'jenkins-algol60-cray-hpe-github-integration')]) {
-                                sh "make rpm"
+                            script {
+                                sh 'PATH=/home/jenkins/.local/bin:$PATH make rpm'
                             }
                         }
                     }
 
                     stage('Publish: RPMs') {
+                        agent {
+                            docker {
+                                label "${PRIMARY_NODE}"
+                                reuseNode true
+                                args "-v /home/jenkins/.ssh:/home/jenkins/.ssh --platform linux/${DOCKER_ARCH}"
+                                image "${pythonImage}-${DOCKER_ARCH}"
+                            }
+                        }
+
                         steps {
                             script {
-                                if( isStable ){
-                                    RELEASE_FOLDER = "/${major}.${minor}"
-                                } else {
-                                    RELEASE_FOLDER = ""
-                                }
-                                sles_version_parts = "${sleVersion}".tokenize('.')
-                                sles_major = "${sles_version_parts[0]}"
-                                sles_minor = "${sles_version_parts[1]}"
                                 publishCsmRpms(
-                                        arch: "x86_64",
-                                        component: env.NAME + RELEASE_FOLDER,
+                                        arch: "${ARCH}",
+                                        component: env.NAME,
                                         isStable: isStable,
-                                        os: "sle-${sles_major}sp${sles_minor}",
-                                        pattern: "dist/rpmbuild/RPMS/x86_64/*.rpm",
+                                        os: "noos",
+                                        pattern: "dist/rpmbuild/${ARCH}//RPMS/${ARCH}/*.rpm",
                                 )
                                 publishCsmRpms(
                                         arch: "src",
-                                        component: env.NAME + RELEASE_FOLDER,
+                                        component: env.NAME,
                                         isStable: isStable,
-                                        os: "sle-${sles_major}sp${sles_minor}",
-                                        pattern: "dist/rpmbuild/SRPMS/*.rpm",
+                                        os: "noos",
+                                        pattern: "dist/rpmbuild/${ARCH}//SRPMS/*.rpm",
                                 )
                             }
                         }
@@ -144,4 +166,4 @@ pipeline {
             }
         }
     }
-  }
+}
