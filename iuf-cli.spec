@@ -21,16 +21,20 @@
 # ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 # OTHER DEALINGS IN THE SOFTWARE.
 #
-%global __python /usr/bin/python3
 
-%define __pipdir %{_builddir}/.pipdir
-%define __pyinstaller %{__pipdir}/bin/pyinstaller
+# Define which Python flavors python-rpm-macros will use (this can be a list).
+# https://github.com/openSUSE/python-rpm-macros#terminology
+%define pythons %(echo $PYTHON_BIN)
 
+# python*-devel is not listed because our build environments install Python from source and not from OS packaging.
+BuildRequires: python-rpm-generators
+BuildRequires: python-rpm-macros
 Name: %(echo $NAME)
+BuildArch: %(echo $ARCH)
 License: MIT License
 Summary: Install and Upgrade Framework (IUF) CLI
 Version: %(echo $VERSION)
-Release: 1
+Release: %(echo $RELEASE)
 Source: %{name}-%{version}.tar.bz2
 Vendor: Hewlett Packard Enterprise Company
 
@@ -42,11 +46,15 @@ Framework API.
 %setup -q
 
 %build
-%{__python} -m pip install -t %{__pipdir} -U -r requirements.txt
-PYTHONPATH=%{__pipdir} %{__pyinstaller} --onefile iuf
+# Install pyinstaller for our onefile binary.
+%python_exec -m pip install -U pyinstaller
 
 %install
-%{__install} -m 755 -D dist/iuf %{buildroot}%{_bindir}/iuf
+%python_exec -m pip install -U -r requirements.txt
+
+pyinstaller --onefile iuf.py -p iuf
+
+install -m 755 -D dist/iuf %{buildroot}%{_bindir}/iuf
 
 %clean
 
