@@ -30,7 +30,7 @@ import yaml
 
 import lib.git as git
 import jinja2
-from semver import VersionInfo
+from semver import Version
 import shutil
 import textwrap
 
@@ -66,7 +66,7 @@ def highestVersion(versions_list):
     parsed_versions = []
     for version in versions_list:
         try:
-            parsed_versions.append(VersionInfo.parse(version))
+            parsed_versions.append(Version.parse(version))
         except ValueError:
             install_logger.debug("Found invalid version: %s", version)
     sorted_vs = sorted(parsed_versions)
@@ -308,7 +308,6 @@ class SiteConfig():
             yaml.dump(self.rendered, fhandle)
         shutil.copy(self.sv_path, self.media_dir)
 
-
     @property
     def bootprep_commands(self):
         return self.sat_commands
@@ -316,28 +315,50 @@ class SiteConfig():
     def update_bootprep_commands(self, stage):
         """Add the bootprep commands ran for a particular stage to a list,
         which will be printed in the summary at the end of a run."""
-
-        if stage not in["update-cfs-config", "prepare-images"]:
+        if (stage not in ["update-cfs-config", "prepare-images"]
+                or not (self.relative_bpc_management or self.relative_bpc_managed)):
             return
         elif stage == "update-cfs-config":
-            limit = "configurations"
+            limit_vals = ["configurations"]
+            overwrite_vals = ["configs"]
         else:
             # The stage is prepare-images
-            limit = "session_templates"
+            limit_vals = ["images", "session_templates"]
+            overwrite_vals = ["images", "templates"]
+
+        limit_opt_str = " ".join([f"--limit {limit_val}" for limit_val in limit_vals])
+        overwrite_opt_str = " ".join([f"--overwrite-{overwrite_val}" for overwrite_val in overwrite_vals])
+
+        # Only one "cd" command is needed
+        raw_commands = [] if self.sat_commands else [f"cd {self.media_dir}"]
+
+        sat_command_prefix = (
+            f'sat bootprep run {limit_opt_str} {overwrite_opt_str} '
+            f'--vars-file "{SESSION_VARS}" --format json --bos-version v2'
+        )
+
+        def wrap_multiline_command(command, width=76, subsequent_indent=4):
+            """Wrap a command into multiple lines each terminated by a backslash."
+
+            Args:
+                command (str): the command to be wrapped
+                width (int): the width at which commands should be wrapped
+                subsequent_indent (str): the number of spaces to indent subsequent lines
+
+            Returns:
+                str: the given command wrapped
+            """
+            subsequent_indent_str = ' ' * subsequent_indent
+            return " \\\n".join(textwrap.wrap(command, width=width, break_on_hyphens=False,
+                                              subsequent_indent=subsequent_indent_str))
 
         if self.relative_bpc_management:
-            self.sat_commands.append(textwrap.indent(textwrap.dedent(f"""
-                cd {self.media_dir}
-                sat bootprep run --limit {limit} --overwrite-configs \\
-                --vars-file "{SESSION_VARS}" --format json --bos-version v2 \\
-                {self.relative_bpc_management}"""), "    "))
+            raw_commands.append(f"{sat_command_prefix} {self.relative_bpc_management}")
 
         if self.relative_bpc_managed:
-            self.sat_commands.append(textwrap.indent(textwrap.dedent(f"""
-                cd {self.media_dir}
-                sat bootprep run --limit {limit} --overwrite-configs \\
-                --vars-file "{SESSION_VARS}" --format json --bos-version v2 \\
-                {self.relative_bpc_managed}"""), "    "))
+            raw_commands.append(f"{sat_command_prefix} {self.relative_bpc_managed}")
+
+        self.sat_commands.extend([wrap_multiline_command(raw_command) for raw_command in raw_commands])
 
     def update_dict_stack(self, stage):
         vcs_stage = self.stage_enum["update-vcs-config"]
