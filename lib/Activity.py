@@ -950,7 +950,8 @@ class Activity():
     @property
     def bootprep_commands(self):
         if self.site_conf and self.site_conf.bootprep_commands:
-            return "\n".join(self.site_conf.bootprep_commands)
+            return textwrap.indent("\n".join(self.site_conf.bootprep_commands),
+                                   " " * 4)
         else:
             return ""
 

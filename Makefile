@@ -1,7 +1,7 @@
 #
 # MIT License
 #
-# (C) Copyright 2021-2023 Hewlett Packard Enterprise Development LP
+# (C) Copyright 2019-2023 Hewlett Packard Enterprise Development LP
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -22,43 +22,135 @@
 # OTHER DEALINGS IN THE SOFTWARE.
 #
 
+#############################################################################
+# Variables
+#############################################################################
+
 ifeq ($(NAME),)
-NAME := $(shell basename $(shell pwd))
+export NAME := $(shell basename $(shell pwd))
+endif
+
+ifeq ($(ARCH),)
+export ARCH := x86_64
+endif
+
+ifeq ($(PYTHON_VERSION),)
+export PYTHON_VERSION := 3.10
+endif
+
+export PYTHON_BIN := python$(PYTHON_VERSION)
+
+ifeq ($(VERSION),)
+export VERSION := $(shell python3 -m setuptools_scm 2>/dev/null | tr -s '-' '~' | sed 's/^v//')
 endif
 
 ifeq ($(VERSION),)
-VERSION := $(shell git describe --tags | tr -s '-' '~' | tr -d '^v')
+$(warning VERSION not set! Verify setuptools_scm[toml] is installed and try again.)
 endif
 
-SPEC_FILE ?= ${NAME}.spec
-SOURCE_NAME ?= ${NAME}
-DIST_DIR ?= $(PWD)/dist
-BUILD_DIR ?= ${DIST_DIR}/rpmbuild
-SOURCE_PATH := ${BUILD_DIR}/SOURCES/${SOURCE_NAME}-${VERSION}.tar.bz2
-VENV ?= venv
-PYTHON ?= python3
+#############################################################################
+# Post Release handling
+# "post" releases are useful for when non-code changes are made after
+# a release was created:
+# - When a README is updated, or CHANGE_LOG after a release was made
+# - When build changes occur for distributing the application to another
+#	platform but the code has zero changes
+#############################################################################
 
-all: prepare rpm
+# NOTE: 1.0.0 and 1.0.0.post0 mean the same thing, so to keep things simple if a post0 stable tag is detected it
+#		will be truncated.
+export VERSION := $(shell echo $(VERSION) | sed -E 's/\.post0$$.*//')
 
-rpm: prepare rpm_package_source rpm_build_source rpm_build
+ifneq (,$(findstring post, $(VERSION)))
+
+	export RELEASE := $(shell echo $(VERSION) | sed -En 's/.*post([1-9]+)$$/\1/p')
+
+	# The RPM version starts at 1, whereas the Python post version starts at 0 (e.g. RPM 1.0.0-1 == Py 1.0.0.post0).
+	# Add 1 to translate the Python post version to RPM.
+#	ifeq ($(RELEASE),)
+#	export RELEASE=1
+#	else
+	export RELEASE := $(shell expr $(RELEASE) + '1')
+#	endif
+
+	# If the version is A.B.C.postN (with no other suffix), then bump the RELEASE number in the RPM and trim the suffix on the VERSION.
+	# Otherwise if there is a suffix after postN, it should be preserved. When a suffix exists after postN, that means a
+	# development branch is being used and the version should be preserved to indicate that context. When there is NO suffix after
+	# postN, that means this is a re-release (a repackaging) of an already published version.
+	# e.g.
+	# 1.7.1.post1      translates to RPM speak as 1.7.1-2 (the post release preserves the same version but indicates the re-packaging).
+	# 1.7.1.post2.dev0 translates to RPM speak as 1.7.1.post2.dev0-1 (the entire version remains untouched)
+	# See
+	export VERSION := $(shell echo $(VERSION) | sed -E 's/\.post[1-9]+$$//')
+
+else
+	# Always set the RELEASE to 1 to indicate this build is the first release to be published for the version.
+	export RELEASE=1
+endif
+
+#############################################################################
+# General targets
+#############################################################################
+
+.PHONY: \
+	all \
+	clean \
+	help \
+	prepare \
+	rpm \
+	rpm_build \
+	rpm_build_source \
+	rpm_package_source \
+	synk
+
+all : prepare rpm
+
+help:
+	@echo 'Usage: make <OPTIONS> ... <TARGETS>'
+	@echo ''
+	@echo 'Available targets are:'
+	@echo ''
+	@echo '    help               	Show this help screen.'
+	@echo '    clean               	Remove build files.'
+	@echo
+	@echo '    rpm                	Build a YUM/SUSE RPM.'
+	@echo '    all 					Build all production artifacts.'
+	@echo
+	@echo '    prepare              Prepare for making an RPM.'
+	@echo '    rpm_build            Builds the RPM.'
+	@echo '    rpm_build_source		Builds the SRPM.'
+	@echo '    rpm_package_source   Creates the RPM source tarball.'
+	@echo
+	@echo ''
+
+clean:
+	rm -rf build dist
+
+#############################################################################
+# RPM targets
+#############################################################################
+
+SPEC_FILE := ${NAME}.spec
+SOURCE_NAME := ${NAME}-${VERSION}
+
+BUILD_DIR ?= $(PWD)/dist/rpmbuild
+SOURCE_PATH := ${BUILD_DIR}/SOURCES/${SOURCE_NAME}.tar.bz2
+
+rpm: rpm_package_source rpm_build_source rpm_build
 
 prepare:
+	@echo $(NAME)
 	rm -rf $(BUILD_DIR)
 	mkdir -p $(BUILD_DIR)/SPECS $(BUILD_DIR)/SOURCES
 	cp $(SPEC_FILE) $(BUILD_DIR)/SPECS/
 
+# touch the archive before creating it to prevent 'tar: .: file changed as we read it' errors
 rpm_package_source:
-	tar --transform 'flags=r;s,^,/${NAME}-${VERSION}/,' --exclude .git --exclude .github --exclude .gitignore --exclude dist -cvjf $(SOURCE_PATH) .
+	touch $(SOURCE_PATH)
+	tar --transform 'flags=r;s,^,/$(SOURCE_NAME)/,' --exclude .nox --exclude dist/rpmbuild --exclude ${SOURCE_NAME}.tar.bz2 -cvjf $(SOURCE_PATH) .
 
 rpm_build_source:
-	NAME=${NAME} VERSION=${VERSION} rpmbuild -ts $(SOURCE_PATH) --define "_topdir $(BUILD_DIR)"
+	rpmbuild -bs $(BUILD_DIR)/SPECS/$(SPEC_FILE) --target ${ARCH} --define "_topdir $(BUILD_DIR)"
 
 rpm_build:
-	NAME=${NAME} VERSION=${VERSION} rpmbuild -ba $(SPEC_FILE) --define "_topdir $(BUILD_DIR)"
-
-venv:
-	${PYTHON} -m venv ${VENV}
-	. ${VENV}/bin/activate; pip install -r requirements.txt
-
-clean:
-	rm -rf ${DIST_DIR}
+	rpmbuild -ba $(BUILD_DIR)/SPECS/$(SPEC_FILE) --target ${ARCH} --define "_topdir $(BUILD_DIR)"
