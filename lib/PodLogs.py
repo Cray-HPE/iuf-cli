@@ -238,7 +238,7 @@ class PodLogs():
                         watch_kwargs["since_seconds"] = 1
                 for event in watcher.stream(self.core.read_namespaced_pod_log,
                                             name=pod, namespace='argo', **watch_kwargs):
-                                                print('In event for loop')
+                    print('In event for loop')
                     for level, stdoutline, logline in parse_str(event):
                         print(f"{logline}", file=fhandle, flush=True)
                         print(f"{logline}")
