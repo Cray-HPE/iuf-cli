@@ -672,7 +672,7 @@ class Activity():
                     if podname not in followed_pods:
                         followed_pods.append(podname)
                         for container in ["init", "wait", "main"]:
-                            multiprocessing.log_to_stderr(logging.INFO)
+                            multiprocessing.log_to_stderr(logging.DEBUG)
                             proc = multiprocessing.Process(target=self.podlogs.follow_pod_log, args=(podname, container, log_prefix, self.st_event))
                             proc.start()
                             self.running_procs.append(proc)
