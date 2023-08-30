@@ -228,6 +228,7 @@ class PodLogs():
                     "_request_timeout": 30
                 }
                 if last_read:
+                    print('last_read')
                     seconds_back = elapsed_time(last_read, to_str=False)
                     # Dont set watch_kwargs["seconds_since"] to 0.  It causes
                     # an exception on the backend, and will always be 0.
@@ -237,6 +238,7 @@ class PodLogs():
                         watch_kwargs["since_seconds"] = 1
                 for event in watcher.stream(self.core.read_namespaced_pod_log,
                                             name=pod, namespace='argo', **watch_kwargs):
+                                                print('In event for loop')
                     for level, stdoutline, logline in parse_str(event):
                         print(f"{logline}", file=fhandle, flush=True)
                         print(f"{logline}")
