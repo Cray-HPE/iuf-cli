@@ -214,6 +214,28 @@ class PodLogs():
                     outlines.append((level, f"{line}", f"{line}"))
             return outlines
 
+        def setup_logger(config):
+            argo_logger= logging.getLogger('PodLogs')
+            log_dir_base = config.args["log_dir"]
+            log_dir = os.path.join(log_dir_base, config.timestamp)
+
+            if not os.path.exists(log_dir):
+                os.makedirs(log_dir)
+
+            log_filename = os.path.join(log_dir, 'LOG_DEFAULT_FILENAME')
+            log_file_handler = logging.FileHandler(log_filename)
+
+            symlink_target = os.path.join(log_dir_base, 'LOG_DEFAULT_FILENAME')
+            if os.path.islink(symlink_target):
+                os.remove(symlink_target)
+
+            os.symlink(log_filename, symlink_target)
+
+            argo_logger.addHandler(log_file_handler)
+            return argo_logger
+        
+        
+
 
         print(f"{log_prefix} {container} {pod}")
         os.nice(20)
@@ -251,16 +273,15 @@ class PodLogs():
                         # not everyone has updated their logging for that distinction
                         if level == 'NOTICE' or level == 'INFO':
                             install_logger.info(f"{log_prefix}       {stdoutline}")
-                            logging.info(f"{log_prefix}       {stdoutline}")
+                            setup_logger()
                         elif level == 'WARNING':
                             install_logger.warning(f"{log_prefix}       {stdoutline}")
-                            logging.warning(f"{log_prefix}       {stdoutline}")
+                            setup_logger()
                         elif level == 'ERROR':
                             install_logger.error(f"{log_prefix}       {stdoutline}")
-                            logging.error(f"{log_prefix}       {stdoutline}")
                         else:
                             install_logger.debug(f"{log_prefix}       {stdoutline}")
-                            logging.debug(f"{log_prefix}       {stdoutline}")
+                            setup_logger()
                         if st_event.is_set():
                             watcher.stop()
                             fhandle.close()
