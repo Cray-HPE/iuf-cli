@@ -21,6 +21,8 @@
 # ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 # OTHER DEALINGS IN THE SOFTWARE.
 #
+import logging
+
 import datetime
 import multiprocessing
 from multiprocessing import Process
@@ -212,6 +214,7 @@ class PodLogs():
                     outlines.append((level, f"{line}", f"{line}"))
             return outlines
 
+
         print(f"{log_prefix} {container} {pod}")
         os.nice(20)
         log_name = os.path.join(self._log_dir, f"{pod}-{container}.txt")
@@ -248,12 +251,16 @@ class PodLogs():
                         # not everyone has updated their logging for that distinction
                         if level == 'NOTICE' or level == 'INFO':
                             install_logger.info(f"{log_prefix}       {stdoutline}")
+                            logging.info(f"{log_prefix}       {stdoutline}")
                         elif level == 'WARNING':
                             install_logger.warning(f"{log_prefix}       {stdoutline}")
+                            logging.warning(f"{log_prefix}       {stdoutline}")
                         elif level == 'ERROR':
                             install_logger.error(f"{log_prefix}       {stdoutline}")
+                            logging.error(f"{log_prefix}       {stdoutline}")
                         else:
                             install_logger.debug(f"{log_prefix}       {stdoutline}")
+                            logging.debug(f"{log_prefix}       {stdoutline}")
                         if st_event.is_set():
                             watcher.stop()
                             fhandle.close()
