@@ -212,6 +212,7 @@ class PodLogs():
                     outlines.append((level, f"{line}", f"{line}"))
             return outlines
 
+        print(f"{log_prefix} {container} {pod}")
         os.nice(20)
         log_name = os.path.join(self._log_dir, f"{pod}-{container}.txt")
         fhandle = open(log_name, 'w', encoding='UTF-8')
