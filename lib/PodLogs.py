@@ -239,6 +239,8 @@ class PodLogs():
                                             name=pod, namespace='argo', **watch_kwargs):
                     for level, stdoutline, logline in parse_str(event):
                         print(f"{logline}", file=fhandle, flush=True)
+                        print(f"{logline}")
+                        print("logline is printed")
                         # at some point we need to revisit this, INFO should map to DEBUG but
                         # not everyone has updated their logging for that distinction
                         if level == 'NOTICE' or level == 'INFO':
