@@ -273,15 +273,15 @@ class PodLogs():
                         # not everyone has updated their logging for that distinction
                         if level == 'NOTICE' or level == 'INFO':
                             install_logger.info(f"{log_prefix}       {stdoutline}")
-                            setup_logger()
+                            
                         elif level == 'WARNING':
                             install_logger.warning(f"{log_prefix}       {stdoutline}")
-                            setup_logger()
+                            
                         elif level == 'ERROR':
                             install_logger.error(f"{log_prefix}       {stdoutline}")
                         else:
                             install_logger.debug(f"{log_prefix}       {stdoutline}")
-                            setup_logger()
+                            
                         if st_event.is_set():
                             watcher.stop()
                             fhandle.close()
