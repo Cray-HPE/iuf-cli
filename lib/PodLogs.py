@@ -274,7 +274,7 @@ class PodLogs():
                 print(f"After watcher.stop")
 
             except (client.rest.ApiException, client.exceptions.ApiException, MaxRetryError):
-                print(f"Has a client exception")
+                print(f"Has a client exception {__name__}")
                 # Catch this exception NTRIES times, then give up
                 # waiting. These exceptions get hit when a container isn't ready yet
                 # or when migrating pods.
