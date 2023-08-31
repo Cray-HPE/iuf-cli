@@ -304,6 +304,7 @@ class PodLogs():
             elif not self.is_running(pod):
                 # Return, since the pod is not running.
                 # fhandle.close()
+                print(f"Pod {pod} is not running")
                 return
         # fhandle.close()
 
