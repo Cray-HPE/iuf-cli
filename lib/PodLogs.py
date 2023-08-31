@@ -215,12 +215,13 @@ class PodLogs():
             return outlines
 
 
-        print(f"{log_prefix} {container} {pod}")
+        
         os.nice(20)
+
         log_name = os.path.join(self._log_dir, f"{pod}-{container}.txt")
         # fhandle = open(log_name, 'w', encoding='UTF-8')
         sys.stdout= open(log_name, 'w', encoding='UTF-8')
-        sys
+        print(f"{log_prefix} {container} {pod}")
         start_poll = datetime.datetime.now()
         last_read = None
         while True:
@@ -246,7 +247,7 @@ class PodLogs():
                                             name=pod, namespace='argo', **watch_kwargs):
                     print('In event for loop')
                     for level, stdoutline, logline in parse_str(event):
-                        print(f"{logline}", file=fhandle, flush=True)
+                        print(f"{logline}", flush=True)
                         print(f"{logline}")
                         print("logline is printed")
                         # at some point we need to revisit this, INFO should map to DEBUG but
@@ -264,7 +265,7 @@ class PodLogs():
                             
                         if st_event.is_set():
                             watcher.stop()
-                            fhandle.close()
+                            # fhandle.close()
                             return
                 last_read = datetime.datetime.now()
                 watcher.stop()
@@ -292,13 +293,13 @@ class PodLogs():
 
             if st_event.is_set():
                 # The processes are being collected.
-                fhandle.close()
+                # fhandle.close()
                 return
             elif not self.is_running(pod):
                 # Return, since the pod is not running.
-                fhandle.close()
+                # fhandle.close()
                 return
-        fhandle.close()
+        # fhandle.close()
 
     def list_namespaced_pod(self):
         """A wrapper around list_namespaced_pod from the kubernetes api."""
