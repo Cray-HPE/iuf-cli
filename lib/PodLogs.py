@@ -274,6 +274,7 @@ class PodLogs():
                 print(f"After watcher.stop")
 
             except (client.rest.ApiException, client.exceptions.ApiException, MaxRetryError):
+                print(f"Has a client exception")
                 # Catch this exception NTRIES times, then give up
                 # waiting. These exceptions get hit when a container isn't ready yet
                 # or when migrating pods.
@@ -285,10 +286,12 @@ class PodLogs():
                 last_read = datetime.datetime.now()
                 time.sleep(.5)
             except ReadTimeoutError:
+                print(f"Has a timeout")
                 # Timed out reading in the watcher.stream(...).  The
                 # timeout is low, so just continue.
                 last_read = datetime.datetime.now()
             except Exception as exc:
+                print(f"Has an exception {exc}")
                 install_logger.debug("Caught unhandled exception in PodLogs:")
                 install_logger.debug(f"\tname={exc.__class__.__name__}")
                 install_logger.debug(f"\tException={exc}")
