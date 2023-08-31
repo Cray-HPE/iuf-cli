@@ -243,6 +243,7 @@ class PodLogs():
                         watch_kwargs["since_seconds"] = seconds_back
                     else:
                         watch_kwargs["since_seconds"] = 1
+                print(f"Pankhuri")
                 for event in watcher.stream(self.core.read_namespaced_pod_log,
                                             name=pod, namespace='argo', **watch_kwargs):
                     print('In event for loop')
@@ -269,6 +270,7 @@ class PodLogs():
                             return
                 last_read = datetime.datetime.now()
                 watcher.stop()
+                print(f"Pankhuri")
 
             except (client.rest.ApiException, client.exceptions.ApiException, MaxRetryError):
                 # Catch this exception NTRIES times, then give up
