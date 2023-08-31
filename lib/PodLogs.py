@@ -22,7 +22,7 @@
 # OTHER DEALINGS IN THE SOFTWARE.
 #
 import logging
-
+import sys
 import datetime
 import multiprocessing
 from multiprocessing import Process
@@ -214,33 +214,13 @@ class PodLogs():
                     outlines.append((level, f"{line}", f"{line}"))
             return outlines
 
-        def setup_logger(config):
-            argo_logger= logging.getLogger('PodLogs')
-            log_dir_base = config.args["log_dir"]
-            log_dir = os.path.join(log_dir_base, config.timestamp)
-
-            if not os.path.exists(log_dir):
-                os.makedirs(log_dir)
-
-            log_filename = os.path.join(log_dir, 'LOG_DEFAULT_FILENAME')
-            log_file_handler = logging.FileHandler(log_filename)
-
-            symlink_target = os.path.join(log_dir_base, 'LOG_DEFAULT_FILENAME')
-            if os.path.islink(symlink_target):
-                os.remove(symlink_target)
-
-            os.symlink(log_filename, symlink_target)
-
-            argo_logger.addHandler(log_file_handler)
-            return argo_logger
-        
-        
-
 
         print(f"{log_prefix} {container} {pod}")
         os.nice(20)
         log_name = os.path.join(self._log_dir, f"{pod}-{container}.txt")
-        fhandle = open(log_name, 'w', encoding='UTF-8')
+        # fhandle = open(log_name, 'w', encoding='UTF-8')
+        sys.stdout= open(log_name, 'w', encoding='UTF-8')
+        sys
         start_poll = datetime.datetime.now()
         last_read = None
         while True:
