@@ -39,7 +39,6 @@ import tarfile
 import textwrap
 import time
 import yaml
-import pdb
 
 import lib.ApiInterface
 from lib.PodLogs import PodLogs
@@ -620,7 +619,6 @@ class Activity():
                 sys.exit(1)
 
             """ TODO: Need to figure out how to tell if the workflow has failed in some bad way """
-            pdb.set_trace()
             try:
                 completed = wflow['metadata']['labels']['workflows.argoproj.io/completed']
                 if completed and completed == 'true':
@@ -634,7 +632,7 @@ class Activity():
                 stage = wflow['metadata']['labels']['stage']
             except:
                 pass
-
+            self.config.logger.debug(f"Linds Stage is:  {stage}")
             nodes = []
             try:
                 # if the workflow gets too big it gets compressed
@@ -665,12 +663,14 @@ class Activity():
                 if "name" in node:
                     try:
                         log_prefix = self.generate_user_readable(stage, step_name, dname)
+                        self.config.logger.debug(f"Linds log prefix is :  {log_prefix}")
                     except:
                         pass
-
+                self.config.logger.debug(f"Linds Node is:  {node}")
                 if "type" in node and node["type"] == "Pod":
                     podname = node["id"]
                     if podname not in followed_pods:
+                        self.config.logger.debug(f"Linds adding pod to follow:  {podname}")
                         followed_pods.append(podname)
                         for container in ["init", "wait", "main"]:
                             proc = multiprocessing.Process(target=self.podlogs.follow_pod_log, args=(podname, container, log_prefix, self.st_event))
