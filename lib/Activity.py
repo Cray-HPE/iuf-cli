@@ -676,6 +676,7 @@ class Activity():
                             proc = multiprocessing.Process(target=self.podlogs.follow_pod_log, args=(podname, container, log_prefix, self.st_event))
                             proc.start()
                             self.running_procs.append(proc)
+                            self.config.logger.debug(f"Linds following POD LOG :  {podname} {container} {log_prefix}")
 
                 if "displayName" in node:
                     if name not in phases:
