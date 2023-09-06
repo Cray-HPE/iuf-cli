@@ -669,7 +669,7 @@ class Activity():
                 self.config.logger.debug(f"Linds Node is:  {node}")
                 if "type" in node and node["type"] == "Pod":
                     podname = node["id"]
-                    podname = podname[:48] + "-echo-message" + podname[48:]
+                    #podname = podname[:48] + "-echo-message" + podname[48:]
                     if podname not in followed_pods:
                         self.config.logger.debug(f"Linds adding pod to follow:  {podname}")
                         followed_pods.append(podname)
