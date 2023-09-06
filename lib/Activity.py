@@ -39,6 +39,7 @@ import tarfile
 import textwrap
 import time
 import yaml
+import pdb
 
 import lib.ApiInterface
 from lib.PodLogs import PodLogs
@@ -619,7 +620,7 @@ class Activity():
                 sys.exit(1)
 
             """ TODO: Need to figure out how to tell if the workflow has failed in some bad way """
-            import pdb; pdb.set_trace()
+            pdb.set_trace()
             try:
                 completed = wflow['metadata']['labels']['workflows.argoproj.io/completed']
                 if completed and completed == 'true':
