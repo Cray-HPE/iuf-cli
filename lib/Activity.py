@@ -671,8 +671,10 @@ class Activity():
                     node_id = node["id"]
                     podname = node_id
                     try:
-                        if "templateRef" in node.keys() and "template" in node["templateRef"].keys():
-                            node_id_splits = node_id.rsplit('-',1)
+                        node_id_splits = node_id.rsplit('-',1)
+                        if "templateName" in node.keys():
+                            podname = node_id_splits[0] + "-" + node["templateName"] + "-" + node_id_splits[1]
+                        elif "templateRef" in node.keys() and "template" in node["templateRef"].keys():
                             podname = node_id_splits[0] + "-" + node["templateRef"]["template"] + "-" + node_id_splits[1]
                     except:
                         pass
