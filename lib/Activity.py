@@ -669,13 +669,16 @@ class Activity():
                 self.config.logger.debug(f"Linds Node is:  {node}")
                 if "type" in node and node["type"] == "Pod":
                     node_id = node["id"]
-                    podname = node_id
+                    podname = ""
                     try:
-                        node_id_splits = node_id.rsplit('-',1)
-                        if "templateName" in node.keys():
-                            podname = node_id_splits[0] + "-" + node["templateName"] + "-" + node_id_splits[1]
-                        elif "templateRef" in node.keys() and "template" in node["templateRef"].keys():
-                            podname = node_id_splits[0] + "-" + node["templateRef"]["template"] + "-" + node_id_splits[1]
+                          template = ""
+                          node_id_splits = node_id.rsplit('-',1)
+                          if "templateName" in node.keys():
+                              template = node["templateName"]
+                          elif "templateRef" in node.keys() and "template" in node["templateRef"].keys():
+                              template =  node["templateRef"]["template"]
+                          ## no need for an else statement, the pod name will have two '--' if the keys are not present
+                          podname = node_id_splits[0] + "-" + template + "-" + node_id_splits[1]
                     except:
                         pass
                     if podname not in followed_pods:
