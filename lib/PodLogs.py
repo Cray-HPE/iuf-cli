@@ -235,10 +235,8 @@ class PodLogs():
                         watch_kwargs["since_seconds"] = seconds_back
                     else:
                         watch_kwargs["since_seconds"] = 1
-                watch_label = "workflows.argoproj.io/node-id:" + pod
                 for event in watcher.stream(self.core.read_namespaced_pod_log,
-                                            label_selector=watch_label,
-                                            namespace='argo', **watch_kwargs):
+                                            name=pod, namespace='argo', **watch_kwargs):
                     for level, stdoutline, logline in parse_str(event):
                         print(f"{logline}", file=fhandle, flush=True)
                         # at some point we need to revisit this, INFO should map to DEBUG but
