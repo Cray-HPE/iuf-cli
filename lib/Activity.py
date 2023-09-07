@@ -665,14 +665,20 @@ class Activity():
                         pass
 
                 if "type" in node and node["type"] == "Pod":
-                    podname = node["id"]
+                    node_id = node["id"]
+                    podname = node_id
+                    try:
+                        if "templateRef" in node.keys() and "template" in node["templateRef"].keys():
+                            node_id_splits = node_id.rsplit('-',1)
+                            podname = node_id_splits[0] + "-" + node["templateRef"]["template"] + "-" + node_id_splits[1]
+                    except:
+                        pass
                     if podname not in followed_pods:
                         followed_pods.append(podname)
                         for container in ["init", "wait", "main"]:
                             proc = multiprocessing.Process(target=self.podlogs.follow_pod_log, args=(podname, container, log_prefix, self.st_event))
                             proc.start()
                             self.running_procs.append(proc)
-
                 if "displayName" in node:
                     if name not in phases:
                         phases[name] = newphase.copy()
