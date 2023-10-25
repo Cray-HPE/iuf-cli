@@ -183,11 +183,11 @@ def validate_stages(config):
     else:
         if (bpc_managed or bpc_management) and in_bootprep_stage:
             if not bpc_managed:
-                install_logger.warning("--bootprep-config-managed was specified without --bootprep-config-management.  "
-                "The management images will not be built.")
-            elif not bpc_management:
                 install_logger.warning("--bootprep-config-management was specified without "
                                        "--bootprep-config-managed.  The managed images will not be built.")
+            elif not bpc_management:
+                install_logger.warning("--bootprep-config-managed was specified without --bootprep-config-management.  "
+                                       "The management images will not be built.")
         elif not (bpc_managed or bpc_management) and in_bootprep_stage:
             err_msg = formatted("""A bootprep stage was specified, but neither --bootprep-config-management
             nor --bootprep-config-managed were specified.""")
