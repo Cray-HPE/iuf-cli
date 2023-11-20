@@ -278,16 +278,16 @@ class PodLogs():
                 last_read = datetime.datetime.now()
 
             if st_event.is_set():
-                # The processes are being collected.
+                # The processes are being collected.  Return from this thread.
                 fhandle.close()
                 return
             elif not self.is_running(pod):
-                # Return, since the pod is not running.
+                # Return since the pod is not running.
                 fhandle.close()
                 return
         fhandle.close()
 
-    def list_namespaced_pod(self):
+    def list_namespaced_pod(self, pod):
         """A wrapper around list_namespaced_pod from the kubernetes api."""
         ntries = 0
         maxtries = 100
@@ -295,16 +295,16 @@ class PodLogs():
         pods = None
         while keepgoing:
             try:
-                # We throw exceptions here when spamming ctrl-c's, so wrap it
-                # in an except and retry if necessary.
+                # We throw exceptions here occasionally, so wrap it in an
+                # except and retry if necessary.
                 pods = self.core.list_namespaced_pod('argo')
                 keepgoing = False
-            except Exception:
+            except Exception as ex:
                 pid = os.getpid()
                 if ntries >= maxtries:
-                    # The ctrl-c has to be held down for a long time to hit
-                    # this.
-                    raise
+                    # Issue a warning and give up on following this pod.
+                    install_logger.debug(f"Could not list pods.  Giving up on pod {pod}.")
+                    keepgoing = False
                 time.sleep(.1)
             finally:
                 ntries += 1
@@ -323,8 +323,11 @@ class PodLogs():
         # implemented here is because it seemed that pods could go from 'Success' back into
         # 'Running' or 'Pending'.  So we're just doing a list of the pods, and then return
         # true if the pod is in the list.
-        pods = self.list_namespaced_pod()
-        job_pod_names = [p for p in pods.items if pod == p.metadata.name]
+        pods = self.list_namespaced_pod(pod)
+        if pods:
+            job_pod_names = [p for p in pods.items if pod == p.metadata.name]
+        else:
+            job_pod_names = None
         if not job_pod_names:
             if pod in self._running_subprocs:
                 del self._running_subprocs[pod]
