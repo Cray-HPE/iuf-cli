@@ -719,8 +719,11 @@ class Activity():
                                     s3 = artifact["s3"]["key"]
                                     phases[name]["log"] = s3
                                     dname_s3 = f"{dname}: {s3}"
+                                    timestamp= self.config.timestamp
+                                    logdir=self.config.args.get("log_dir")
+                                    file_name = s3.split("/")[-2]
                                     if dname_s3 not in printed_s3:
-                                        self.config.logger.debug(f"{log_prefix} LOG FILE FOR {dname_s3}")
+                                        self.config.logger.debug(f"{log_prefix} LOG FILE FOR {dname}: {logdir}/{timestamp}/argo_logs/{file_name}-main.txt")
                                         printed_s3[dname_s3] = True
                         except:
                             pass
