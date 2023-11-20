@@ -613,7 +613,6 @@ class Activity():
                 wflow = self.get_workflow(workflow)
             except Exception as e:
                 self.config.logger.debug(f"Unable to get workflow {workflow}: {e}")
-                sys.exit(1)
 
             """ TODO: Need to figure out how to tell if the workflow has failed in some bad way """
 
@@ -730,10 +729,8 @@ class Activity():
 
             if not finished:
                 time.sleep(1)
-
         # now we're finished
         self.collect_procs()
-
         return rstatus
 
     def monitor_session(self, workflow_id, stime):
@@ -771,7 +768,7 @@ class Activity():
             wf = self.config.connection.run(f"kubectl -n argo get Workflow/{workflow} -o yaml")
         except Exception as e:
             self.config.logger.debug(f"Unable to get workflow {workflow}: {e}")
-            sys.exit(1)
+            return None
 
         return yaml.safe_load(wf.stdout)
 
@@ -1056,6 +1053,8 @@ class Activity():
                 break
             self.config.logger.debug("Next workflow {}".format(wfid))
             wf = self.get_workflow(wfid)
+            if not wf:
+                break
             stage = wf['metadata']['labels']['stage']
             self.site_conf.update_dict_stack(stage)
 
