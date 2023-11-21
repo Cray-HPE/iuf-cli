@@ -333,17 +333,22 @@ class Stages():
             install_logger.critical("occurred while executing %s", stage)
 
         if failed:
-            print("")
-            install_logger.info("Aborting install after %s", elapsed_time(self.installer_start))
-            print("")
-            self.stage_hist.update(stage, ran=False, succeeded="Paused",duration=duration)
-            # update the current state with the failure
-            config.activity.state({"timestamp": utime, "status":"Failed"})
-            # put the whole process into debug
-            config.activity.state({"state":"debug"})
+            session_json = config.activity.api.get_activity_session(config.activity.name, sessionid).json()
+            current_state = session_json["current_state"]
+            if current_state not in ["in_progress", "transitioning"]:
+                print("")
+                install_logger.info("Aborting install after %s", elapsed_time(self.installer_start))
+                print("")
+                self.stage_hist.update(stage, ran=False, succeeded="Paused",duration=duration)
+                # update the current state with the failure
+                config.activity.state({"timestamp": utime, "status":"Failed"})
+                # put the whole process into debug
+                config.activity.state({"state":"debug"})
 
-            print(self.get_summary())
-            sys.exit(1)
+                print(self.get_summary())
+                sys.exit(1)
+            else:
+                install_logger.error(f"The {stage} stage failed, but argo must run to the completion of the stage.")
         else:
             config.activity.state({"timestamp":utime, "status":"Succeeded"})
             self.stage_hist.update(stage, True, True, duration=duration)
