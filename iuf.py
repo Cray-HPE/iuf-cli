@@ -227,10 +227,10 @@ def validate_stages(config):
             return
         arg_val_basename = os.path.basename(arg_value)
         if not media_dir:
-            err_msg = "A media directory was not "
-            "found and was not specified while "
-            "running a bootprep stage.  It must be a subdirectory under "
-            f"{config.media_base_dir}.  Was process-media ran?"
+            err_msg = f"""A media directory was not 
+            found and was not specified while 
+            running a bootprep stage.  It must be a subdirectory under 
+            {config.media_base_dir}.  Was process-media ran?"""
             warn_or_error(err_msg, non_bp_suppress=True)
             got_bootprep_error = True
             return
@@ -238,9 +238,9 @@ def validate_stages(config):
         elif media_dir and not os.path.exists(media_dir):
             # The media directory is necessary during the bootprep stage
             # because bootprep files are copied to the media directory.
-            err_msg = f"`{arg_name} {arg_value}` was specified, but "
-            "`-m/--media-dir` does not exist.  The "
-            "media directory is necessary during the bootprep stages. "
+            err_msg = f"""`{arg_name} {arg_value}` was specified, but 
+            `-m/--media-dir` does not exist.  The 
+            media directory is necessary during the bootprep stages. """
             warn_or_error(err_msg, non_bp_suppress=True)
             got_bootprep_error = True
             return
