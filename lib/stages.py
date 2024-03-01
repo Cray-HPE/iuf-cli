@@ -349,7 +349,8 @@ class Stages():
                     print(self.get_summary())
                     sys.exit(1)
                 else:
-                    install_logger.error(f"The {stage} stage failed, but argo must run to the completion of the stage.")
+                    install_logger.warn(f"The {stage} stage failed, but argo must run to the completion of the stage.")
+                    time.sleep(1)
         else:
             config.activity.state({"timestamp":utime, "status":"Succeeded"})
             self.stage_hist.update(stage, True, True, duration=duration)
