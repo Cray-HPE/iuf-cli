@@ -527,7 +527,6 @@ class Activity():
                 slist[name] = node["children"]
             else:
                 slist[name] = []
-        
         # Some stages start so slowly we call argo before they've fully started.
         try:
             dpath = dfs(slist, workflow)
@@ -622,7 +621,7 @@ class Activity():
 
             try:
                 completed = wflow['metadata']['labels']['workflows.argoproj.io/completed']
-                if completed and completed == 'true':                  
+                if completed and completed == 'true':
                     rstatus = wflow['metadata']['labels']['workflows.argoproj.io/phase']
                     finished = True
             except:
@@ -682,8 +681,7 @@ class Activity():
                                 except:
                                     pass
 
-            npath = self.sort_phases(workflow, nodes)
-            
+            npath = self.sort_phases(workflow, nodes) 
             for name in npath:
                 if name not in nodes:
                     continue
