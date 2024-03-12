@@ -527,7 +527,6 @@ class Activity():
                 slist[name] = node["children"]
             else:
                 slist[name] = []
-
         # Some stages start so slowly we call argo before they've fully started.
         try:
             dpath = dfs(slist, workflow)
@@ -610,6 +609,7 @@ class Activity():
         # processes after the while loop.
         printed_s3 = {}
         followed_pods = list()
+        onExitPod = False
         self.initialize_multiprocessing()
         while not finished:
             try:
@@ -648,14 +648,44 @@ class Activity():
                     nodes = rnodes
             except:
                 pass
+            
+            '''
+            Log for the pods in the workflow are collected based on the DFS algorithm.
+            However, OnExit hooks are not part of the workflow and do not appear in the DFS graph generated for the workflow. 
+            So, a separate method to find the "onExit" hook pod and collect the logs is implemented. 
+            This will be used only for those stages which have an onExit in the spec.
+            '''
+            # checking if onExit handler is present for the workflow
+            if "onExit" in wflow["spec"]:
+                if wflow["spec"]["onExit"] == "onExitHandlers" and not onExitPod:
+                    if type(nodes) is dict:
+                        for node, nDetail in nodes.items():
+                            # getting the onExit pod
+                            if nDetail["type"] == "Pod" and "onExitHandler" in nDetail["name"]:
+                                onExitPod = True
+                                node_id = nDetail["id"]
+                                podname = ""
+                                try:
+                                    template = ""
+                                    node_id_splits = node_id.rsplit('-',1)
+                                    if "templateRef" in nDetail and "template" in nDetail["templateRef"].keys():
+                                        template =  nDetail["templateRef"]["template"]
+                                    podname = node_id_splits[0] + "-" + template + "-" + node_id_splits[1]
+                                    # generating log_prefix for onExit logs
+                                    log_prefix = stage + "-onExit"
+                                    log_prefix = format_column(log_prefix)
+                                    for container in ["init", "wait", "main"]:
+                                        proc = multiprocessing.Process(target=self.podlogs.follow_pod_log, args=(podname, container, log_prefix, self.st_event))
+                                        proc.start()
+                                        self.running_procs.append(proc)
+                                except:
+                                    pass
 
-            npath = self.sort_phases(workflow, nodes)
-
+            npath = self.sort_phases(workflow, nodes) 
             for name in npath:
                 if name not in nodes:
                     continue
                 node = nodes[name]
-
                 dname = node.get("displayName", "unknown")
                 step_name = node.get("name", "unknown")
 
@@ -686,6 +716,7 @@ class Activity():
                             proc = multiprocessing.Process(target=self.podlogs.follow_pod_log, args=(podname, container, log_prefix, self.st_event))
                             proc.start()
                             self.running_procs.append(proc)
+
                 if "displayName" in node:
                     if name not in phases:
                         phases[name] = newphase.copy()
