@@ -500,7 +500,7 @@ class Activity():
                     self.config.logger.warning(f"Still waiting for workflow startup after {count} seconds.")
                 time.sleep(1)
 
-        return retflow
+        return retflow,status
 
     def sort_phases(self, workflow, nodes):
 
@@ -1047,9 +1047,11 @@ class Activity():
 
     def watch_next_wf(self, sessionid):
         while True:
-            wfid = self.get_next_workflow(sessionid)
+            wfid,session_status = self.get_next_workflow(sessionid)
             if not wfid:
                 self.config.logger.debug(f"No more workflows found for session {sessionid}.")
+                if session_status == "debug":
+                    sys.exit(1)
                 break
             self.config.logger.debug("Next workflow {}".format(wfid))
             wf = self.get_workflow(wfid)
