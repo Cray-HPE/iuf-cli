@@ -1142,6 +1142,19 @@ class Activity():
                 if tar_path and os.path.exists(tar_path):
                     # The path exists and process_media has been run.  Note
                     # the directory will not exist before process-media is ran.
+                    if os.path.isfile(tar_path):
+                        # All files in the tar file was not extracted into a new directory.
+                        # Files were extracted to the media dir.
+                        # Assuming this is a Docs tar file.
+                        file_tar_msg = formatted(f"""
+                            Tar file {product} found in media directory
+                            was not extracted into a new directory.
+                            Some files were extracted into the media
+                            directory. Assuming this is a Docs tarfile
+                            and IUF will not look for 'iuf-product-manifest.yaml'""")
+                        self.config.logger.warning(file_tar_msg)
+                        break
+                        
                     dir_contents = os.listdir(tar_path)
                     if "iuf-product-manifest.yaml" in dir_contents:
                         matches = [cp for cp in cfgmap_locs if cp == tar_path]
