@@ -1150,7 +1150,7 @@ class Activity():
                             Tar file {product} found in media directory
                             was not extracted into a new directory.
                             Some files were extracted into the media
-                            directory. Assuming this is a Docs tarfile
+                            directory. Assuming this is not an IUF product tarfile
                             and IUF will not look for 'iuf-product-manifest.yaml'""")
                         self.config.logger.warning(file_tar_msg)
                         break
