@@ -855,7 +855,6 @@ class Activity():
 
         self.config.logger.info(f"{self.config}")
 
-        try:
         force = self.config.args.get("force", False)
         stages = self.config.stages.stages
 
@@ -885,7 +884,7 @@ class Activity():
             self.site_conf = SiteConfig(self.config)
         except Exception as e:
             self.config.logger.info(f"{e}")
-            
+
         self.site_conf.organize_merge()
         self.config.logger.info(f"{self.site_conf}")
         self.config.stages.set_summary("site_vars", self.site_conf.sv_path)
