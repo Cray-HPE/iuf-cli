@@ -843,6 +843,7 @@ class Activity():
         self.watch_next_wf(workflow)
 
     def run_stages(self, resume=False):
+        self.config.logger.info(f"Inside run stages.")
         if not self.api.activity_exists(self.name):
             raise ActivityError(f"The activity {self.name} does not exist.")
 
@@ -919,12 +920,12 @@ class Activity():
             payload["input_parameters"]["stages"] = ["process-media"]
             sid = self.run_stage(payload)
             sessions.append(sid)
-
+        self.config.logger.info(f"2nd time get activity.")
         ret_code = self.api.get_activity(self.name)
         result = ret_code.json()
         products = result.get('products', {})
         session_vars = {}
-
+        self.config.logger.info(f"products : {products}.")
         if not products:
 
             full_media_dir = self.config.media_base_dir + media_dir
@@ -951,6 +952,7 @@ class Activity():
         # Remove the "force" key from input_parameters for the patched
         # activity.
         patched_payload["input_parameters"].pop("force", None)
+        self.config.logger.info(f"calling patch.")
         self.api.patch_activity(self.name, patched_payload)
 
         # Run any remaining stages.
