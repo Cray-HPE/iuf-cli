@@ -853,6 +853,7 @@ class Activity():
         logdir = os.path.join(self.config.args.get("log_dir"), self.config.timestamp)
         self.config.stages.set_summary("log_dir", logdir)
 
+        self.config.logger.info(f"{self.config}")
         force = self.config.args.get("force", False)
         stages = self.config.stages.stages
 
@@ -881,6 +882,7 @@ class Activity():
 
         self.site_conf = SiteConfig(self.config)
         self.site_conf.organize_merge()
+        self.config.logger.info(f"{self.site_conf}")
         self.config.stages.set_summary("site_vars", self.site_conf.sv_path)
 
         bp_config_management = self.config.args.get("relative_bootprep_config_management", None)
