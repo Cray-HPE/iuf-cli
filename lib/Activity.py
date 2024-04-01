@@ -880,10 +880,9 @@ class Activity():
                 "stages": [],
             }
         }
-        try:
-            self.site_conf = SiteConfig(self.config)
-        except Exception as e:
-            self.config.logger.info(f"{e}")
+        
+        self.site_conf = SiteConfig(self.config)
+        
 
         self.site_conf.organize_merge()
         self.config.logger.info(f"{self.site_conf}")

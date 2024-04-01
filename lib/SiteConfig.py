@@ -111,6 +111,7 @@ class SiteConfig():
 
         # Get the product catalog as the base layer.
         full_product_catalog = get_product_catalog(config, all_products=True)
+        install_logger.info(f"{full_product_catalog}")
         for prod in full_product_catalog:
             versions = [elt for elt in list(full_product_catalog[prod].keys()) if elt]
 
