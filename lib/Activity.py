@@ -856,40 +856,39 @@ class Activity():
         self.config.logger.info(f"{self.config}")
 
         try:
-            force = self.config.args.get("force", False)
-            stages = self.config.stages.stages
+        force = self.config.args.get("force", False)
+        stages = self.config.stages.stages
 
-            if not resume:
-                with open(os.path.join(self.config.args.get("state_dir"), f"{self.name}_stages.yaml"), "w") as fhandle:
-                    yaml.dump(stages, fhandle)
+        if not resume:
+            with open(os.path.join(self.config.args.get("state_dir"), f"{self.name}_stages.yaml"), "w") as fhandle:
+                yaml.dump(stages, fhandle)
 
-            # API backend wants relative paths only.  We make sure media dir is under base dir
-            # in Config, so we can just strip the base dir off the front of the media dir
-            media_dir = self.media_dir[len(self.config.media_base_dir):]
+        # API backend wants relative paths only.  We make sure media dir is under base dir
+        # in Config, so we can just strip the base dir off the front of the media dir
+        media_dir = self.media_dir[len(self.config.media_base_dir):]
 
-            media_host = self.config.args.get("media_host", "ncn-m001")
-            concurrency = self.config.args.get("concurrency", None)
-            if concurrency != None:
-                concurrency = int(concurrency)
+        media_host = self.config.args.get("media_host", "ncn-m001")
+        concurrency = self.config.args.get("concurrency", None)
+        if concurrency != None:
+            concurrency = int(concurrency)
 
-            payload = {
-                "input_parameters": {
-                    "concurrency": concurrency,
-                    "force": force,
-                    "media_dir": media_dir,
-                    "media_host": media_host,
-                    "stages": [],
-                }
+        payload = {
+            "input_parameters": {
+                "concurrency": concurrency,
+                "force": force,
+                "media_dir": media_dir,
+                "media_host": media_host,
+                "stages": [],
             }
-
+        }
+        try:
             self.site_conf = SiteConfig(self.config)
-            self.site_conf.organize_merge()
         except Exception as e:
-             self.config.logger.info(f"{e}")
-        
+            self.config.logger.info(f"{e}")
+            
+        self.site_conf.organize_merge()
         self.config.logger.info(f"{self.site_conf}")
         self.config.stages.set_summary("site_vars", self.site_conf.sv_path)
-        
 
         bp_config_management = self.config.args.get("relative_bootprep_config_management", None)
         if bp_config_management:
