@@ -614,6 +614,10 @@ class Activity():
         while not finished:
             try:
                 wflow = self.get_workflow(workflow)
+                if wflow is None:
+                    self.config.logger.debug(f"Workflow {workflow} not found.")
+                    finished = True  # Set finished to True to break from the loop
+                    break
             except Exception as e:
                 self.config.logger.debug(f"Unable to get workflow {workflow}: {e}")
 
@@ -656,7 +660,7 @@ class Activity():
             This will be used only for those stages which have an onExit in the spec.
             '''
             # checking if onExit handler is present for the workflow
-            if "onExit" in wflow["spec"]:
+            if wflow and "onExit" in wflow["spec"]:
                 if wflow["spec"]["onExit"] == "onExitHandlers" and not onExitPod:
                     if type(nodes) is dict:
                         for node, nDetail in nodes.items():
