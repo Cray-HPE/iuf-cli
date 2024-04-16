@@ -689,7 +689,7 @@ class Activity():
                                 proc.start()
                                 self.running_procs.append(proc)
                         except BrokenPipeError as err:
-                            self.config.logger.debug(f"BrokenPipeError: {err}. Retrying monitor_workflow: {workflow}")
+                            self.config.logger.warning(f"BrokenPipeError: {err}. Retrying monitor_workflow: {workflow}")
                             continue
                 if "displayName" in node:
                     if name not in phases:
