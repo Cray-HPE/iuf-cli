@@ -682,18 +682,10 @@ class Activity():
                     if podname not in followed_pods:
                         followed_pods.append(podname)
 
-                        def broken_error():
-                            # Create a pipe using os.pipe()
-                            read_end, write_end = os.pipe()
 
-                            # Close the read end of the pipe
-                            os.close(read_end)
-
-                            os.write(write_end, b"Hello, pipe!")
                         
                         for container in ["init", "wait", "main"]:
-                            #proc = multiprocessing.Process(target=self.podlogs.follow_pod_log, args=(podname, container, log_prefix, self.st_event))
-                            proc = multiprocessing.Process(target=broken_error)
+                            proc = multiprocessing.Process(target=self.podlogs.follow_pod_log, args=(podname, container, log_prefix, self.st_event))
                             try:
                                 proc.start()
                             except BrokenPipeError as err:
