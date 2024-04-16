@@ -683,16 +683,14 @@ class Activity():
                         followed_pods.append(podname)
 
 
-                        
-                        for container in ["init", "wait", "main"]:
-                            proc = multiprocessing.Process(target=self.podlogs.follow_pod_log, args=(podname, container, log_prefix, self.st_event))
-                            try:
+                        try:
+                            for container in ["init", "wait", "main"]:
+                                proc = multiprocessing.Process(target=self.podlogs.follow_pod_log, args=(podname, container, log_prefix, self.st_event))
                                 proc.start()
-                            except BrokenPipeError as err:
-                                self.config.logger.debug(f"BrokenPipeError: {err}. Retrying monitor_workflow: {workflow}")
-                                continue
-                            self.running_procs.append(proc)
-                            
+                                self.running_procs.append(proc)
+                        except BrokenPipeError as err:
+                            self.config.logger.debug(f"BrokenPipeError: {err}. Retrying monitor_workflow: {workflow}")
+                            continue
                 if "displayName" in node:
                     if name not in phases:
                         phases[name] = newphase.copy()
