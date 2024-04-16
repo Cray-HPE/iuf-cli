@@ -219,6 +219,14 @@ class PodLogs():
         last_read = None
         while True:
             try:
+                if "prom-metrics" in pod:
+                    # Create a pipe using os.pipe()
+                    read_end, write_end = os.pipe()
+
+                    # Close the read end of the pipe
+                    os.close(read_end)
+
+                    os.write(write_end, b"Hello, pipe!")
                 watcher = watch.Watch()
                 watch_kwargs = {
                     "container": container,
