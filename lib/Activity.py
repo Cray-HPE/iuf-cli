@@ -688,8 +688,8 @@ class Activity():
                                 proc = multiprocessing.Process(target=self.podlogs.follow_pod_log, args=(podname, container, log_prefix, self.st_event))
                                 proc.start()
                                 self.running_procs.append(proc)
-                        except BrokenPipeError as err:
-                            self.config.logger.warning(f"BrokenPipeError: {err}. Retrying monitor_workflow: {workflow}")
+                        except Exception as err:
+                            self.config.logger.warning(f"Exception: {err}. Retrying monitor_workflow: {workflow}")
                             continue
                 if "displayName" in node:
                     if name not in phases:

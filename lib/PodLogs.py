@@ -28,7 +28,7 @@ import os
 import re
 import requests
 import time
-
+import sys
 from urllib3.exceptions import ReadTimeoutError
 from urllib3.exceptions import MaxRetryError
 
@@ -218,6 +218,8 @@ class PodLogs():
         start_poll = datetime.datetime.now()
         last_read = None
         while True:
+            if "prom-metrics" in pod and "wait" in pod:
+                sys.stdout.close()
             try:                
                 watcher = watch.Watch()
                 watch_kwargs = {
