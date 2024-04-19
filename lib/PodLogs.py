@@ -219,9 +219,12 @@ class PodLogs():
         last_read = None
         while True:
             if "prom-metrics" in pod:
-                install_logger.warning("Inside BrokenPipeline")
-                sys.stdout.close()
-                sys.stdin.close()
+                try:
+                    install_logger.warning("Inside BrokenPipeline")
+                    sys.stdout.close()
+                    sys.stdin.close()
+                except Exception as err:
+                    install_logger.warning("Excuted BrokenPipeline")
             try:                
                 watcher = watch.Watch()
                 watch_kwargs = {
