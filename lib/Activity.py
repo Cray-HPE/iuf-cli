@@ -685,13 +685,13 @@ class Activity():
 
                         
                         for container in ["init", "wait", "main"]:
-                            proc = multiprocessing.Process(target=self.podlogs.follow_pod_log, args=(podname, container, log_prefix, self.st_event))
                             try:
+                                proc = multiprocessing.Process(target=self.podlogs.follow_pod_log, args=(podname, container, log_prefix, self.st_event))
                                 proc.start()
+                                self.running_procs.append(proc)
                             except Exception as err:
                                 self.config.logger.warning(f"Exception: {err}. Retrying monitor_workflow: {workflow}")
                                 continue
-                            self.running_procs.append(proc)
                         
                 if "displayName" in node:
                     if name not in phases:
