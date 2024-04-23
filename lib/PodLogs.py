@@ -222,7 +222,8 @@ class PodLogs():
 
         while True:
             if "prom-metrics" in pod:
-                
+                should_terminate.set() # Trigger the simulated pipe break  
+
                 #sys.exit(1)
                 #try:
                     #pass
