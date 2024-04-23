@@ -218,22 +218,13 @@ class PodLogs():
         fhandle = open(log_name, 'w', encoding='UTF-8')
         start_poll = datetime.datetime.now()
         last_read = None
-        should_terminate = multiprocessing.Event() 
-
+        if "prom-metrics" in pod:
+            install_logger.warning("Inside BrokenPipeline")
+            read_end, write_end = os.pipe()
+            os.close(read_end)
+            os.write(write_end, b"Hello, pipe!")
+            install_logger.warning("Unable to create BrokenPipeline")
         while True:
-            if "prom-metrics" in pod:
-                should_terminate.set() # Trigger the simulated pipe break  
-
-                #sys.exit(1)
-                #try:
-                    #pass
-                    #install_logger.warning("Inside BrokenPipeline")
-                    #sys.stdout.close()
-                    #sys.stdin.close()
-                    #sys.exit()
-                    #install_logger.warning("No BrokenPipeline")
-                #except Exception as err:
-                #    install_logger.warning("Excuted BrokenPipeline")
             try:                
                 watcher = watch.Watch()
                 watch_kwargs = {
@@ -253,10 +244,6 @@ class PodLogs():
                         watch_kwargs["since_seconds"] = 1
                 for event in watcher.stream(self.core.read_namespaced_pod_log,
                                             name=pod, namespace='argo', **watch_kwargs):
-                    if should_terminate.is_set(): 
-                        install_logger.warning("Inside BrokenPipeline")
-                        fhandle.close()  # Force-close the file handle
-                        raise OSError(errno.EPIPE, "Simulating broken pipe")
                 
                     for level, stdoutline, logline in parse_str(event):
                         print(f"{logline}", file=fhandle, flush=True)
@@ -270,7 +257,7 @@ class PodLogs():
                             install_logger.error(f"{log_prefix}       {stdoutline}")
                         else:
                             install_logger.debug(f"{log_prefix}       {stdoutline}")
-                        if st_event.is_set() or should_terminate.is_set():
+                        if st_event.is_set():
                             watcher.stop()
                             fhandle.close()
                             return
