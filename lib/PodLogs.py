@@ -217,18 +217,22 @@ class PodLogs():
         fhandle = open(log_name, 'w', encoding='UTF-8')
         start_poll = datetime.datetime.now()
         last_read = None
+        should_terminate = multiprocessing.Event() 
+
         while True:
             if "prom-metrics" in pod:
-                sys.exit(1)
-                try:
-                    pass
+                should_terminate.set()
+
+                #sys.exit(1)
+                #try:
+                    #pass
                     #install_logger.warning("Inside BrokenPipeline")
                     #sys.stdout.close()
                     #sys.stdin.close()
                     #sys.exit()
-                    install_logger.warning("No BrokenPipeline")
-                except Exception as err:
-                    install_logger.warning("Excuted BrokenPipeline")
+                    #install_logger.warning("No BrokenPipeline")
+                #except Exception as err:
+                #    install_logger.warning("Excuted BrokenPipeline")
             try:                
                 watcher = watch.Watch()
                 watch_kwargs = {
@@ -260,7 +264,7 @@ class PodLogs():
                             install_logger.error(f"{log_prefix}       {stdoutline}")
                         else:
                             install_logger.debug(f"{log_prefix}       {stdoutline}")
-                        if st_event.is_set():
+                        if st_event.is_set() or should_terminate.is_set():
                             watcher.stop()
                             fhandle.close()
                             return
