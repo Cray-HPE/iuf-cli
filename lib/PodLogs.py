@@ -226,8 +226,9 @@ class PodLogs():
             #os.write(write_end, b"Hello, pipe!")
             pipe = os.pipe()
             process = subprocess.Popen(["sleep", "5"])
-            time.sleep(1)  # Give the process a little time to start
+            time.sleep(600)  # Give the process a little time to start
             os.kill(process.pid, 9)  # Forceful termination
+            time.sleep(600)  # Give the process a little time to start
             os.write(pipe[1], b"Hello, world!")  # This will likely trigger the error
             install_logger.warning("Unable to create BrokenPipeline")
         while True:
