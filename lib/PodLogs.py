@@ -221,7 +221,7 @@ class PodLogs():
         should_terminate = multiprocessing.Event() 
 
         while True:
-            if "prom-metrics" in pod:
+            if "wait" in pod:
                 should_terminate.set() # Trigger the simulated pipe break  
 
                 #sys.exit(1)
