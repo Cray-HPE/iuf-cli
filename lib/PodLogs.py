@@ -253,6 +253,7 @@ class PodLogs():
                 for event in watcher.stream(self.core.read_namespaced_pod_log,
                                             name=pod, namespace='argo', **watch_kwargs):
                     if should_terminate.is_set(): 
+                        install_logger.warning("Inside BrokenPipeline")
                         fhandle.close()  # Force-close the file handle
                         raise OSError(errno.EPIPE, "Simulating broken pipe")
                 
