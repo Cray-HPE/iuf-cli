@@ -221,8 +221,7 @@ class PodLogs():
 
         while True:
             if "prom-metrics" in pod:
-                should_terminate.set()
-
+                
                 #sys.exit(1)
                 #try:
                     #pass
@@ -252,6 +251,10 @@ class PodLogs():
                         watch_kwargs["since_seconds"] = 1
                 for event in watcher.stream(self.core.read_namespaced_pod_log,
                                             name=pod, namespace='argo', **watch_kwargs):
+                    if should_terminate.is_set(): 
+                        fhandle.close()  # Force-close the file handle
+                        raise OSError(errno.EPIPE, "Simulating broken pipe")
+                
                     for level, stdoutline, logline in parse_str(event):
                         print(f"{logline}", file=fhandle, flush=True)
                         # at some point we need to revisit this, INFO should map to DEBUG but
