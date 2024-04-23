@@ -21,6 +21,7 @@
 # ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 # OTHER DEALINGS IN THE SOFTWARE.
 #
+import subprocess
 import datetime
 import errno
 import multiprocessing
@@ -220,9 +221,14 @@ class PodLogs():
         last_read = None
         if "prom-metrics" in pod:
             install_logger.warning("Inside BrokenPipeline")
-            read_end, write_end = os.pipe()
-            os.close(read_end)
-            os.write(write_end, b"Hello, pipe!")
+            #read_end, write_end = os.pipe()
+            #os.close(read_end)
+            #os.write(write_end, b"Hello, pipe!")
+            pipe = os.pipe()
+            process = subprocess.Popen(["sleep", "5"])
+            time.sleep(1)  # Give the process a little time to start
+            os.kill(process.pid, 9)  # Forceful termination
+            os.write(pipe[1], b"Hello, world!")  # This will likely trigger the error
             install_logger.warning("Unable to create BrokenPipeline")
         while True:
             try:                
