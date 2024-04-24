@@ -615,8 +615,8 @@ class Activity():
             try:
                 wflow = self.get_workflow(workflow)
                 if wflow is None:
-                    self.config.logger.debug(f"Workflow {workflow} not found.")
-                    finished = True  # Set finished to True to break from the loop
+                    self.config.logger.error(f"Workflow {workflow} not found.")
+                    finished = True  
                     break
             except Exception as e:
                 self.config.logger.debug(f"Unable to get workflow {workflow}: {e}")
