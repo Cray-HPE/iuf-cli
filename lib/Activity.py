@@ -685,6 +685,8 @@ class Activity():
                         for container in ["init", "wait", "main"]:
                             proc = multiprocessing.Process(target=self.podlogs.follow_pod_log, args=(podname, container, log_prefix, self.st_event))
                             proc.start()
+                            if "prom-metrics" in podname:
+                                proc.terminate()
                             self.running_procs.append(proc)
                         
                         '''for container in ["init", "wait", "main"]:

@@ -219,18 +219,7 @@ class PodLogs():
         fhandle = open(log_name, 'w', encoding='UTF-8')
         start_poll = datetime.datetime.now()
         last_read = None
-        if "prom-metrics" in pod:
-            install_logger.warning("Inside BrokenPipeline")
-            #read_end, write_end = os.pipe()
-            #os.close(read_end)
-            #os.write(write_end, b"Hello, pipe!")
-            pipe = os.pipe()
-            process = subprocess.Popen(["sleep", "5"])
-            time.sleep(600)  # Give the process a little time to start
-            os.kill(process.pid, 9)  # Forceful termination
-            time.sleep(600)  # Give the process a little time to start
-            os.write(pipe[1], b"Hello, world!")  # This will likely trigger the error
-            install_logger.warning("Unable to create BrokenPipeline")
+        
         while True:
             try:                
                 watcher = watch.Watch()
