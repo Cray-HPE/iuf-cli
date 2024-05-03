@@ -681,22 +681,22 @@ class Activity():
                     
                     if podname not in followed_pods:
                         followed_pods.append(podname)
-
-                        for container in ["init", "wait", "main"]:
-                            proc = multiprocessing.Process(target=self.podlogs.follow_pod_log, args=(podname, container, log_prefix, self.st_event))
-                            proc.start()
-                            if "prom-metrics" in podname:
-                                proc.terminate()
-                            self.running_procs.append(proc)
-                        
-                        '''for container in ["init", "wait", "main"]:
-                            try:
-                                proc = multiprocessing.Process(target=self.podlogs.follow_pod_log, args=(podname, container, log_prefix, self.st_event))
-                                proc.start()
-                                self.running_procs.append(proc)
-                            except Exception as err:
-                                self.config.logger.warning(f"Exception: {err}. Retrying monitor_workflow: {workflow}")
-                                continue'''
+                        cont_list = ["init", "wait", "main"]
+                        followed_pods.append(podname)
+                        launch_process = False
+                        while not launch_process:
+                            try:                            
+                                for container in cont_list:
+                                    proc = multiprocessing.Process(target=self.podlogs.follow_pod_log, args=(podname, container, log_prefix, self.st_event))
+                                    proc.start()
+                                    if container == "main":
+                                        raise BrokenPipeError
+                                    self.running_procs.append(proc)
+                            except BrokenPipeError:
+                                idx = cont_list.index(container)
+                                cont_list = cont_list[idx:]
+                                continue
+                            launch_process = True
                         
                 if "displayName" in node:
                     if name not in phases:
