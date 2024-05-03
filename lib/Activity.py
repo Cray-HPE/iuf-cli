@@ -681,18 +681,23 @@ class Activity():
                     
                     if podname not in followed_pods:
                         followed_pods.append(podname)
+                        
                         cont_list = ["init", "wait", "main"]
                         followed_pods.append(podname)
                         launch_process = False
+                        count = 0
                         while not launch_process:
                             try:                            
                                 for container in cont_list:
                                     proc = multiprocessing.Process(target=self.podlogs.follow_pod_log, args=(podname, container, log_prefix, self.st_event))
-                                    proc.start()
-                                    if container == "main":
+
+                                    if container == "main" and count < 3:
+                                        count += 1
                                         raise BrokenPipeError
+                                    proc.start()
                                     self.running_procs.append(proc)
-                            except BrokenPipeError:
+                            except Exception as e:
+                                self.config.logger.debug(f"Unable to create process. {type(e).__name__} occured.")
                                 idx = cont_list.index(container)
                                 cont_list = cont_list[idx:]
                                 continue
