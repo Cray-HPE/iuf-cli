@@ -681,9 +681,7 @@ class Activity():
                     
                     if podname not in followed_pods:
                         followed_pods.append(podname)
-                        
                         cont_list = ["init", "wait", "main"]
-                        followed_pods.append(podname)
                         launch_process = False
                         while not launch_process:
                             try:                            
