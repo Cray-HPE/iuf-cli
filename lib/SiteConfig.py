@@ -34,6 +34,8 @@ from semver import Version
 import shutil
 import textwrap
 
+
+
 from lib.vars import RECIPE_VARS, BP_CONFIG_MANAGED, BP_CONFIG_MANAGEMENT, SESSION_VARS, MEDIA_VERSIONS, UnexpectedState
 
 from lib.InstallerUtils import get_product_catalog, formatted
@@ -112,9 +114,7 @@ class SiteConfig():
         # Get the product catalog as the base layer.
         full_product_catalog = get_product_catalog(config, all_products=True)
         for prod in full_product_catalog:
-            versions = [elt for elt in list(full_product_catalog[prod].keys()) if elt]
-
-            self.product_catalog[prod] = {"version": highestVersion(versions)}
+            self.product_catalog[prod.name] = {"version": prod.version}
 
         recipe_vars_file = config.args.get("recipe_vars", None)
 
