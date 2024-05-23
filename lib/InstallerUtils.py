@@ -32,9 +32,22 @@ import yaml
 import prettytable
 
 from lib.InstallLogger import get_install_logger
+from cray_product_catalog.query import ProductCatalog
 
 install_logger = get_install_logger(__name__)
 # pylint: disable=consider-using-f-string
+
+def highestVersion(versions_list):
+    parsed_versions = []
+    for version in versions_list:
+        try:
+            parsed_versions.append(Version.parse(version))
+        except ValueError:
+            install_logger.debug("Found invalid version: %s", version)
+    sorted_vs = sorted(parsed_versions)
+    if not sorted_vs:
+        return ''
+    return str(sorted_vs[-1])
 
 def print_table(rows, header=None, sort=None, alignments=None):
     table = prettytable.PrettyTable()
@@ -73,73 +86,87 @@ def get_product_catalog(config, all_products=False):
     """
     install_logger.debug('determining config-management url for products')
     if not config.all_product_data:
-        # get full data for initial image_id
-        command = 'kubectl --kubeconfig=/etc/kubernetes/admin.conf get cm -n services cray-product-catalog -o json'
-        product_cat_json = config.connection.sudo(command, dryrun=False).stdout
-        product_cat  = json.loads(product_cat_json)
-        all_product_data = product_cat['data']
+        product_cat= ProductCatalog()
+        all_product_data= product_cat.products
         config.all_product_data = all_product_data
     else:
         all_product_data = config.all_product_data
+    
+    highest_product_version = []
+    completed_products = []
+    product_versions = {}
 
-    for item in all_product_data:
-        val = all_product_data[item]
-        try:
-            all_product_data[item] = yaml.safe_load(val)
-        except AttributeError:
-            all_product_data[item] = val
+    for product in all_product_data:
+        if not product.name in completed_products:
+           # Collect versions for the current product
+           matching_products = [prod for prod in all_product_data if prod.name == product.name]
+           versions = [prod.version for prod in matching_products]
+
+           # Store the list of versions for the product
+           product_versions[product.name] = versions
+
+           # Use highestVersion function to get the highest version
+           highest_version = highestVersion(versions)
+           
+           highest_product_version.append({
+                'name': product.name,
+                'version': highest_version
+            })
+        #    highest_product_version.append(product_cat.get_product(name=product.name))
+           completed_products.append(product.name)
 
     if all_products:
-        return all_product_data
+        return highest_product_version
+    
+# the below code does not work and will be commented
+    # for product in config.location_dict:
+    #     product_version = product.best_version
+    #     try:
+    #         working_type = product.product
+    #         product_data = yaml.safe_load(all_product_data[working_type])
+    #         matching_versions = []
+    #         if product_data:
+    #             # find all keys in the product catalog that match the supplied product
+    #             if product_version in product_data.keys():
+    #                 install_logger.debug('%s is an exact match', product_version)
+    #                 matching_versions.append(product_version)
+    #             else:
+    #                 install_logger.debug('looking for matching version')
+    #                 for item in product_data.keys():
+    #                     if str(product_version).startswith(str(item)):
+    #                         matching_versions.append(item)
+    #             # if there is only one match, we consider this the "real" version
+    #             if len(matching_versions) == 1:
+    #                 working_version = matching_versions[0]
+    #                 product.product_version = working_version
+    #                 install_logger.debug('found exact version %s for %s', working_version, product)
+    #                 product_catalog = product_data[working_version]
+    #                 try:
+    #                     product.clone_url = product_catalog['configuration']['clone_url']
+    #                     product.import_branch = product_catalog['configuration']['import_branch']
+    #                     if "recipes" in product_catalog:
+    #                         product.recipe = list(product_catalog['recipes'].keys())[0]
+    #                 except Exception:
+    #                     # even if we have an exact match in the product catalog, there may
+    #                     # not be git information associated with that product entry
+    #                     working_version = max(product_data.keys())
+    #                     install_logger.debug('no product catalog config data, trying %s for %s', working_version, product)
+    #                     product_catalog = product_data[working_version]
+    #                     product.clone_url = product_catalog['configuration']['clone_url']
+    #                     if "recipes" in product_catalog:
+    #                         product.recipe = list(product_catalog['recipes'].keys())[0]
+    #             else:
+    #                 # if there is no exact match, attempt to get the clone_url anyway since
+    #                 # that doesn't change between product versions
+    #                 working_version = max(product_data.keys())
+    #                 install_logger.debug('no exact version in %s, using %s for %s', matching_versions, working_version, product)
+    #                 product_catalog = product_data[working_version]
+    #                 product.clone_url = product_catalog['configuration']['clone_url']
+    #                 if "recipes" in product_catalog:
+    #                     product.recipe = list(product_catalog['recipes'].keys())[0]
 
-    for product in config.location_dict:
-        product_version = product.best_version
-        install_logger.debug('using product_version %s', product_version)
-        try:
-            working_type = product.product
-            product_data = yaml.safe_load(all_product_data[working_type])
-            matching_versions = []
-            # find all keys in the product catalog that match the supplied product
-            if product_version in product_data.keys():
-                install_logger.debug('%s is an exact match', product_version)
-                matching_versions.append(product_version)
-            else:
-                install_logger.debug('looking for matching version')
-                for item in product_data.keys():
-                    if str(product_version).startswith(str(item)):
-                        matching_versions.append(item)
-            # if there is only one match, we consider this the "real" version
-            if len(matching_versions) == 1:
-                working_version = matching_versions[0]
-                product.product_version = working_version
-                install_logger.debug('found exact version %s for %s', working_version, product)
-                product_catalog = product_data[working_version]
-                try:
-                    product.clone_url = product_catalog['configuration']['clone_url']
-                    product.import_branch = product_catalog['configuration']['import_branch']
-                    if "recipes" in product_catalog:
-                        product.recipe = list(product_catalog['recipes'].keys())[0]
-                except Exception:
-                    # even if we have an exact match in the product catalog, there may
-                    # not be git information associated with that product entry
-                    working_version = max(product_data.keys())
-                    install_logger.debug('no product catalog config data, trying %s for %s', working_version, product)
-                    product_catalog = product_data[working_version]
-                    product.clone_url = product_catalog['configuration']['clone_url']
-                    if "recipes" in product_catalog:
-                        product.recipe = list(product_catalog['recipes'].keys())[0]
-            else:
-                # if there is no exact match, attempt to get the clone_url anyway since
-                # that doesn't change between product versions
-                working_version = max(product_data.keys())
-                install_logger.debug('no exact version in %s, using %s for %s', matching_versions, working_version, product)
-                product_catalog = product_data[working_version]
-                product.clone_url = product_catalog['configuration']['clone_url']
-                if "recipes" in product_catalog:
-                    product.recipe = list(product_catalog['recipes'].keys())[0]
-
-        except Exception:
-            install_logger.debug('unable to get all config-management data for %s', product)
+    #     except Exception:
+            # install_logger.debug('unable to get all config-management data for %s', product)
 
 def elapsed_time(start_time, to_str=True):
     """
