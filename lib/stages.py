@@ -63,6 +63,7 @@ class StageHist:
                 "ran": False,
                 "succeeded": False,
                 "duration": None,
+                "is_partial":False,
             }
 
         self.dump_status()
@@ -255,8 +256,10 @@ class Stages():
         table.align = "l"
         return table.get_string()
 
-    def exec_stage(self, config, workflow, sessionid, stage):
+    def exec_stage(self, config, workflow, sessionid, stage, is_partial):
         """Run a stage."""
+        self.stage_hist._status[stage]["is_partial"] = is_partial
+        self.stage_hist.dump_status()
 
         prefix=format_column(f"STAGE: {stage}")
         config.logger.info(f"{prefix} BEG Argo workflow: {workflow}")
@@ -331,6 +334,9 @@ class Stages():
             print("")
             install_logger.critical("A '%s' error", err)
             install_logger.critical("occurred while executing %s", stage)
+        
+        # is_partial is a flag to indicate if the stage has partial workflows
+        is_partial = self.stage_hist._status[stage].get('is_partial', False)    
 
         if failed:
             session_json = config.activity.api.get_activity_session(config.activity.name, sessionid).json()
@@ -349,9 +355,14 @@ class Stages():
                 sys.exit(1)
             else:
                 install_logger.warn(f"The {stage} stage failed, but argo must run to the completion of the stage.")
+                # for a partial workflow argo will continue to run the next workflows, but we want to update the stage_hist for the failure
+                if is_partial:
+                    self.stage_hist.update(stage, ran=False, succeeded="Paused",duration=duration)
         else:
             config.activity.state({"timestamp":utime, "status":"Succeeded"})
-            self.stage_hist.update(stage, True, True, duration=duration)
+            # the is_partial flag will be "false" for the first workflow in a stage having partial workflows
+            if not is_partial:
+                self.stage_hist.update(stage, True, True, duration=duration)
 
     def set_skipped(self, skipped_stages=[]):
             for stage in skipped_stages:

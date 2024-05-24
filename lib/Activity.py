@@ -1084,6 +1084,8 @@ class Activity():
         return "\n".join(return_text)
 
     def watch_next_wf(self, sessionid):
+        prev_stage=""
+        is_partial= False
         while True:
             wfid,session_status = self.get_next_workflow(sessionid)
             if not wfid:
@@ -1096,6 +1098,10 @@ class Activity():
             if not wf:
                 break
             stage = wf['metadata']['labels']['stage']
+            #  updating the is_partial flag for partial workflows
+            if prev_stage == stage:
+                is_partial= True
+            prev_stage=stage
             self.site_conf.update_dict_stack(stage)
 
             # Dump the session/workflow information for debugging purposes.
@@ -1182,7 +1188,7 @@ class Activity():
                             to be re-ran?""")
                         self.config.logger.debug(new_tar_msg)
             # Run the stage.
-            self.config.stages.exec_stage(self.config, wfid, sessionid, stage)
+            self.config.stages.exec_stage(self.config, wfid, sessionid, stage, is_partial)
 
     def run_stage(self, payload):
         try:
