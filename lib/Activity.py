@@ -1,7 +1,7 @@
 #
 # MIT License
 #
-# (C) Copyright 2022-2023 Hewlett Packard Enterprise Development LP
+# (C) Copyright 2022-2024 Hewlett Packard Enterprise Development LP
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -278,10 +278,17 @@ class Activity():
                             self._media_dir = path
                             break
             elif self.states:
-                ordered_states = sorted(self.states.keys())
-                last_state = self.states[ordered_states[-1]]
-                if "args" in last_state and "media_dir" in last_state["args"]:
-                    self._media_dir = last_state["args"]["media_dir"]
+                # If self._media_dir still isn't set, check if any of previous state has media_dir
+                ordered_states = sorted(self.states.keys(), reverse=True)
+                i=0
+                while i < len(ordered_states) :
+                    last_state = self.states[ordered_states[i]]
+                    if "args" in last_state and "media_dir" in last_state["args"]:
+                        last_media_dir = last_state["args"]["media_dir"]
+                        if last_media_dir is not None:
+                            self._media_dir = last_media_dir
+                            break
+                    i+=1
 
             # If self._media_dir still isn't set, check if the activity name
             # exists under the media base directory.
