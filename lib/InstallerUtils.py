@@ -27,7 +27,6 @@ Common utility and helper functions used by the CI.
 
 import datetime
 import json
-import sys
 import textwrap
 import yaml
 import prettytable
