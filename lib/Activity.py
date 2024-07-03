@@ -691,7 +691,9 @@ class Activity():
                                         self.running_procs.append(proc)
                                 except:
                                     pass
-
+            
+            max_retries = 5  
+            retry_count = 0 
             npath = self.sort_phases(workflow, nodes) 
             for name in npath:
                 if name not in nodes:
@@ -723,10 +725,24 @@ class Activity():
                         pass
                     if podname not in followed_pods:
                         followed_pods.append(podname)
-                        for container in ["init", "wait", "main"]:
-                            proc = multiprocessing.Process(target=self.podlogs.follow_pod_log, args=(podname, container, log_prefix, self.st_event))
-                            proc.start()
-                            self.running_procs.append(proc)
+                        cont_list = ["init", "wait", "main"]
+                        launch_process = False
+                        while not launch_process and retry_count < max_retries:
+                            try:                            
+                                for container in cont_list:
+                                    proc = multiprocessing.Process(target=self.podlogs.follow_pod_log, args=(podname, container, log_prefix, self.st_event))
+                                    proc.start()
+                                    self.running_procs.append(proc)
+                            except Exception as e:
+                                self.config.logger.debug(f"Unable to create process. {type(e).__name__} occured.")
+                                idx = cont_list.index(container)
+                                cont_list = cont_list[idx:]
+                                retry_count += 1
+                                continue
+                            launch_process = True
+                        if retry_count >= max_retries:
+                            self.config.logger.debug(f"Failed to create process for containers: {cont_list}")
+                            break
 
                 if "displayName" in node:
                     if name not in phases:
