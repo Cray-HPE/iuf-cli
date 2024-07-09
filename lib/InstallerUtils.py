@@ -30,6 +30,7 @@ import json
 import textwrap
 import yaml
 import prettytable
+from semver import Version
 
 from lib.InstallLogger import get_install_logger
 from cray_product_catalog.query import ProductCatalog
