@@ -89,7 +89,6 @@ def get_product_catalog(config, all_products=False):
     install_logger.debug('determining config-management url for products')
     if not config.all_product_data:
         product_cat= ProductCatalog()
-        install_logger.info("Back to iuf-cli")
         all_product_data= product_cat.products
         config.all_product_data = all_product_data
     else:
@@ -105,17 +104,14 @@ def get_product_catalog(config, all_products=False):
            versions = [prod.version for prod in matching_products]
 
            # Use highestVersion function to get the highest version
-           install_logger.info(f"Version for {product.name}: {versions}")
            highest_version = highestVersion(versions)
-           install_logger.info(f"highest version for { product.name}: {highest_version}")
            highest_product_version.append({
                 'name': product.name,
                 'version': highest_version
             })
-           install_logger.info(f"List highest_product_version:{highest_product_version}")
+           
         #    highest_product_version.append(product_cat.get_product(name=product.name))
            completed_products.append(product.name)
-           install_logger.info(f"Completed:{completed_products}")
 
     if all_products:
         return highest_product_version

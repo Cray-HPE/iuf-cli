@@ -114,7 +114,8 @@ class SiteConfig():
         # Get the product catalog as the base layer.
         full_product_catalog = get_product_catalog(config, all_products=True)
         for prod in full_product_catalog:
-            self.product_catalog[prod.name] = {"version": prod.version}
+            # self.product_catalog[prod.name] = {"version": prod.version}
+            self.product_catalog[prod['name']] = {"version": prod['version']}
 
         recipe_vars_file = config.args.get("recipe_vars", None)
 
