@@ -107,7 +107,7 @@ def get_product_catalog(config, all_products=False):
            # Use highestVersion function to get the highest version
            install_logger.info(f"Version for {product.name}: {versions}")
            highest_version = highestVersion(versions)
-           install_logger(f"highest version for { product.name}: {highest_version}")
+           install_logger.info(f"highest version for { product.name}: {highest_version}")
            highest_product_version.append({
                 'name': product.name,
                 'version': highest_version
