@@ -89,6 +89,7 @@ def get_product_catalog(config, all_products=False):
     install_logger.debug('determining config-management url for products')
     if not config.all_product_data:
         product_cat= ProductCatalog()
+        install_logger.info("Back to iuf-cli")
         all_product_data= product_cat.products
         config.all_product_data = all_product_data
     else:
