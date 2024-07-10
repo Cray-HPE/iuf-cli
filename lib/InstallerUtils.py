@@ -97,28 +97,25 @@ def get_product_catalog(config, all_products=False):
     
     highest_product_version = []
     completed_products = []
-    product_versions = {}
-    install_logger.info(f"all_product_data:{all_product_data}")
+    
     for product in all_product_data:
-        install_logger.info(f"prod {product.name}, {product.version}")
-        if not product.name in completed_products:
+        if product.name not in completed_products:
            # Collect versions for the current product
            matching_products = [prod for prod in all_product_data if prod.name == product.name]
            versions = [prod.version for prod in matching_products]
 
-           # Store the list of versions for the product
-           product_versions[product.name] = versions
-           install_logger.info(f"versions:{product_versions}")
-
            # Use highestVersion function to get the highest version
+           install_logger.info(f"Version for {product.name}: {versions}")
            highest_version = highestVersion(versions)
-           
+           install_logger(f"highest version for { product.name}: {highest_version}")
            highest_product_version.append({
                 'name': product.name,
                 'version': highest_version
             })
+           install_logger.info(f"List highest_product_version:{highest_product_version}")
         #    highest_product_version.append(product_cat.get_product(name=product.name))
            completed_products.append(product.name)
+           install_logger.info(f"Completed:{completed_products}")
 
     if all_products:
         return highest_product_version
