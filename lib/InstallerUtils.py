@@ -38,7 +38,7 @@ from cray_product_catalog.query import ProductCatalog
 install_logger = get_install_logger(__name__)
 # pylint: disable=consider-using-f-string
 
-# temporarily defining this function again here
+# temporarily defining this function again
 def highestVersion(versions_list):
     parsed_versions = []
     for version in versions_list:
