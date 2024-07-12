@@ -32,9 +32,22 @@ import yaml
 import prettytable
 
 from lib.InstallLogger import get_install_logger
+from cray_product_catalog.query import ProductCatalog
 
 install_logger = get_install_logger(__name__)
 # pylint: disable=consider-using-f-string
+
+def highestVersion(versions_list):
+    parsed_versions = []
+    for version in versions_list:
+        try:
+            parsed_versions.append(Version.parse(version))
+        except ValueError:
+            install_logger.debug("Found invalid version: %s", version)
+    sorted_vs = sorted(parsed_versions)
+    if not sorted_vs:
+        return ''
+    return str(sorted_vs[-1])
 
 def print_table(rows, header=None, sort=None, alignments=None):
     table = prettytable.PrettyTable()
@@ -72,25 +85,36 @@ def get_product_catalog(config, all_products=False):
     update product dictionary with gitea urls
     """
     install_logger.debug('determining config-management url for products')
+    # kubectl command won't give the full catalog data because of the split of cray-product-catalog. 
+    # cray-product-catalog has ProductCatalog class which combines all the product configmaps .
     if not config.all_product_data:
-        # get full data for initial image_id
-        command = 'kubectl --kubeconfig=/etc/kubernetes/admin.conf get cm -n services cray-product-catalog -o json'
-        product_cat_json = config.connection.sudo(command, dryrun=False).stdout
-        product_cat  = json.loads(product_cat_json)
-        all_product_data = product_cat['data']
+        product_cat= ProductCatalog()
+        all_product_data= product_cat.products
         config.all_product_data = all_product_data
     else:
         all_product_data = config.all_product_data
 
-    for item in all_product_data:
-        val = all_product_data[item]
-        try:
-            all_product_data[item] = yaml.safe_load(val)
-        except AttributeError:
-            all_product_data[item] = val
+    # we want to return the highest version of all the products instead of all_product_data.
+    highest_product_version = []
+    completed_products = []
+
+    for product in all_product_data:
+        if product.name not in completed_products:
+           # Collect versions for the current product
+           matching_products = [prod for prod in all_product_data if prod.name == product.name]
+           versions = [prod.version for prod in matching_products]
+
+           # Use highestVersion function to get the highest version
+           highest_version = highestVersion(versions)
+           highest_product_version.append({
+                'name': product.name,
+                'version': highest_version
+            })
+
+           completed_products.append(product.name)
 
     if all_products:
-        return all_product_data
+        return highest_product_version
 
     for product in config.location_dict:
         product_version = product.best_version

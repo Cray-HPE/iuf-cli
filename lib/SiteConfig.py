@@ -36,7 +36,7 @@ import textwrap
 
 from lib.vars import RECIPE_VARS, BP_CONFIG_MANAGED, BP_CONFIG_MANAGEMENT, SESSION_VARS, MEDIA_VERSIONS, UnexpectedState
 
-from lib.InstallerUtils import get_product_catalog, formatted
+from lib.InstallerUtils import get_product_catalog, formatted, highestVersion
 
 from lib.InstallLogger import get_install_logger
 
@@ -61,18 +61,6 @@ def read_yaml(file_loc):
         sys.exit(1)
 
     return return_dict
-
-def highestVersion(versions_list):
-    parsed_versions = []
-    for version in versions_list:
-        try:
-            parsed_versions.append(Version.parse(version))
-        except ValueError:
-            install_logger.debug("Found invalid version: %s", version)
-    sorted_vs = sorted(parsed_versions)
-    if not sorted_vs:
-        return ''
-    return str(sorted_vs[-1])
 
 class SiteConfig():
     def __init__(self, config):
@@ -112,9 +100,7 @@ class SiteConfig():
         # Get the product catalog as the base layer.
         full_product_catalog = get_product_catalog(config, all_products=True)
         for prod in full_product_catalog:
-            versions = [elt for elt in list(full_product_catalog[prod].keys()) if elt]
-
-            self.product_catalog[prod] = {"version": highestVersion(versions)}
+            self.product_catalog[prod['name']] = {"version": prod['version']}
 
         recipe_vars_file = config.args.get("recipe_vars", None)
 

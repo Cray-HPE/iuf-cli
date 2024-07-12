@@ -5,3 +5,6 @@ PyYAML==6.0.1
 python-keycloak==2.15.3
 requests >= 2.31.0, < 3.0
 semver >= 3.0.1, < 4.0
+cray_product_catalog == 2.3.0
+jsonschema
+urllib3
