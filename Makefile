@@ -39,6 +39,7 @@ export PYTHON_VERSION := 3.10
 endif
 
 export PYTHON_BIN := python$(PYTHON_VERSION)
+export PIP_EXTRA_INDEX_URL=https://arti.hpc.amslabs.hpecorp.net:443/artifactory/csm-python-modules-remote/simple/
 
 ifeq ($(VERSION),)
 export VERSION := $(shell python3 -m setuptools_scm 2>/dev/null | tr -s '-' '~' | sed 's/^v//')

@@ -74,6 +74,7 @@ pipeline {
                 environment {
                     DOCKER_ARCH = sh(returnStdout: true, script: "[ ${ARCH} == 'x86_64' ] && echo -n 'amd64' || echo -n 'arm64'")
                     BUILD_DIR = "${env.WORKSPACE}/dist/rpmbuild/${ARCH}/"
+                    PIP_EXTRA_INDEX_URL="https://arti.hpc.amslabs.hpecorp.net:443/artifactory/csm-python-modules-remote/simple/"
                 }
 
                 stages {

@@ -52,7 +52,7 @@ Framework API.
 %install
 %python_exec -m pip install -U -r requirements.txt
 
-pyinstaller --onefile iuf.py -p iuf
+pyinstaller --onefile --collect-data cray_product_catalog iuf.py -p iuf
 
 install -m 755 -D dist/iuf %{buildroot}%{_bindir}/iuf
 
