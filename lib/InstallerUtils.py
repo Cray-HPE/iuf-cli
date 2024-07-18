@@ -30,6 +30,7 @@ import json
 import textwrap
 import yaml
 import prettytable
+from semver import Version
 
 from lib.InstallLogger import get_install_logger
 from cray_product_catalog.query import ProductCatalog
@@ -43,7 +44,7 @@ def highestVersion(versions_list):
         try:
             parsed_versions.append(Version.parse(version))
         except ValueError:
-            install_logger.debug("Found invalid version: %s", version)
+            install_logger.debug("Ignoring invalid version: %s", version)
     sorted_vs = sorted(parsed_versions)
     if not sorted_vs:
         return ''
@@ -88,8 +89,8 @@ def get_product_catalog(config, all_products=False):
     # kubectl command won't give the full catalog data because of the split of cray-product-catalog. 
     # cray-product-catalog has ProductCatalog class which combines all the product configmaps .
     if not config.all_product_data:
-        product_cat= ProductCatalog()
-        all_product_data= product_cat.products
+        product_cat = ProductCatalog()
+        all_product_data = product_cat.products
         config.all_product_data = all_product_data
     else:
         all_product_data = config.all_product_data
