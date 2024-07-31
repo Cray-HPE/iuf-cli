@@ -802,7 +802,7 @@ def main():
         parser.print_help(sys.stderr)
         sys.exit(1)
 
-    if not args.activity and hasattr(args, "func") and args.func in [process_install, process_workflow]:
+    if not args.activity and hasattr(args, "func") and args.func in [process_install, process_workflow, process_abort]:
         print("ERROR: --activity is required.")
         parser.print_help(sys.stderr)
         sys.exit(1)
