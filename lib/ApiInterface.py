@@ -156,3 +156,10 @@ class ApiInterface(object):
         except:
             raise
 
+    def get_workflow(self,workflow):
+        api_path = f"/workflows/{workflow}"
+        try:
+            api_response = self.request("GET", api_path)
+            return api_response
+        except:
+            raise
