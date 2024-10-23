@@ -148,6 +148,7 @@ class Activity():
         self.podlogs = PodLogs(config, self.name)
 
         self.api = lib.ApiInterface.ApiInterface()
+        self.nlsapi = lib.ApiInterface.ApiInterface(resource="/nls/v1")
         self.workflows = []
 
     def __repr__(self):
@@ -810,12 +811,13 @@ class Activity():
 
     def get_workflow(self, workflow):
         try:
-            wf = self.config.connection.run(f"kubectl -n argo get Workflow/{workflow} -o yaml")
+            ret_code = self.nlsapi.get_workflow(workflow)
+            wf = ret_code.json()
         except Exception as e:
             self.config.logger.debug(f"Unable to get workflow {workflow}: {e}")
             return None
 
-        return yaml.safe_load(wf.stdout)
+        return wf
 
     def abort_activity(self, background_only=False):
         """Abort an activity."""
