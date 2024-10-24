@@ -819,7 +819,8 @@ class Activity():
             self.config.logger.debug(f"Unable to get workflow {workflow}: {e}")
             return None
 
-        return yaml.safe_load(wf)
+        # return yaml.safe_load(wf)
+        return wf
 
     def abort_activity(self, background_only=False):
         """Abort an activity."""
