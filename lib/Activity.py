@@ -814,7 +814,6 @@ class Activity():
             # wf = self.config.connection.run(f"kubectl -n argo get Workflow/{workflow} -o yaml")
             ret_code = self.nlsapi.get_workflow(workflow)
             wf = ret_code.json()
-            self.config.logger.info(wf)
         except Exception as e:
             self.config.logger.debug(f"Unable to get workflow {workflow}: {e}")
             return None
