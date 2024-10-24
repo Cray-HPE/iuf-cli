@@ -407,6 +407,9 @@ class SiteConfig():
                 version_x_y = "{}.{}".format(x, y)
                 version_x_y_z = "{}.{}.{}".format(x, y, z)
                 version = data['version']
+                install_logger.warning(f"name:{name}")
+                install_logger.warning(f"data: {data}")
+                install_logger.warning(f"version:{version}")
                 version_list = version.split(".")
                 try:
                     x = version_list[0].split("-")[0]
