@@ -323,10 +323,10 @@ def process_activity(config):
     if "activity" in config.args and config.args["activity"]:
         activity_data = {
             "activity_name": config.args["activity"],
-            "details": str(config.activity),  # Replace with actual details if structured
+            "details": str(config.activity),
         }
         if config.args["output"] == "json":
-            print(json.dumps(activity_data, indent=4))
+            print(json.dumps(config.activity, indent=4))
         else:
             print(config.activity)
         # print(config.activity)
