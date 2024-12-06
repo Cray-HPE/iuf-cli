@@ -325,14 +325,15 @@ def process_activity(config):
             "activity_name": config.args["activity"],
             "details": str(config.activity),
         }
+        install_logger.info(config.activity)
         if config.args["output"] == "json":
-            print(json.dumps(config.activity, indent=4))
+            print(json.dumps(activity_data, indent=4))
+        elif config.args["output"] == "yaml":
+            print(yaml.dump(activity_data, default_flow_style=False, sort_keys=False))
         else:
             print(config.activity)
-        # print(config.activity)
     else:
         process_list_activity(config)
-
 
 def process_install(config):
     """Run the install"""
@@ -769,8 +770,8 @@ def main():
     activity_sp.add_argument("state", nargs="?", help="activity state value", action="store", default=None, choices=lib.Activity.ACTIVITY_VALID_STATES)
 
     activity_sp.add_argument(
-    "-o", "--output", choices=["json", "text"], default="text",
-    help="Specify the output format. Options are 'json' or 'text'. Default is 'text'."
+    "-o", "--output", choices=["json","yaml", "text"], default="text",
+    help="Specify the output format. Options are 'json','yaml or 'text'. Default is 'text'."
     )
 
     activity_sp.set_defaults(func=process_activity)
