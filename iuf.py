@@ -28,6 +28,7 @@
 
 import argparse
 import atexit
+import json
 import logging
 import os
 import re
@@ -320,7 +321,15 @@ def process_activity(config):
         sys.exit(1)
 
     if "activity" in config.args and config.args["activity"]:
-        print(config.activity)
+        activity_data = {
+            "activity_name": config.args["activity"],
+            "details": str(config.activity),  # Replace with actual details if structured
+        }
+        if config.args["output"] == "json":
+            print(json.dumps(activity_data, indent=4))
+        else:
+            print(config.activity)
+        # print(config.activity)
     else:
         process_list_activity(config)
 
@@ -758,6 +767,11 @@ def main():
     activity_sp.add_argument("--status", help="A status value to be associated with an activity entry.", action="store", default="n/a", choices=lib.Activity.ACTIVITY_VALID_STATUS)
     activity_sp.add_argument("--argo-workflow-id", help="An Argo workflow identifier to be associated with an activity entry.", default=None)
     activity_sp.add_argument("state", nargs="?", help="activity state value", action="store", default=None, choices=lib.Activity.ACTIVITY_VALID_STATES)
+
+    activity_sp.add_argument(
+    "-o", "--output", choices=["json", "text"], default="text",
+    help="Specify the output format. Options are 'json' or 'text'. Default is 'text'."
+    )
 
     activity_sp.set_defaults(func=process_activity)
 
