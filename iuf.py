@@ -58,61 +58,6 @@ import yaml
 
 install_logger = get_install_logger()
 
-def parse_activity_output(text_output):
-    """
-    Parse the text output from the activity command into a structured JSON format.
-    """
-    # Example of structured parsing
-    activity_data = {
-        "activity_name": None,
-        "sessions": [],
-        "summary": {}
-    }
-    
-    lines = text_output.splitlines()
-    current_session = None
-
-    for line in lines:
-        # Parse the activity name
-        if line.startswith("Activity:"):
-            activity_data["activity_name"] = line.split(":", 1)[1].strip()
-        
-        # Parse session information
-        if line.startswith("session:"):
-            if current_session:
-                activity_data["sessions"].append(current_session)
-            session_id = line.split()[1]
-            current_session = {"session_id": session_id, "command": "", "start_time": None, "status": None, "duration": None, "comment": None}
-        
-        # Parse command lines
-        if current_session and line.strip().startswith("command:"):
-            current_session["command"] += line.strip().split("command:", 1)[1].strip() + " "
-        
-        # Parse start time, status, duration, comment
-        if current_session and line.strip() and not line.startswith("|") and len(line.split()) > 1:
-            parts = line.split("|")
-            current_session.update({
-                "start_time": parts[0].strip(),
-                "status": parts[1].strip() if len(parts) > 1 else None,
-                "duration": parts[3].strip() if len(parts) > 3 else None,
-                "comment": parts[4].strip() if len(parts) > 4 else None
-            })
-        
-        # Handle end of session block
-        if line.startswith("+--") and current_session:
-            activity_data["sessions"].append(current_session)
-            current_session = None
-
-    # Parse summary section
-    if "Summary:" in text_output:
-        summary_lines = text_output.split("Summary:")[1].strip().splitlines()
-        for line in summary_lines:
-            if ":" in line:
-                key, value = line.split(":", 1)
-                activity_data["summary"][key.strip()] = value.strip()
-
-    return activity_data
-
 def validate_stages(config):
     """Validate that all of the various stage related args passed in are valid"""
 
@@ -376,12 +321,16 @@ def process_activity(config):
         sys.exit(1)
 
     if "activity" in config.args and config.args["activity"]:
-        activity_data = str(config.activity)
-        parsed_data = parse_activity_output(activity_data)
+        activity_data = {
+        "activity_name": config.args["activity"],
+        "details": str(config.activity),
+        }
+        install_logger.info(config.activity.summary)
+        
         if config.args["output"] == "json":
-            print(json.dumps(parsed_data, indent=4))
+            print(json.dumps(activity_data, indent=4))
         elif config.args["output"] == "yaml":
-            print(yaml.dump(parsed_data, default_flow_style=False, sort_keys=False))
+            print(yaml.dump(activity_data, default_flow_style=False, sort_keys=False))
         else:
             print(config.activity)
     else:
