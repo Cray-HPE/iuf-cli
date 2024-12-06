@@ -28,6 +28,7 @@
 
 import argparse
 import atexit
+import json
 import logging
 import os
 import re
@@ -320,10 +321,21 @@ def process_activity(config):
         sys.exit(1)
 
     if "activity" in config.args and config.args["activity"]:
-        print(config.activity)
+        activity_data = {
+        "activity_name": config.args["activity"],
+        "details": str(config.activity),
+        }
+        
+        if config.args["output"] == "json":
+            print(json.dumps(activity_data, indent=4))
+        elif config.args["output"] == "yaml":
+            print(yaml.dump(activity_data, default_flow_style=False, sort_keys=False))
+        else:
+            activity_data = config.activity.__dict__
+            print(activity_data)
+            # print(config.activity)
     else:
         process_list_activity(config)
-
 
 def process_install(config):
     """Run the install"""
@@ -758,6 +770,11 @@ def main():
     activity_sp.add_argument("--status", help="A status value to be associated with an activity entry.", action="store", default="n/a", choices=lib.Activity.ACTIVITY_VALID_STATUS)
     activity_sp.add_argument("--argo-workflow-id", help="An Argo workflow identifier to be associated with an activity entry.", default=None)
     activity_sp.add_argument("state", nargs="?", help="activity state value", action="store", default=None, choices=lib.Activity.ACTIVITY_VALID_STATES)
+
+    activity_sp.add_argument(
+    "-o", "--output", choices=["json","yaml", "text"], default="text",
+    help="Specify the output format. Options are 'json','yaml or 'text'. Default is 'text'."
+    )
 
     activity_sp.set_defaults(func=process_activity)
 
