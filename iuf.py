@@ -321,19 +321,13 @@ def process_activity(config):
         sys.exit(1)
 
     if "activity" in config.args and config.args["activity"]:
-        activity_data = {
-        "activity_name": config.args["activity"],
-        "details": str(config.activity),
-        }
-        
+        activity_data = config.activity.__dict__
         if config.args["output"] == "json":
             print(json.dumps(activity_data, indent=4))
         elif config.args["output"] == "yaml":
             print(yaml.dump(activity_data, default_flow_style=False, sort_keys=False))
         else:
-            activity_data = config.activity.__dict__
-            print(activity_data)
-            # print(config.activity)
+            print(config.activity)
     else:
         process_list_activity(config)
 
