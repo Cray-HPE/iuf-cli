@@ -966,7 +966,6 @@ class Activity():
 
         ret_code = self.api.get_activity(self.name)
         result = ret_code.json()
-        self.config.logger.info(f"printing api get activity res in json: {result}")
         products = result.get('products', {})
         session_vars = {}
 

@@ -332,6 +332,8 @@ def process_activity(config):
         elif config.args["output"] == "yaml":
             print(yaml.dump(activity_data, default_flow_style=False, sort_keys=False))
         else:
+            activity_data = config.activity.__dict__
+            print(activity_data)
             print(config.activity)
     else:
         process_list_activity(config)
