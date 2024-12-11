@@ -39,6 +39,7 @@ import tarfile
 import textwrap
 import time
 import yaml
+from datetime import timedelta
 
 import lib.ApiInterface
 from lib.PodLogs import PodLogs
@@ -254,7 +255,7 @@ class Activity():
                 active_time = total_time - summary['paused']
                 retstring.append(f"  Unpaused time: {active_time}")
         return "\n".join(retstring)
-        
+
     def to_dict(self):
         """
         Generate a full dictionary representation of the activity,
@@ -329,12 +330,21 @@ class Activity():
         """
         Generate the full activity details in YAML format.
         """
+        def timedelta_representer(dumper, data):
+            return dumper.represent_str(str(data))  # Convert timedelta to string (HH:MM:SS)
+
+        yaml.add_representer(timedelta, timedelta_representer)
         return yaml.dump(self.to_dict(), sort_keys=False)
 
     def to_json(self, indent=4):
         """
         Generate the full activity details in JSON format.
         """
+        def default_serializer(obj):
+            if isinstance(obj, timedelta):
+                # Convert timedelta to string or total seconds
+                return str(obj)  # Alternatively, use obj.total_seconds()
+            raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
         return json.dumps(self.to_dict(), indent=indent)
 
     def yaml(self):
