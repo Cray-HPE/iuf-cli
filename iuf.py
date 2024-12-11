@@ -327,10 +327,10 @@ def process_activity(config):
         }
         if config.args["output"] == "json":
             # print(json.dumps(activity_data, indent=4))
-            print(config.activity.to_json)
+            print(config.activity.to_json())
         elif config.args["output"] == "yaml":
             # print(yaml.dump(activity_data, default_flow_style=False, sort_keys=False))
-            print(config.activity.to_yaml)
+            print(config.activity.to_yaml())
         else:
             print(config.activity)
     else:
