@@ -345,7 +345,7 @@ class Activity():
                 # Convert timedelta to string or total seconds
                 return str(obj)  # Alternatively, use obj.total_seconds()
             raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
-        return json.dumps(self.to_dict(), indent=indent)
+        return json.dumps(self.to_dict(), indent=indent, default=default_serializer)
 
     def yaml(self):
         return yaml.dump(self.get_dict())
