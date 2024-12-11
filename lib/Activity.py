@@ -254,6 +254,88 @@ class Activity():
                 active_time = total_time - summary['paused']
                 retstring.append(f"  Unpaused time: {active_time}")
         return "\n".join(retstring)
+        
+    def to_dict(self):
+        """
+        Generate a full dictionary representation of the activity,
+        including table details and summary.
+        """
+        table_data = []
+        summary = {}
+        session = None
+        session_times = {}
+        ordered_states = sorted(self.states.keys())
+        length = range(len(ordered_states))
+
+        for x in length:
+            start = ordered_states[x]
+            state = self.states[start]
+            if x + 1 in length:
+                end = ordered_states[x + 1]
+            else:
+                end = start
+            duration = self.get_duration(start, end)
+
+            for key in ACTIVITY_NEW_STATE:
+                if key not in state:
+                    state[key] = ACTIVITY_NEW_STATE[key]
+
+            if session != state['session'] and state['session'] is not None:
+                session = state['session']
+                session_times[session] = {"timestamp": start, "duration": duration}
+            elif session:
+                session_times[session]["duration"] = self.get_duration(session_times[session]["timestamp"], start)
+
+            table_data.append({
+                "start": start,
+                "category": state['state'],
+                "workflow_id": state['workflow_id'],
+                "status": state['status'],
+                "duration": duration,
+                "comment": state['comment'],
+                "session": session,
+            })
+
+            if state['state'] not in summary:
+                summary[state['state']] = duration
+            else:
+                summary[state['state']] += duration
+
+        # Collect session details
+        session_details = [
+            {"session": sess, "start_time": details["timestamp"], "duration": details["duration"]}
+            for sess, details in session_times.items()
+        ]
+
+        # Collect stage durations
+        stage_durations = {}
+        for stage in self.config.stages.get_stage_status(self.name):
+            if stage["duration"]:
+                stage_durations[stage["stage"]] = stage["duration"]
+
+        # Assemble the final dictionary
+        return {
+            "activity_name": self.name,
+            "start_time": self.start,
+            "end_time": ordered_states[-1],
+            "table_data": table_data,
+            "session_details": session_details,
+            "summary": summary,
+            "stage_durations": stage_durations,
+            "total_time": self.get_duration(self.start, ordered_states[-1]),
+        }
+
+    def to_yaml(self):
+        """
+        Generate the full activity details in YAML format.
+        """
+        return yaml.dump(self.to_dict(), sort_keys=False)
+
+    def to_json(self, indent=4):
+        """
+        Generate the full activity details in JSON format.
+        """
+        return json.dumps(self.to_dict(), indent=indent)
 
     def yaml(self):
         return yaml.dump(self.get_dict())

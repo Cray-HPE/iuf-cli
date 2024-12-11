@@ -48,6 +48,7 @@ from lib.ConfigFile import ConfigFile
 from lib.ConfigFile import InvertableArgument
 import lib.Config
 import lib.Activity
+import lib.Activity import Activity
 from lib.Activity import ACTIVITY_VALID_STATES
 # Import lib.stages without the 'as stages' to prevent namespace collisions.
 import lib.stages
@@ -326,9 +327,11 @@ def process_activity(config):
             "details": config.activity.get_dict(),  # Get the actual dictionary data of the activity
         }
         if config.args["output"] == "json":
-            print(json.dumps(activity_data, indent=4))
+            # print(json.dumps(activity_data, indent=4))
+            print(config.activity.to_json)
         elif config.args["output"] == "yaml":
-            print(yaml.dump(activity_data, default_flow_style=False, sort_keys=False))
+            # print(yaml.dump(activity_data, default_flow_style=False, sort_keys=False))
+            print(config.activity.to_yaml)
         else:
             print(config.activity)
     else:
