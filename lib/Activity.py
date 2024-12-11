@@ -39,6 +39,7 @@ import tarfile
 import textwrap
 import time
 import yaml
+from datetime import timedelta
 
 import lib.ApiInterface
 from lib.PodLogs import PodLogs
@@ -254,6 +255,120 @@ class Activity():
                 active_time = total_time - summary['paused']
                 retstring.append(f"  Unpaused time: {active_time}")
         return "\n".join(retstring)
+
+    def to_dict(self):
+        """
+        Generate a full dictionary representation of the activity,
+        including session details and summary.
+        """
+        sessions = {}
+        summary = {
+            "states": {},
+            "stage_durations": {},
+            "session_times": {},
+        }
+        session = None # Tracks the current session
+        session_times = {} 
+        ordered_states = sorted(self.states.keys()) # Order states by their start times
+        total_states = len(ordered_states)
+        state_index = 0 # Initialize index for the state list
+        
+        # Process each state using a while loop
+        while state_index < total_states:
+            # Determine the current state start time
+            start = ordered_states[state_index] 
+            state = self.states[start]
+
+            # Determine the end time for the current state
+            # If this is the last state, 'end' equals 'start'
+            end = ordered_states[state_index + 1] if state_index + 1 < total_states else start
+            duration = self.get_duration(start, end)
+
+            for key in ACTIVITY_NEW_STATE:
+                if key not in state:
+                    state[key] = ACTIVITY_NEW_STATE[key]
+
+            # Handle new session logic
+            if session != state['session'] and state['session'] is not None:
+                session = state['session']
+                session_times[session] = {"timestamp": start, "duration": duration}
+                if session not in sessions:
+                    sessions[session] = {
+                        "details": {
+                            "start_time": start,
+                            "duration": None  # Duration will be finalized later
+                        },
+                        "states": []  # List of states for this session
+                    }
+            elif session:
+                # Update the duration of the current session
+                session_times[session]["duration"] = self.get_duration(session_times[session]["timestamp"], start)
+
+            # Add state details to the current session
+            if session:
+                sessions[session]["states"].append({
+                    "start": start,
+                    "category": state['state'],
+                    "workflow_id": state['workflow_id'],
+                    "status": state['status'],
+                    "duration": duration,
+                    "comment": state['comment'],
+                    "command": state.get("command", ""),
+                })
+
+            if state['state'] not in summary["states"]:
+                summary["states"][state['state']] = duration
+            else:
+                summary["states"][state['state']] += duration
+
+            state_index += 1  # Move to the next state
+
+
+        # Update session durations
+        for session, details in session_times.items():
+            sessions[session]["details"]["duration"] = details["duration"]
+            summary["session_times"][session] = details
+
+        # Collect stage durations
+        for stage in self.config.stages.get_stage_status(self.name):
+            if stage["duration"]:
+                summary["stage_durations"][stage["stage"]] = stage["duration"]
+
+        # Add overall activity details to the summary
+        summary["start_time"] = self.start
+        summary["end_time"] = ordered_states[-1]
+        summary["total_time"] = self.get_duration(self.start, ordered_states[-1])
+
+        # Assemble the final dictionary
+        return {
+            "activity_name": self.name,
+            "sessions": sessions,
+            "summary": summary,
+        }
+
+    def to_yaml(self):
+        """
+        Generate the full activity details in YAML format.
+        """
+        def timedelta_representer(dumper, data):
+            return dumper.represent_str(str(data))
+
+        yaml.add_representer(timedelta, timedelta_representer)
+
+        class NoAliasDumper(yaml.Dumper):
+            def ignore_aliases(self, data):
+                return True
+        return yaml.dump(self.to_dict(), sort_keys=False, Dumper=NoAliasDumper)
+
+    def to_json(self, indent=4):
+        """
+        Generate the full activity details in JSON format.
+        """
+        def default_serializer(obj):
+            if isinstance(obj, timedelta):
+                return str(obj)
+            raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
+        return json.dumps(self.to_dict(), indent=indent, default=default_serializer)
 
     def yaml(self):
         return yaml.dump(self.get_dict())
