@@ -48,7 +48,6 @@ from lib.ConfigFile import ConfigFile
 from lib.ConfigFile import InvertableArgument
 import lib.Config
 import lib.Activity
-import lib.Activity import Activity
 from lib.Activity import ACTIVITY_VALID_STATES
 # Import lib.stages without the 'as stages' to prevent namespace collisions.
 import lib.stages
