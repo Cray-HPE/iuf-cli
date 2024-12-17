@@ -320,7 +320,14 @@ def process_activity(config):
         sys.exit(1)
 
     if "activity" in config.args and config.args["activity"]:
-        print(config.activity)
+        # If json is present in the args call to_json method of Activity class
+        if config.args["output"] == "json":
+            print(config.activity.to_json())
+        elif config.args["output"] == "yaml":
+            # If yaml is present in the args call to_yaml method of Activity class
+            print(config.activity.to_yaml())
+        else:
+            print(config.activity)
     else:
         process_list_activity(config)
 
@@ -758,7 +765,7 @@ def main():
     activity_sp.add_argument("--status", help="A status value to be associated with an activity entry.", action="store", default="n/a", choices=lib.Activity.ACTIVITY_VALID_STATUS)
     activity_sp.add_argument("--argo-workflow-id", help="An Argo workflow identifier to be associated with an activity entry.", default=None)
     activity_sp.add_argument("state", nargs="?", help="activity state value", action="store", default=None, choices=lib.Activity.ACTIVITY_VALID_STATES)
-
+    activity_sp.add_argument("--output", "-o", choices=["json","yaml", "text"], default="text",help="Specify the output format. Options are 'json','yaml or 'text'. Default is 'text'.")
     activity_sp.set_defaults(func=process_activity)
 
     list_activity_sp = subparsers.add_parser("list-activities",
