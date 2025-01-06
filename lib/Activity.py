@@ -1071,9 +1071,27 @@ class Activity():
 
         sessions = []
 
+        # extract_done_file path
+        extract_done_file = os.path.join(self.media_dir, ".extract-done")
+
+        # Check if process-media stage should be skipped
+        if stages and stages[0] == "process-media":
+            if os.path.exists(extract_done_file):    
+                self.config.logger.debug(f"Found extract file {extract_done_file} for process-media stage, comparing the products list")
+                with open(extract_done_file, "r") as f:
+                    extracted_files = f.read().splitlines()
+                tar_files = [f for f in os.listdir(self.media_dir) if f.endswith('.tar.gz')]
+                if all(tar_file in extracted_files for tar_file in tar_files) and not force:
+                    self.config.logger.info("All tar files have already been extracted previously. Skipping process-media stage.")
+                    stages.pop(0)
+
         # Run process-media on its own first if we're doing it.
         session_vars = {}
-        if stages[0] == "process-media":
+        if stages and stages[0] == "process-media":
+            # Remove the .extract-done file if it exists
+            if os.path.exists(extract_done_file):
+                os.remove(extract_done_file)
+                self.config.logger.debug(f"Removed existing extract file {extract_done_file} before running process-media stage.")    
             stages.pop(0)
             payload["input_parameters"]["stages"] = ["process-media"]
             sid = self.run_stage(payload)
