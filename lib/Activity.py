@@ -110,6 +110,7 @@ class Activity():
     filename = None
     auth = None
     api = None
+    nlsapi = None
     workflows = None
     api_initialized = False
     st_event = None
@@ -117,7 +118,8 @@ class Activity():
 
     def __init__(self, filename=None, name=None, dryrun=False, config=None):
         self.states = dict()
-
+        
+        self.nlsapi = lib.ApiInterface.ApiInterface(resource="/nls/v1")
         self.dryrun = dryrun
         self.filename = filename
         self.site_conf = None
@@ -147,9 +149,7 @@ class Activity():
             self.write_activity_dict()
 
         self.podlogs = PodLogs(config, self.name)
-
         self.api = lib.ApiInterface.ApiInterface()
-        self.nlsapi = lib.ApiInterface.ApiInterface(resource="/nls/v1")
         self.workflows = []
 
     def __repr__(self):
@@ -689,7 +689,6 @@ class Activity():
     def get_workflow_status(self, workflow):
         rstatus = "Unknown"
         rfinished = None
-
         try:
             wflow = self.get_workflow(workflow)
             rstatus = wflow['metadata']['labels']['workflows.argoproj.io/phase']
@@ -925,14 +924,22 @@ class Activity():
         return stat
 
     def get_workflow(self, workflow):
-        try:
-            ret_code = self.nlsapi.get_workflow(workflow)
-            wf = ret_code.json()
-        except Exception as e:
-            self.config.logger.debug(f"Unable to get workflow {workflow}: {e}")
-            return None
+        retries = 10
+        delay = 10  # seconds
 
-        return wf
+        for attempt in range(retries):
+            try:
+                ret_code = self.nlsapi.get_workflow(workflow)
+                if ret_code.status_code == 200:
+                    wf = ret_code.json()
+                    return wf
+            except Exception as e:
+                self.config.logger.debug(f"Unable to get workflow {workflow}: {e} ")
+                
+            if attempt < retries :
+                self.config.logger.warning(f"Unable to get workflow status. Retrying after {delay} seconds...")
+                time.sleep(delay)
+        return None
 
     def abort_activity(self, background_only=False):
         """Abort an activity."""
