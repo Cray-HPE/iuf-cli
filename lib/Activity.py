@@ -119,7 +119,7 @@ class Activity():
     def __init__(self, filename=None, name=None, dryrun=False, config=None):
         self.states = dict()
         
-        self.nlsapi = lib.ApiInterface.ApiInterface(resource="/nls/v1")
+        self.nlsapi = lib.ApiInterface.ApiInterface(resource="/nls/v1") # needs to be initialized before load_activity_dict call
         self.dryrun = dryrun
         self.filename = filename
         self.site_conf = None
