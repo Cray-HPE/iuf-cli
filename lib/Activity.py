@@ -466,6 +466,7 @@ class Activity():
                             # Update any sessions that don't have a finished state
                             if attr == "status" and state[attr] not in ["Succeeded","Failed", "restart", "resume", "abort"]:
                                 if state.get("workflow_id", None):
+                                    self.config.logger.info("Getting workflow status")
                                     state['status'], last_finished = self.get_workflow_status(state["workflow_id"])
                             self.states[stime][attr] = state[attr]
 
@@ -477,7 +478,6 @@ class Activity():
             if workflow_id:
                 # ok, so the last state has a workflow_id so it isn't a debug/waiting
                 last_status, last_finished = self.get_workflow_status(workflow_id)
-
                 if last_status == "Succeeded":
                     self.state({"timestamp": last_finished, "state": 'waiting_admin', "create": True})
                 elif last_status == "Failed":
