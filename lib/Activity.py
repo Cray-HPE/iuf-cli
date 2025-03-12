@@ -939,7 +939,7 @@ class Activity():
                 self.config.logger.debug(f"Unable to get workflow {workflow}: {e} ")
                 
             if attempt < retries :
-                self.config.logger.warning(f"Unable to get workflow status. Retrying after {delay} seconds...")
+                self.config.logger.warning(f"Unable to get workflow {workflow} status. Retrying after {delay} seconds...")
                 time.sleep(delay)
         return None
 
