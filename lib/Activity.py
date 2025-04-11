@@ -45,7 +45,7 @@ import lib.ApiInterface
 from lib.PodLogs import PodLogs
 from lib.SiteConfig import SiteConfig
 from lib.InstallerUtils import formatted, format_column
-from lib.vars import ARG_DEFAULTS
+from lib.vars import ARG_DEFAULTS, RunException
 
 class StateError(Exception):
     """A wrapper for raising a StateError exception."""
@@ -1077,6 +1077,32 @@ class Activity():
         rollout_percentage = self.config.args.get("concurrent_management_rollout_percentage")
         if rollout_percentage:
            payload["input_parameters"]["concurrent_management_rollout_percentage"] = rollout_percentage
+        
+
+        if "management-nodes-rollout" in stages:
+            boot_image_management = self.config.args.get("set_management_image")
+            cfs_configuration_management = self.config.args.get("set_management_config")
+            if ((boot_image_management is not None) and (cfs_configuration_management is not None)):
+                try:
+                    self.config.connection.run(f"cray cfs v3 configurations describe {cfs_configuration_management}")
+                    self.config.logger.debug(f"Found CFS configuration: {cfs_configuration_management}")
+                except RunException as e:
+                    self.config.logger.error(f"Could not find the desired configuration {cfs_configuration_management}")
+                    self.config.logger.debug(f"Command <cray cfs v3 configurations describe {cfs_configuration_management} produced -\n\n{e.stderr}")
+                    sys.exit(1)
+                try:
+                    self.config.connection.run(f"cray ims images describe {boot_image_management}")
+                    self.config.logger.debug(f"Found image: {boot_image_management} in IMS for Management node rebuild")
+                except RunException as e:
+                    self.config.logger.error(f"Could not find the required image {boot_image_management} in IMS for Management node rebuild")
+                    self.config.logger.debug(f"Command <cray ims images describe {boot_image_management}> produced -\n\n{e.stderr}")
+                    sys.exit(1)
+                payload["input_parameters"]["cfs_configuration_management"] = cfs_configuration_management
+                payload["input_parameters"]["boot_image_management"] = boot_image_management
+            elif ((boot_image_management is not None) or (cfs_configuration_management is not None)) :
+                #check only if boot_image_management or cfs_configuration_management and raise attribute error only one is passed
+                self.config.logger.error("--set-management-image and --set-management-config both must be passed together in management-nodes-rollout")
+                sys.exit(1)
 
         sessions = []
 
