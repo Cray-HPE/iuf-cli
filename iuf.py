@@ -705,6 +705,12 @@ def main():
         help="""Method to update the managed nodes. Accepted values are 'reboot' (reboot nodes _now_) or
         'stage' (set up nodes to reboot into new image after next WLM job). Defaults to 'stage'.""")
 
+    run_sp.add_argument("-mnrs", "--management-rollout-strategy", action="store",
+        choices=["reboot", "rebuild"],
+        default="rebuild",
+        help="""Method to update the management nodes. Accepted values are 'reboot' (reboot nodes _now_) or
+        'rebuild' (set up nodes to reboot into new image after next WLM job). Defaults to 'rebuild'.""")
+
     run_sp.add_argument("-cmrp", "--concurrent-management-rollout-percentage",
         action="store", default=20, type=int,
         help="""Limit the number of management nodes that roll out
@@ -723,6 +729,16 @@ def main():
         out management nodes. Hostname arguments can only belong to a single node type. For example, 
         both master and worker hostnames can not be provided at the same time. Defaults to an empty list
         which means no nodes will be rolled out.""")
+
+    run_sp.add_argument("-smi", "--set-management-image", action="store",
+        default=None,
+        help="""Method to pass user defined management image only when rolling 
+        out management nodes.""")
+    
+    run_sp.add_argument("-smc", "--set-management-config", action="store",
+        default=None,
+        help="""Method to pass user defined management config only when rolling 
+        out management nodes.""")
 
     run_sp.add_argument("-mrp", "--mask-recipe-prods", action="store", nargs='+',
         help="""If `--recipe-vars` is specified, mask the versions found within the recipe variables YAML
