@@ -1108,8 +1108,8 @@ class Activity():
                 self.config.logger.error("--set-management-image and --set-management-config both must be passed together in management-nodes-rollout")
                 sys.exit(1)
             
-            if management_rollout_strat:
-                payload["input_parameters"]["management_rollout_strategy"] = management_rollout_strat
+        if management_rollout_strat:
+            payload["input_parameters"]["management_rollout_strategy"] = management_rollout_strat
 
         sessions = []
         self.config.logger.info(f"paylod: {payload}")
