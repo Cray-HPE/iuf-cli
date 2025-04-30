@@ -1107,7 +1107,7 @@ class Activity():
                 #check only if boot_image_management or cfs_configuration_management and raise attribute error only one is passed
                 self.config.logger.error("--set-management-image and --set-management-config both must be passed together in management-nodes-rollout")
                 sys.exit(1)
-            
+        management_rollout_strat = self.config.args.get("management_rollout_strategy", None)   
         if management_rollout_strat:
             payload["input_parameters"]["management_rollout_strategy"] = management_rollout_strat
 
