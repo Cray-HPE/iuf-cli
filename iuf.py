@@ -694,9 +694,10 @@ def main():
         `product_vars.yaml` recipe variables file with each release. Note
         the path is relative to $PWD, unless an absolute path is specified.""")
 
-    run_sp.add_argument("-sv", "--site-vars", action="store", default=False,
+    run_sp.add_argument("-sv", "--site-vars", action="store", default=None,
         help="""Path to a site variables YAML file. This file allows the user to override values defined in
-        the recipe variables YAML file. Defaults to ${RBD_BASE_DIR}/${IUF_ACTIVITY}/site_vars.yaml.
+        the recipe variables YAML file. Defaults to ${RBD_BASE_DIR}/${IUF_ACTIVITY}/site_vars.yaml if it exists,
+        otherwise defaults to ${RBD_BASE_DIR}/site_vars.yaml.
         Note the path is relative to $PWD, unless an absolute path is specified.""")
 
     run_sp.add_argument("-mrs", "--managed-rollout-strategy", action="store",

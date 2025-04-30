@@ -34,7 +34,7 @@ from semver import Version
 import shutil
 import textwrap
 
-from lib.vars import RECIPE_VARS, BP_CONFIG_MANAGED, BP_CONFIG_MANAGEMENT, SESSION_VARS, MEDIA_VERSIONS, UnexpectedState
+from lib.vars import RECIPE_VARS, BP_CONFIG_MANAGED, BP_CONFIG_MANAGEMENT, SESSION_VARS, MEDIA_VERSIONS, UnexpectedState, RBD_BASE_DIR
 
 from lib.InstallerUtils import get_product_catalog, formatted, highestVersion
 
@@ -105,6 +105,18 @@ class SiteConfig():
         recipe_vars_file = config.args.get("recipe_vars", None)
 
         site_vars_file = config.args.get("site_vars", None)
+
+        if site_vars_file is None:
+            activity = config.args.get("activity")
+
+            first_path = os.path.join(RBD_BASE_DIR, activity, 'site_vars.yaml')
+            second_path = os.path.join(RBD_BASE_DIR, 'site_vars.yaml')
+            if os.path.exists(first_path):
+                install_logger.debug("Using the default path for --site-vars {}".format(first_path))
+                site_vars_file = first_path
+            elif os.path.exists(second_path):
+                install_logger.debug("Using the default path for --site-vars {}".format(second_path))
+                site_vars_file = second_path
         tmp_mask = config.args.get("mask_recipe_prods", [])
         if tmp_mask:
             self.mask_recipe_prods = tmp_mask
