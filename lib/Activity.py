@@ -465,6 +465,7 @@ class Activity():
                         if attr in state:
                             # Update any sessions that don't have a finished state
                             if attr == "status" and state[attr] not in ["Succeeded","Failed", "restart", "resume", "abort"]:
+                                # In certain scenarios, workflow might end up with an Unknown status due to nls restart
                                 if state[attr] == "Unknown":
                                     workflow = state["workflow_id"]
                                     wf = self.config.connection.run(f"kubectl -n argo get Workflow/{workflow} -o yaml --ignore-not-found")
