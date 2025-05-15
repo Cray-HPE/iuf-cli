@@ -725,6 +725,16 @@ def main():
         both master and worker hostnames can not be provided at the same time. Defaults to an empty list
         which means no nodes will be rolled out.""")
 
+    run_sp.add_argument("-smi", "--set-management-image", action="store",
+        default=None,
+        help="""Method to pass user defined management image only when rolling
+        out management nodes.""")
+
+    run_sp.add_argument("-smc", "--set-management-config", action="store",
+        default=None,
+        help="""Method to pass user defined management config only when rolling
+        out management nodes.""")
+
     run_sp.add_argument("-mrp", "--mask-recipe-prods", action="store", nargs='+',
         help="""If `--recipe-vars` is specified, mask the versions found within the recipe variables YAML
         file for the specified products, such that the largest version of the package already installed on
