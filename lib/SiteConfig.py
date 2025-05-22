@@ -418,7 +418,7 @@ class SiteConfig():
                 x = y = z = 0
                 version_x_y = "{}.{}".format(x, y)
                 version_x_y_z = "{}.{}.{}".format(x, y, z)
-                version = data['version']
+                version = str(data['version'])
                 version_list = version.split(".")
                 try:
                     x = version_list[0].split("-")[0]
