@@ -1,7 +1,7 @@
 #
 # MIT License
 #
-# (C) Copyright 2022-2024 Hewlett Packard Enterprise Development LP
+# (C) Copyright 2022-2025 Hewlett Packard Enterprise Development LP
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -1089,6 +1089,11 @@ class Activity():
         if "management-nodes-rollout" in stages:
             boot_image_management = self.config.args.get("set_management_image")
             cfs_configuration_management = self.config.args.get("set_management_config")
+            management_rollout_strat = self.config.args.get("management_rollout_strategy", None)
+
+            if management_rollout_strat:
+                payload["input_parameters"]["management_rollout_strategy"] = management_rollout_strat
+
             if ((boot_image_management is not None) and (cfs_configuration_management is not None)):
                 try:
                     self.config.connection.run(f"cray cfs v3 configurations describe {cfs_configuration_management}")
