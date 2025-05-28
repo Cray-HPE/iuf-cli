@@ -3,7 +3,7 @@
 #
 # MIT License
 #
-# (C) Copyright 2022-2023 Hewlett Packard Enterprise Development LP
+# (C) Copyright 2022-2025 Hewlett Packard Enterprise Development LP
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -705,6 +705,12 @@ def main():
         default="stage",
         help="""Method to update the managed nodes. Accepted values are 'reboot' (reboot nodes _now_) or
         'stage' (set up nodes to reboot into new image after next WLM job). Defaults to 'stage'.""")
+
+    run_sp.add_argument("-mnrs", "--management-rollout-strategy", action="store",
+        choices=["reboot", "rebuild"],
+        default="rebuild",
+        help="""Method to rollout the management nodes. Accepted values are 'reboot' or
+        'rebuild'. Defaults to 'rebuild'.""")
 
     run_sp.add_argument("-cmrp", "--concurrent-management-rollout-percentage",
         action="store", default=20, type=int,
