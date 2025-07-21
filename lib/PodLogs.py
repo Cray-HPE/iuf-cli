@@ -1,7 +1,7 @@
 #
 # MIT License
 #
-# (C) Copyright 2022-2023 Hewlett Packard Enterprise Development LP
+# (C) Copyright 2022-2025 Hewlett Packard Enterprise Development LP
 #
 # Permission is hereby granted, free of charge, to any person obtaining a
 # copy of this software and associated documentation files (the "Software"),
@@ -44,9 +44,9 @@ MAX_RECORDS = 10000
 # After the processes are finished, wait for 5 minutes for any lingering pods.
 WAIT_FOR_PODS = 5 * 60 # 5 minutes
 
-# Poll the logs for 20 minutes.  It can take a while for the pods to be
+# Poll the logs for 40 minutes.  It can take a while for the pods to be
 # scheduled.
-POLL_LOGS = 20 * 60 # 20 minutes
+POLL_LOGS = 40 * 60 # 40 minutes
 
 def generate_query(pod, container="", namespace=""):
     print(f"(generate_query)pod={pod}")
