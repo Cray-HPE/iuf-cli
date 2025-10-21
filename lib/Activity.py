@@ -892,7 +892,7 @@ class Activity():
                                     logdir=self.config.args.get("log_dir")
                                     file_name = s3.split("/")[-2]
                                     if dname_s3 not in printed_s3:
-                                        self.config.logger.debug(f"{log_prefix} LOG FILE FOR {dname}: {logdir}/{timestamp}/argo_logs/{file_name}-main.txt")
+                                        self.config.logger.info(f"{log_prefix} LOG FILE FOR {dname}: {logdir}/{timestamp}/argo_logs/{file_name}-main.txt")
                                         printed_s3[dname_s3] = True
                         except:
                             pass
