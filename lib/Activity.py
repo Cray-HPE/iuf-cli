@@ -38,6 +38,7 @@ import multiprocessing
 import tarfile
 import textwrap
 import time
+import subprocess
 import yaml
 from datetime import timedelta
 
@@ -99,7 +100,52 @@ def list_activity():
    
     return "\n".join(act_list)
 
-
+def delete_activity(activity_name):
+    """ Delete an activity both locally and in Argo."""
+    
+    def get_resources(resource_type):
+        """Helper function to get kubernetes resources"""
+        # Use list instead of shell=True for security
+        result = subprocess.run(
+            ["kubectl", "get", resource_type, "-n", "argo", 
+             "-o", "custom-columns=NAME:.metadata.name", "--no-headers"],
+            capture_output=True, 
+            universal_newlines=True
+        )
+        # Filter by activity_name in Python instead of grep
+        resources = [r for r in result.stdout.strip().split('\n') if r and activity_name in r]
+        return resources
+    
+    def delete_resources(resources, resource_type):
+        """Helper function to delete kubernetes resources"""
+        if not resources:
+            print(f"WARNING: No {resource_type}s found for {activity_name}")
+            return
+        
+        print(f"INFO: {resource_type}s found for {activity_name}: {resources}")
+        for resource in resources:
+            try:
+                subprocess.run(
+                    ["kubectl", "delete", resource_type, resource, "-n", "argo"],
+                    check=True,
+                    capture_output=True,
+                    universal_newlines=True
+                )
+                print(f"INFO: Deleted {resource_type} {resource}")
+            except subprocess.CalledProcessError as err:
+                print(f"ERROR: Failed to delete {resource_type} {resource}: {err}")
+            except Exception as err:
+                print(f"ERROR: Unable to delete {resource_type} {resource}: {err}")
+    
+    # Delete configmaps and workflows
+    configmaps = get_resources("configmap")
+    workflows = get_resources("workflow")
+    
+    delete_resources(configmaps, "configmap")
+    delete_resources(workflows, "workflow")
+    
+    return activity_name
+     
 class Activity():
     config = None
     states = None

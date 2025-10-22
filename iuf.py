@@ -422,6 +422,13 @@ def process_list_activity(config):
     else:
         print("No Activities found")
 
+def process_delete_activity(config):
+    activity_name = config.args.get("activity_name")
+    activity = lib.Activity.delete_activity(activity_name)
+    if activity:
+        print(f"Deleted activity {activity}")
+    else:
+        print("No activity deleted")
 
 def process_workflow(config):
 
@@ -788,6 +795,11 @@ def main():
     list_activity_sp = subparsers.add_parser("list-activities",
         description="List all IUF activities stored in argo.", aliases=["la"])
     list_activity_sp.set_defaults(func=process_list_activity)
+
+    delete_activity_sp = subparsers.add_parser("delete-activity",
+        description="Delete an activity both locally and in Argo.", aliases=["da"])
+    delete_activity_sp.add_argument("activity_name", help="Name of the activity to delete")
+    delete_activity_sp.set_defaults(func=process_delete_activity)
 
     workflow_sp = subparsers.add_parser("workflow", description="List workflows or information for a particular workflow")
     workflow_sp.add_argument("workflows", action="store", help="workflow to look up", nargs="*")
