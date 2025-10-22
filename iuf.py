@@ -422,6 +422,50 @@ def process_list_activity(config):
     else:
         print("No Activities found")
 
+def process_delete_activity(config):
+    activity_name = config.args.get("activity_name")
+    # Validate activity name is not empty
+    if not activity_name or not activity_name.strip():
+        print("ERROR: Activity name cannot be empty")
+        sys.exit(1)
+    
+    # Validate activity name format (same as other commands)
+    if not lib.Activity.valid_activity_name(activity_name):
+        print(f"ERROR: Activity name '{activity_name}' is invalid")
+        sys.exit(1)
+    
+    # Display warning and confirmation prompt
+    print(f"WARNING: You are about to delete activity '{activity_name}'")
+    print("This will permanently delete all the activity data and cannot be undone")
+    print("All log files for the activity will be deleted, you can take a back up if required")
+    print("\nIMPORTANT: Ensure no IUF commands are currently running for this activity.\n")
+    
+    # Get user confirmation
+    while True:
+        try:
+            response = input("Do you want to continue? (y/n): ").strip().lower()
+            if response in ['yes', 'y']:
+                break
+            elif response in ['no', 'n']:
+                print(f"{activity_name} deletion cancelled.")
+                return
+            else:
+                print("Invalid input. Please enter 'y' or 'n'.")
+        except (KeyboardInterrupt, EOFError):
+            print(f"{activity_name} deletion cancelled.")
+            sys.exit(0)
+    
+    # Proceed with deletion
+    try:
+        success, message = lib.Activity.delete_activity(activity_name)
+        if success:
+            print(f"Successfully deleted activity '{activity_name}'")
+        else:
+            print(f"ERROR: Activity {activity_name} deletion failed")
+            sys.exit(1)
+    except Exception as e:
+        print(f"ERROR: Unexpected error deleting activity: {e}")
+        sys.exit(1)
 
 def process_workflow(config):
 
@@ -646,7 +690,7 @@ def main():
     # are fully independent; for example, we have an unpack stage, and an
     # install stage.  The install stage needs to install what was unpacked.
 
-    subparsers = parser.add_subparsers(title="subcommands", metavar='{run,activity,list-stages|ls,resume,restart,abort,list-activities|la,workflow}')
+    subparsers = parser.add_subparsers(title="subcommands", metavar='{run,activity,list-stages|ls,resume,restart,abort,list-activities|la,delete-activity|da,workflow}')
     stage_list = lib.stages.get_stage_help()
 
     run_sp = subparsers.add_parser("run", description='Run IUF stages to execute install, upgrade and/or deploy operations for a given activity.',
@@ -788,6 +832,11 @@ def main():
     list_activity_sp = subparsers.add_parser("list-activities",
         description="List all IUF activities stored in argo.", aliases=["la"])
     list_activity_sp.set_defaults(func=process_list_activity)
+
+    delete_activity_sp = subparsers.add_parser("delete-activity",
+        description="Delete an activity both locally and in Argo.", aliases=["da"])
+    delete_activity_sp.add_argument("activity_name", help="Name of the activity to delete")
+    delete_activity_sp.set_defaults(func=process_delete_activity)
 
     workflow_sp = subparsers.add_parser("workflow", description="List workflows or information for a particular workflow")
     workflow_sp.add_argument("workflows", action="store", help="workflow to look up", nargs="*")

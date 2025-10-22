@@ -88,6 +88,15 @@ class ApiInterface(object):
         except Exception as ex:
             raise
 
+    def delete_activity(self, activity):
+        api_path = f"/activities/{activity}"
+        
+        try:
+            api_response = self.request("DELETE", api_path)
+            return api_response
+        except:
+            raise
+
     def post_resume(self, activity, payload):
         api_path = f"/activities/{activity}/history/resume"
         try:

@@ -38,6 +38,7 @@ import multiprocessing
 import tarfile
 import textwrap
 import time
+import subprocess
 import yaml
 from datetime import timedelta
 
@@ -99,7 +100,53 @@ def list_activity():
    
     return "\n".join(act_list)
 
+def delete_activity(activity_name):
+    """ Delete an activity both locally and in Argo."""
 
+    api = lib.ApiInterface.ApiInterface()
+    if api is not None:
+        try:
+            response = api.delete_activity(activity_name)
+            # Check if the response was successful (status code 200)
+            if response.status_code == 200:
+                response_data = response.json()
+                # Delete log folder locally after successful backend deletion
+                log_path = f"/etc/cray/upgrade/csm/iuf/{activity_name}"
+                log_deletion_success = False
+                log_deletion_message = ""
+                
+                try:
+                    if os.path.exists(log_path):
+                        shutil.rmtree(log_path)
+                        log_deletion_success = True
+                        log_deletion_message = f"Deleted log folder: {log_path}"
+                    else:
+                        log_deletion_message = f"Log folder {log_path} does not exist"
+                except PermissionError as e:
+                    log_deletion_message = f"Warning: Permission denied deleting log folder {log_path}. Manual cleanup required: sudo rm -rf {log_path}"
+                except Exception as e:
+                    log_deletion_message = f"Warning: Could not delete log folder {log_path}: {e}"
+                
+                backend_message = response_data.get("message", "Activity deleted successfully")
+                full_message = f"{backend_message}\n{log_deletion_message}"
+                
+                return True, full_message
+            else:
+                # Backend returned an error
+                error_msg = f"Failed to delete activity {activity_name}."
+                if response.text:
+                    try:
+                        error_data = response.json()
+                        error_msg = error_data.get("message", response.text)
+                    except:
+                        error_msg = response.text
+                raise ActivityError(error_msg)
+                
+        except Exception as e:
+            raise ActivityError(f"Failed to delete activity {activity_name}: {e}")
+    
+    raise ActivityError(f"Something went wrong while deleting activity {activity_name}, please try again.")
+     
 class Activity():
     config = None
     states = None
