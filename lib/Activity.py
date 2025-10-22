@@ -38,6 +38,7 @@ import multiprocessing
 import tarfile
 import textwrap
 import time
+import subprocess
 import yaml
 from datetime import timedelta
 
@@ -99,7 +100,51 @@ def list_activity():
    
     return "\n".join(act_list)
 
+def delete_activity(activity_name):
+    """ Delete an activity with all cluster resources including log files."""
 
+    api = lib.ApiInterface.ApiInterface()
+    try:
+        response = api.delete_activity(activity_name)
+        # Check if the response was successful (status code 200)
+        if response.status_code == 200:
+            response_data = response.json()
+            # Delete log folder locally after successful backend deletion
+            log_path = f"/etc/cray/upgrade/csm/iuf/{activity_name}"
+            log_deletion_message = ""
+            
+            try:
+                if os.path.exists(log_path):
+                    shutil.rmtree(log_path)
+                    log_deletion_message = f"Deleted log folder: {log_path}"
+                else:
+                    log_deletion_message = f"Log folder {log_path} does not exist"
+            except Exception:
+                log_deletion_message = f"Warning: Could not delete log folder {log_path}. Manual cleanup required: sudo rm -rf {log_path}"
+            
+            backend_message = response_data.get("message", "Activity deleted successfully")
+            emit_message = f"{backend_message}\n{log_deletion_message}"
+            
+            return True, emit_message
+        else:
+            # Backend returned an error
+            error_msg = f"Failed to delete activity {activity_name}."
+            if response.text:
+                try:
+                    error_data = response.json()
+                    error_msg = error_data.get("message", response.text)
+                except (json.JSONDecodeError, ValueError):
+                    error_msg = response.text
+            else:
+                error_msg = f"Failed to delete activity {activity_name}. Status code: {response.status_code}"
+
+            raise ActivityError(error_msg)
+            
+    except ActivityError:
+        raise  # Re-raise ActivityError as-is
+    except Exception:
+        raise ActivityError(f"Unexpected error deleting activity {activity_name}")
+    
 class Activity():
     config = None
     states = None
