@@ -435,11 +435,11 @@ def process_delete_activity(config):
         sys.exit(1)
     
     # Display warning and confirmation prompt
-    print(f"WARNING: You are about to delete activity '{activity_name}'")
-    print("This will permanently delete all the activity data and cannot be undone")
-    print("All log files for the activity will be deleted, you can take a back up if required")
-    print("\nIMPORTANT: Ensure no IUF commands are currently running for this activity.\n")
-    
+    print(f"WARNING: Permanently delete activity '{activity_name}'?")
+    print("This will delete all activity data, sessions, workflows, and log files.")
+    print("\nIMPORTANT: Ensure no IUF commands are currently running for this activity.")
+    print("This action cannot be undone.\n")
+
     # Get user confirmation
     while True:
         try:
@@ -451,18 +451,14 @@ def process_delete_activity(config):
                 return
             else:
                 print("Invalid input. Please enter 'y' or 'n'.")
-        except (KeyboardInterrupt, EOFError):
+        except KeyboardInterrupt:
             print(f"{activity_name} deletion cancelled.")
             sys.exit(0)
     
     # Proceed with deletion
     try:
         success, message = lib.Activity.delete_activity(activity_name)
-        if success:
-            print(f"Successfully deleted activity '{activity_name}'")
-        else:
-            print(f"ERROR: Activity {activity_name} deletion failed")
-            sys.exit(1)
+        print(f"STATUS {activity_name}: {message}'")
     except Exception as e:
         print(f"ERROR: Unexpected error deleting activity: {e}")
         sys.exit(1)

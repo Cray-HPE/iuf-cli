@@ -94,7 +94,7 @@ class ApiInterface(object):
         try:
             api_response = self.request("DELETE", api_path)
             return api_response
-        except:
+        except Exception as ex:
             raise
 
     def post_resume(self, activity, payload):
